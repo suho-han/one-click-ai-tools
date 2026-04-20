@@ -1,0 +1,25 @@
+{
+  "name": "awesome-dev-tools",
+  "version": "0.1.0",
+  "description": "OS-aware updater for developer AI CLI tools (claude, codex, gemini, copilot)",
+  "bin": {
+    "awesome-dev-tools": "scripts/update-ai-cli.sh"
+  },
+  "type": "commonjs",
+  "license": "MIT",
+  "keywords": [
+    "cli",
+    "developer-tools",
+    "codex",
+    "claude",
+    "gemini",
+    "copilot"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/suho-han/awesome-dev-tools.git"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
