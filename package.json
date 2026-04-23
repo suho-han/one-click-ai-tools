@@ -1,9 +1,10 @@
 {
-  "name": "awesome-dev-tools",
-  "version": "0.1.0",
+  "name": "one-click-tools",
+  "version": "0.1.1",
   "description": "OS-aware updater for developer AI CLI tools (claude, codex, gemini, copilot)",
   "bin": {
-    "awesome-dev-tools": "scripts/update-ai-cli.sh"
+    "one-click-tools": "scripts/update-ai-cli.sh",
+    "oct": "scripts/update-ai-cli.sh"
   },
   "type": "commonjs",
   "license": "MIT",
@@ -17,7 +18,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/suho-han/awesome-dev-tools.git"
+    "url": "git+https://github.com/suho-han/one-click-tools.git"
   },
   "engines": {
     "node": ">=18"
