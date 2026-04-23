@@ -1,26 +1,26 @@
 {
-  "name": "one-click-tools",
-  "version": "0.1.1",
-  "description": "OS-aware updater for developer AI CLI tools (claude, codex, gemini, copilot)",
-  "bin": {
-    "one-click-tools": "scripts/update-ai-cli.sh",
-    "oct": "scripts/update-ai-cli.sh"
-  },
-  "type": "commonjs",
-  "license": "MIT",
-  "keywords": [
-    "cli",
-    "developer-tools",
-    "codex",
-    "claude",
-    "gemini",
-    "copilot"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/suho-han/one-click-tools.git"
-  },
-  "engines": {
-    "node": ">=18"
-  }
+    "name": "one-click-tools",
+    "version": "0.1.1",
+    "description": "OS-aware updater for developer AI CLI tools (claude, codex, gemini, copilot)",
+    "bin": {
+        "one-click-tools": "scripts/update-ai-cli.sh",
+        "oct": "scripts/update-ai-cli.sh"
+    },
+    "type": "commonjs",
+    "license": "MIT",
+    "keywords": [
+        "cli",
+        "developer-tools",
+        "codex",
+        "claude",
+        "gemini",
+        "copilot"
+    ],
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/suho-han/one-click-tools.git"
+    },
+    "engines": {
+        "node": ">=18"
+    }
 }
