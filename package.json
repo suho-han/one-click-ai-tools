@@ -1,6 +1,6 @@
 {
     "name": "one-click-tools",
-    "version": "0.1.2-beta.6",
+    "version": "0.1.2-beta.7",
     "description": "OS-aware updater for developer AI CLI tools (claude, codex, gemini, copilot)",
     "bin": {
         "one-click-tools": "scripts/update-ai-cli.sh",
