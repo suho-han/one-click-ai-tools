@@ -31,6 +31,7 @@ BINARY_NAMES=(
     "gemini"
     "copilot"
 )
+SELF_PACKAGE_NAME="one-click-tools"
 
 SUCCESS_ITEMS=()
 FAILED_ITEMS=()
@@ -389,11 +390,34 @@ agent_update() {
     echo -e "${GREEN}=== AI CLI Tools Update Complete! ===${NC}"
 }
 
+self_update() {
+    local channel="${1:-stable}"
+    local target_pkg="$SELF_PACKAGE_NAME"
+
+    if ! command -v npm &> /dev/null; then
+        warn_missing_manager_and_exit "npm"
+    fi
+
+    if [[ "$channel" == "beta" ]]; then
+        target_pkg="${SELF_PACKAGE_NAME}@beta"
+    fi
+
+    echo -e "${BLUE}Updating one-click-tools via npm (${target_pkg})...${NC}"
+    if run_npm_with_sudo_retry "install" "$target_pkg"; then
+        echo -e "${GREEN}one-click-tools update complete (${target_pkg}).${NC}"
+    else
+        echo -e "${RED}one-click-tools update failed (${target_pkg}).${NC}"
+        exit 1
+    fi
+}
+
 show_help() {
     echo -e "${BLUE}one-click-tools (oct)${NC}"
     echo -e "Update and bootstrap popular AI CLI tools with a single command."
     echo -e ""
     echo -e "${YELLOW}Usage:${NC}"
+    echo -e "  oct update          Update oct itself to latest stable"
+    echo -e "  oct update --beta   Update oct itself to latest beta"
     echo -e "  oct agent-update    Update all supported AI CLI agents"
     echo -e "  oct help            Show this help message"
     echo -e ""
@@ -405,8 +429,24 @@ show_help() {
 
 # Command dispatcher
 COMMAND="${1:-}"
+SUBCOMMAND_OPT="${2:-}"
 
 case "$COMMAND" in
+    update)
+        case "$SUBCOMMAND_OPT" in
+            "")
+                self_update "stable"
+                ;;
+            --beta)
+                self_update "beta"
+                ;;
+            *)
+                echo -e "${RED}Unknown option for update: ${SUBCOMMAND_OPT}${NC}"
+                show_help
+                exit 1
+                ;;
+        esac
+        ;;
     agent-update)
         setup_logging_for_agent_update
         agent_update

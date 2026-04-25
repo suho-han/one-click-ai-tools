@@ -49,7 +49,21 @@ oct --version
 
 You can use the full command `one-click-tools` or the shorthand `oct`.
 
-### 1. Update all AI agents
+### 1. Update `oct` itself
+
+Update to the latest stable version:
+
+```bash
+oct update
+```
+
+Update to the latest beta version:
+
+```bash
+oct update --beta
+```
+
+### 2. Update all AI agents
 
 This command will check and update all supported AI CLI tools.
 
@@ -63,7 +77,7 @@ This command will check and update all supported AI CLI tools.
 oct agent-update
 ```
 
-### 2. Show description and help
+### 3. Show description and help
 
 Running the command without arguments or with `help` will show the tool description.
 
