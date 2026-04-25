@@ -68,6 +68,7 @@ oct update --beta
 This command will check and update all supported AI CLI tools.
 
 - On `macOS`: runs `brew update` and `brew upgrade`, then updates/installs agent CLIs via npm.
+- On `macOS`, if an npm install/update step fails for a tool, it retries via Homebrew formula/cask upgrade when available.
 - On `Ubuntu`: updates/installs agent CLIs via npm.
 - If a target command (`claude`, `codex`, `gemini`, `copilot`) already exists but is not npm-managed, it attempts a non-npm update path first (Homebrew formula/cask upgrade or tool self-update when available).
 - For GitHub Copilot specifically, non-npm installs are first realigned to npm by running `npm install -g --force @github/copilot`.

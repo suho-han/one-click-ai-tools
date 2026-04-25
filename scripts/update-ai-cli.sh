@@ -262,7 +262,14 @@ update_macos() {
             if run_npm_with_sudo_retry "update" "$pkg"; then
                 record_success "${tool_name} (${pkg}, npm update -g)"
             else
-                record_failure "${tool_name} (${pkg}, npm update -g)"
+                echo -e "${YELLOW}npm update failed for ${pkg}. Trying Homebrew fallback on macOS...${NC}"
+                local _brew_rc=0
+                try_brew_update_for_tool "$tool_name" "$pkg" || _brew_rc=$?
+                if [[ $_brew_rc -eq 0 ]]; then
+                    : # record_success already called inside try_brew_update_for_tool
+                else
+                    record_failure "${tool_name} (${pkg}, npm update -g; brew fallback failed)"
+                fi
             fi
         elif binary_exists "$bin_name"; then
             echo -e "${YELLOW}${bin_name} command already exists but ${pkg} is not installed globally via npm. Trying non-npm update path...${NC}"
@@ -295,7 +302,14 @@ update_macos() {
                     echo -e "${YELLOW}Binary collision detected while installing ${pkg}. An existing executable already occupies the command path.${NC}"
                     record_success "${tool_name} (${pkg}, install skipped due to existing binary)"
                 else
-                    record_failure "${tool_name} (${pkg}, npm install -g)"
+                    echo -e "${YELLOW}npm install failed for ${pkg}. Trying Homebrew fallback on macOS...${NC}"
+                    local _fallback_brew_rc=0
+                    try_brew_update_for_tool "$tool_name" "$pkg" || _fallback_brew_rc=$?
+                    if [[ $_fallback_brew_rc -eq 0 ]]; then
+                        : # record_success already called inside try_brew_update_for_tool
+                    else
+                        record_failure "${tool_name} (${pkg}, npm install -g; brew fallback failed)"
+                    fi
                 fi
             fi
         fi
