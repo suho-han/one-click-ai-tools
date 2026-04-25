@@ -276,14 +276,26 @@ update_macos() {
                 fi
             fi
         else
-            echo -e "${YELLOW}${pkg} is not installed globally via npm. Installing...${NC}"
-            if run_npm_with_sudo_retry "install" "$pkg"; then
-                record_success "${tool_name} (${pkg}, npm install -g)"
-            elif [[ $? -eq 42 ]]; then
-                echo -e "${YELLOW}Binary collision detected while installing ${pkg}. An existing executable already occupies the command path.${NC}"
-                record_success "${tool_name} (${pkg}, install skipped due to existing binary)"
+            # Try Homebrew first — brew list --cask works even if the symlink is broken or missing from PATH
+            local _brew_rc=0
+            try_brew_update_for_tool "$tool_name" "$pkg" || _brew_rc=$?
+            if [[ $_brew_rc -eq 0 ]]; then
+                : # record_success already called inside try_brew_update_for_tool
+            elif [[ $_brew_rc -eq 1 ]]; then
+                record_failure "${tool_name} (${pkg}, brew upgrade)"
             else
-                record_failure "${tool_name} (${pkg}, npm install -g)"
+                # Not a Homebrew package — fall back to npm install
+                echo -e "${YELLOW}${pkg} is not installed globally via npm. Installing...${NC}"
+                local _npm_rc=0
+                run_npm_with_sudo_retry "install" "$pkg" || _npm_rc=$?
+                if [[ $_npm_rc -eq 0 ]]; then
+                    record_success "${tool_name} (${pkg}, npm install -g)"
+                elif [[ $_npm_rc -eq 42 ]]; then
+                    echo -e "${YELLOW}Binary collision detected while installing ${pkg}. An existing executable already occupies the command path.${NC}"
+                    record_success "${tool_name} (${pkg}, install skipped due to existing binary)"
+                else
+                    record_failure "${tool_name} (${pkg}, npm install -g)"
+                fi
             fi
         fi
     done
