@@ -29,6 +29,22 @@ Install globally via npm:
 npm install -g one-click-tools
 ```
 
+## Beta Channel (Other Device)
+
+To install or update to the latest beta release on another machine, use:
+
+```bash
+npm install -g one-click-tools@beta
+```
+
+Then verify the installed version:
+
+```bash
+one-click-tools --version
+# or
+oct --version
+```
+
 ## Usage
 
 You can use the full command `one-click-tools` or the shorthand `oct`.
