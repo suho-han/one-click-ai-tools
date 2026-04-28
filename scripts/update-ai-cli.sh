@@ -761,6 +761,12 @@ get_usage_copilot() {
     local org="${OCT_GITHUB_ORG:-${GITHUB_ORG:-}}"
     local user_name="${OCT_GITHUB_USER:-${GITHUB_USER:-}}"
     local attempted_api=0
+    local year="${OCT_COPILOT_USAGE_YEAR:-}"
+    local month="${OCT_COPILOT_USAGE_MONTH:-}"
+    local day="${OCT_COPILOT_USAGE_DAY:-}"
+    local model="${OCT_COPILOT_USAGE_MODEL:-}"
+    local product="${OCT_COPILOT_USAGE_PRODUCT:-}"
+    local query=""
 
     if [[ -z "$api_key" ]]; then
         api_key="$(extract_env_value_from_dotenv "GITHUB_TOKEN")"
@@ -798,6 +804,30 @@ get_usage_copilot() {
     if [[ -z "$user_name" ]]; then
         user_name="$(extract_env_value_from_dotenv "GITHUB_USER")"
     fi
+    if [[ -z "$year" ]]; then
+        year="$(extract_env_value_from_dotenv "OCT_COPILOT_USAGE_YEAR")"
+    fi
+    if [[ -z "$month" ]]; then
+        month="$(extract_env_value_from_dotenv "OCT_COPILOT_USAGE_MONTH")"
+    fi
+    if [[ -z "$day" ]]; then
+        day="$(extract_env_value_from_dotenv "OCT_COPILOT_USAGE_DAY")"
+    fi
+    if [[ -z "$model" ]]; then
+        model="$(extract_env_value_from_dotenv "OCT_COPILOT_USAGE_MODEL")"
+    fi
+    if [[ -z "$product" ]]; then
+        product="$(extract_env_value_from_dotenv "OCT_COPILOT_USAGE_PRODUCT")"
+    fi
+
+    [[ -n "$year" ]] && query="${query}&year=${year}"
+    [[ -n "$month" ]] && query="${query}&month=${month}"
+    [[ -n "$day" ]] && query="${query}&day=${day}"
+    [[ -n "$model" ]] && query="${query}&model=${model}"
+    [[ -n "$product" ]] && query="${query}&product=${product}"
+    if [[ -n "$query" ]]; then
+        query="?${query#&}"
+    fi
 
     if [[ -z "$api_key" ]]; then
         append_usage_result "copilot" "current" "n/a" "n/a" "requests" "api" "error" "No GitHub token set (GITHUB_TOKEN/GH_TOKEN/GITHUB_API_TOKEN or gh auth token)"
@@ -811,7 +841,7 @@ get_usage_copilot() {
     fi
 
     if [[ -n "$api_key" ]] && [[ -n "$enterprise" ]]; then
-        endpoint="https://api.github.com/enterprises/${enterprise}/settings/billing/premium_request/usage"
+        endpoint="https://api.github.com/enterprises/${enterprise}/settings/billing/premium_request/usage${query}"
         attempted_api=1
         if fetch_usage_copilot_api "$endpoint" "$api_key"; then
             return 0
@@ -819,7 +849,7 @@ get_usage_copilot() {
     fi
 
     if [[ -n "$api_key" ]] && [[ -n "$org" ]]; then
-        endpoint="https://api.github.com/organizations/${org}/settings/billing/premium_request/usage"
+        endpoint="https://api.github.com/organizations/${org}/settings/billing/premium_request/usage${query}"
         attempted_api=1
         if fetch_usage_copilot_api "$endpoint" "$api_key"; then
             return 0
@@ -827,7 +857,7 @@ get_usage_copilot() {
     fi
 
     if [[ -n "$api_key" ]] && [[ -n "$user_name" ]]; then
-        endpoint="https://api.github.com/users/${user_name}/settings/billing/premium_request/usage"
+        endpoint="https://api.github.com/users/${user_name}/settings/billing/premium_request/usage${query}"
         attempted_api=1
         if fetch_usage_copilot_api "$endpoint" "$api_key"; then
             return 0
@@ -837,7 +867,7 @@ get_usage_copilot() {
     if [[ -n "$api_key" ]] && [[ -z "$user_name" ]]; then
         user_name="$(fetch_github_login_from_api "$api_key" 2>/dev/null || true)"
         if [[ -n "$user_name" ]]; then
-            endpoint="https://api.github.com/users/${user_name}/settings/billing/premium_request/usage"
+            endpoint="https://api.github.com/users/${user_name}/settings/billing/premium_request/usage${query}"
             attempted_api=1
             if fetch_usage_copilot_api "$endpoint" "$api_key"; then
                 return 0
