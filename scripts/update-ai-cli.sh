@@ -115,7 +115,7 @@ run_npm_with_sudo_retry() {
 
     if echo "$output" | grep -qiE "EACCES|permission denied"; then
         echo -e "${YELLOW}Permission issue detected for ${pkg}. Retrying with sudo...${NC}"
-        sudo npm "$action" -g "$pkg"
+        sudo "$(command -v npm)" "$action" -g "$pkg"
         return $?
     fi
 
@@ -137,7 +137,7 @@ run_npm_force_install_with_sudo_retry() {
     [[ -n "$output" ]] && echo "$output"
     if echo "$output" | grep -qiE "EACCES|permission denied"; then
         echo -e "${YELLOW}Permission issue detected for ${pkg}. Retrying forced install with sudo...${NC}"
-        sudo npm install -g --force "$pkg"
+        sudo "$(command -v npm)" install -g --force "$pkg"
         return $?
     fi
 
@@ -240,6 +240,10 @@ update_macos() {
         warn_missing_manager_and_exit "brew"
     fi
 
+    if ! command -v npm &> /dev/null; then
+        warn_missing_manager_and_exit "npm"
+    fi
+
     echo -e "${YELLOW}Detected macOS. Updating Homebrew formulae...${NC}"
     if ! brew update; then
         echo -e "${YELLOW}Warning: brew update failed. Continuing with tool-level install/upgrade attempts.${NC}"
@@ -251,13 +255,17 @@ update_macos() {
         echo -e "${YELLOW}Warning: brew upgrade failed. Continuing with tool-level install/upgrade attempts.${NC}"
     fi
 
+    echo -e "${BLUE}Caching global npm packages...${NC}"
+    local global_npm_packages
+    global_npm_packages="$(npm list -g --depth=0 2>/dev/null || true)"
+
     for i in "${!TOOLS[@]}"; do
         tool_name="${TOOLS[$i]}"
         pkg="${NPM_PACKAGES[$i]}"
         bin_name="${BINARY_NAMES[$i]}"
         echo -e "${BLUE}Checking update for: ${tool_name} (${pkg})...${NC}"
         
-        if npm list -g --depth=0 "$pkg" &> /dev/null; then
+        if echo "$global_npm_packages" | grep -q "$pkg"; then
             echo -e "${YELLOW}Upgrading ${pkg}...${NC}"
             if run_npm_with_sudo_retry "update" "$pkg"; then
                 record_success "${tool_name} (${pkg}, npm update -g)"
@@ -323,13 +331,17 @@ update_ubuntu() {
 
     echo -e "${YELLOW}Detected Ubuntu. Updating npm global packages...${NC}"
 
+    echo -e "${BLUE}Caching global npm packages...${NC}"
+    local global_npm_packages
+    global_npm_packages="$(npm list -g --depth=0 2>/dev/null || true)"
+
     for i in "${!TOOLS[@]}"; do
         tool_name="${TOOLS[$i]}"
         pkg="${NPM_PACKAGES[$i]}"
         bin_name="${BINARY_NAMES[$i]}"
 
         echo -e "${BLUE}Checking update for: ${tool_name} (${pkg})...${NC}"
-        if npm list -g --depth=0 "$pkg" &> /dev/null; then
+        if echo "$global_npm_packages" | grep -q "$pkg"; then
             echo -e "${YELLOW}Upgrading ${pkg}...${NC}"
             if run_npm_with_sudo_retry "update" "$pkg"; then
                 record_success "${tool_name} (${pkg}, npm update -g)"
