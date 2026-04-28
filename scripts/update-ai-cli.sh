@@ -48,6 +48,25 @@ usage_json_escape() {
     printf '%s' "$value"
 }
 
+sanitize_token() {
+    local token="${1:-}"
+    token="${token#Bearer }"
+    token="${token#bearer }"
+    token="$(printf '%s' "$token" | tr -d '\r' | sed -E 's/^[[:space:]]+//; s/[[:space:]]+$//')"
+    printf '%s' "$token"
+}
+
+add_token_candidate() {
+    local candidate
+    candidate="$(sanitize_token "${1:-}")"
+    [[ -z "$candidate" ]] && return 0
+    local existing
+    for existing in "${token_candidates[@]:-}"; do
+        [[ "$existing" == "$candidate" ]] && return 0
+    done
+    token_candidates+=("$candidate")
+}
+
 append_usage_result() {
     local provider="$1"
     local period="$2"
@@ -602,6 +621,9 @@ fetch_usage_copilot_api() {
         local err_preview
         err_preview="$(printf '%s' "$body" | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g' | cut -c1-180)"
         append_usage_result "copilot" "current" "n/a" "n/a" "requests" "api" "error" "Copilot API HTTP ${http_status}: ${err_preview}"
+        if [[ "$http_status" == "401" ]]; then
+            return 2
+        fi
         return 1
     fi
 
@@ -697,6 +719,34 @@ raise SystemExit(1)
 PY
 }
 
+fetch_github_login_from_gh() {
+    if ! command -v gh &> /dev/null; then
+        return 1
+    fi
+    gh api user --jq '.login' 2>/dev/null | head -n1
+}
+
+fetch_github_login_from_gh_status() {
+    if ! command -v gh &> /dev/null; then
+        return 1
+    fi
+    gh auth status 2>/dev/null | sed -nE 's/.*Logged in to [^ ]+ as ([^ ]+).*/\1/p' | head -n1
+}
+
+fetch_github_org_from_gh() {
+    if ! command -v gh &> /dev/null; then
+        return 1
+    fi
+    gh api user/orgs --jq '.[0].login' 2>/dev/null | head -n1
+}
+
+fetch_github_orgs_from_gh() {
+    if ! command -v gh &> /dev/null; then
+        return 1
+    fi
+    gh api user/orgs --jq '.[].login' 2>/dev/null
+}
+
 get_usage_codex() {
     if [[ "${USAGE_EXPERIMENTAL_MODE}" -eq 1 ]]; then
         if fetch_usage_codex_experimental; then
@@ -767,37 +817,20 @@ get_usage_copilot() {
     local model="${OCT_COPILOT_USAGE_MODEL:-}"
     local product="${OCT_COPILOT_USAGE_PRODUCT:-}"
     local query=""
+    local -a token_candidates=()
+    local -a org_candidates=()
+    local token_rc=1
 
-    if [[ -z "$api_key" ]]; then
-        api_key="$(extract_env_value_from_dotenv "GITHUB_TOKEN")"
-    fi
-    if [[ -z "$api_key" ]]; then
-        api_key="$(extract_env_value_from_dotenv "GH_TOKEN")"
-    fi
-    if [[ -z "$api_key" ]]; then
-        api_key="$(extract_env_value_from_dotenv "GITHUB_API_TOKEN")"
-    fi
-    if [[ -z "$api_key" ]]; then
-        api_key="$(extract_env_value_from_dotenv "COPILOT_API_KEY")"
-    fi
-    if [[ -z "$api_key" ]] && command -v gh &> /dev/null; then
-        api_key="$(gh auth token 2>/dev/null || true)"
-    fi
+    add_token_candidate "${GITHUB_API_TOKEN:-}"
+    local t
+    t="$(extract_env_value_from_dotenv "GITHUB_API_TOKEN")"
+    add_token_candidate "$t"
     if [[ -z "$endpoint" ]]; then
         endpoint="$(extract_env_value_from_dotenv "OCT_COPILOT_USAGE_ENDPOINT")"
     fi
-    if [[ -z "$org" ]]; then
-        org="$(extract_env_value_from_dotenv "OCT_GITHUB_ORG")"
-    fi
-    if [[ -z "$org" ]]; then
-        org="$(extract_env_value_from_dotenv "GITHUB_ORG")"
-    fi
-    if [[ -z "$enterprise" ]]; then
-        enterprise="$(extract_env_value_from_dotenv "OCT_GITHUB_ENTERPRISE")"
-    fi
-    if [[ -z "$enterprise" ]]; then
-        enterprise="$(extract_env_value_from_dotenv "GITHUB_ENTERPRISE")"
-    fi
+    # User-only mode for Copilot usage lookup: intentionally ignore org/enterprise paths.
+    org=""
+    enterprise=""
     if [[ -z "$user_name" ]]; then
         user_name="$(extract_env_value_from_dotenv "OCT_GITHUB_USER")"
     fi
@@ -829,54 +862,55 @@ get_usage_copilot() {
         query="?${query#&}"
     fi
 
-    if [[ -z "$api_key" ]]; then
-        append_usage_result "copilot" "current" "n/a" "n/a" "requests" "api" "error" "No GitHub token set (GITHUB_TOKEN/GH_TOKEN/GITHUB_API_TOKEN or gh auth token)"
+    if [[ ${#token_candidates[@]} -eq 0 ]]; then
+        append_usage_result "copilot" "current" "n/a" "n/a" "requests" "api" "error" "No GitHub token set (GITHUB_API_TOKEN)"
+        return 1
     fi
 
-    if [[ -n "$api_key" ]] && [[ -n "$endpoint" ]]; then
-        attempted_api=1
-        if fetch_usage_copilot_api "$endpoint" "$api_key"; then
-            return 0
+    for api_key in "${token_candidates[@]}"; do
+        if [[ -n "$endpoint" ]]; then
+            attempted_api=1
+            fetch_usage_copilot_api "$endpoint" "$api_key"
+            token_rc=$?
+            if [[ $token_rc -eq 0 ]]; then return 0; fi
+            [[ $token_rc -eq 2 ]] && continue
         fi
-    fi
 
-    if [[ -n "$api_key" ]] && [[ -n "$enterprise" ]]; then
-        endpoint="https://api.github.com/enterprises/${enterprise}/settings/billing/premium_request/usage${query}"
-        attempted_api=1
-        if fetch_usage_copilot_api "$endpoint" "$api_key"; then
-            return 0
-        fi
-    fi
-
-    if [[ -n "$api_key" ]] && [[ -n "$org" ]]; then
-        endpoint="https://api.github.com/organizations/${org}/settings/billing/premium_request/usage${query}"
-        attempted_api=1
-        if fetch_usage_copilot_api "$endpoint" "$api_key"; then
-            return 0
-        fi
-    fi
-
-    if [[ -n "$api_key" ]] && [[ -n "$user_name" ]]; then
-        endpoint="https://api.github.com/users/${user_name}/settings/billing/premium_request/usage${query}"
-        attempted_api=1
-        if fetch_usage_copilot_api "$endpoint" "$api_key"; then
-            return 0
-        fi
-    fi
-
-    if [[ -n "$api_key" ]] && [[ -z "$user_name" ]]; then
-        user_name="$(fetch_github_login_from_api "$api_key" 2>/dev/null || true)"
         if [[ -n "$user_name" ]]; then
             endpoint="https://api.github.com/users/${user_name}/settings/billing/premium_request/usage${query}"
             attempted_api=1
-            if fetch_usage_copilot_api "$endpoint" "$api_key"; then
-                return 0
+            fetch_usage_copilot_api "$endpoint" "$api_key"
+            token_rc=$?
+            if [[ $token_rc -eq 0 ]]; then return 0; fi
+            [[ $token_rc -eq 2 ]] && continue
+        fi
+
+        if [[ -z "$user_name" ]]; then
+            user_name="$(fetch_github_login_from_api "$api_key" 2>/dev/null || true)"
+            if [[ -z "$user_name" ]]; then
+                user_name="$(fetch_github_login_from_gh 2>/dev/null || true)"
+            fi
+            if [[ -z "$user_name" ]]; then
+                user_name="$(fetch_github_login_from_gh_status 2>/dev/null || true)"
+            fi
+            if [[ -n "$user_name" ]]; then
+                endpoint="https://api.github.com/users/${user_name}/settings/billing/premium_request/usage${query}"
+                attempted_api=1
+                fetch_usage_copilot_api "$endpoint" "$api_key"
+                token_rc=$?
+                if [[ $token_rc -eq 0 ]]; then return 0; fi
+                [[ $token_rc -eq 2 ]] && continue
             fi
         fi
+
+    done
+
+    if [[ $attempted_api -eq 1 ]]; then
+        append_usage_result "copilot" "current" "n/a" "n/a" "requests" "api" "error" "Copilot user API failed. Fine-grained PAT needs Plan(read)."
     fi
 
     if [[ -n "$api_key" ]] && [[ $attempted_api -eq 0 ]]; then
-        append_usage_result "copilot" "current" "n/a" "n/a" "requests" "api" "error" "Copilot API skipped: set OCT_COPILOT_USAGE_ENDPOINT or OCT_GITHUB_ENTERPRISE/OCT_GITHUB_ORG/OCT_GITHUB_USER"
+        append_usage_result "copilot" "current" "n/a" "n/a" "requests" "api" "error" "Copilot API skipped: set OCT_COPILOT_USAGE_ENDPOINT or OCT_GITHUB_USER"
     fi
 
     return 1
