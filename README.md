@@ -88,6 +88,51 @@ oct
 oct help
 ```
 
+### 4. Show integrated usage (`codex` / `claude-code` / `gemini` / `copilot`)
+
+Collects usage in one command. `codex`/`claude-code`/`gemini` use `API first -> CLI fallback`, and `copilot` uses the official GitHub Billing Usage REST API.
+
+```bash
+oct usage
+```
+
+For machine-readable output:
+
+```bash
+oct usage --json
+```
+
+Experimental mode (opt-in) using local OAuth/session state inspired by `codex-opero`:
+
+```bash
+oct usage --experimental-oauth-usage
+oct usage --experimental-oauth-usage --json
+```
+
+Optional API endpoint environment variables for API-first mode:
+
+- `OCT_CODEX_USAGE_ENDPOINT`
+- `OCT_CLAUDE_USAGE_ENDPOINT`
+- `OCT_GEMINI_USAGE_ENDPOINT`
+- `OCT_COPILOT_USAGE_ENDPOINT`
+
+Copilot endpoint auto-resolution (when `OCT_COPILOT_USAGE_ENDPOINT` is not set):
+
+- enterprise billing path: set `OCT_GITHUB_ENTERPRISE` (or `GITHUB_ENTERPRISE`)
+- org billing path: set `OCT_GITHUB_ORG` (or `GITHUB_ORG`)
+- user billing path: set `OCT_GITHUB_USER` (or `GITHUB_USER`)
+- if unset, `gh auth token` + `GET /user` login lookup is attempted for the user path
+
+Resolved endpoints:
+
+- `https://api.github.com/organizations/{org}/settings/billing/premium_request/usage`
+- `https://api.github.com/users/{username}/settings/billing/premium_request/usage`
+- `https://api.github.com/enterprises/{enterprise}/settings/billing/premium_request/usage`
+
+Additional endpoint for experimental Gemini OAuth path:
+
+- `OCT_GEMINI_API_ENDPOINT`
+
 ## Requirements
 
 - **macOS**: [Homebrew](https://brew.sh/) and [Node.js/npm](https://nodejs.org/)

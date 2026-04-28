@@ -104,11 +104,16 @@ extract_json_value_from_file() {
     if [[ ! -f "$file_path" ]]; then
         return 1
     fi
-    if command -v jq &> /dev/null; then
-        jq -r ".${key} // empty" "$file_path" 2>/dev/null | head -n1
-    else
-        sed -nE "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"([^\"]+)\".*/\1/p" "$file_path" | head -n1
+    sed -nE "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"([^\"]+)\".*/\1/p" "$file_path" | head -n1
+}
+
+extract_env_value_from_dotenv() {
+    local key="$1"
+    local dotenv_path="${2:-.env}"
+    if [[ ! -f "$dotenv_path" ]]; then
+        return 1
     fi
+    sed -nE "s/^[[:space:]]*${key}[[:space:]]*=[[:space:]]*\"?([^\"]*)\"?[[:space:]]*$/\\1/p" "$dotenv_path" | head -n1
 }
 
 extract_first_number() {
@@ -144,39 +149,23 @@ fetch_usage_from_api() {
         return 2
     fi
 
-    local tmp_headers
-    tmp_headers="$(mktemp)"
-    echo "header = \"${auth_header}\"" > "$tmp_headers"
-
     local output
-    output="$(curl -sS --config "$tmp_headers" "$endpoint" 2>&1)"
+    output="$(curl -sS -H "$auth_header" "$endpoint" 2>&1)"
     local rc=$?
-    rm -f "$tmp_headers"
-    
     if [[ $rc -ne 0 ]]; then
         return 1
     fi
 
     local used limit period unit
-    if command -v jq &> /dev/null; then
-        used="$(printf '%s' "$output" | jq -r '(.used // .total_used // .usage // "n/a") | tostring' 2>/dev/null)"
-        limit="$(printf '%s' "$output" | jq -r '(.limit // .quota // .max // "n/a") | tostring' 2>/dev/null)"
-        period="$(printf '%s' "$output" | jq -r '(.period // .billing_period // .window // "current") | tostring' 2>/dev/null)"
-        unit="$(printf '%s' "$output" | jq -r '(.unit // .metric // "") | tostring' 2>/dev/null)"
-        [[ "$used" == "null" ]] && used="n/a"
-        [[ "$limit" == "null" ]] && limit="n/a"
-        [[ "$period" == "null" ]] && period="current"
-    else
-        used="$(printf '%s' "$output" | grep -Eo '"(used|total_used|usage)"[[:space:]]*:[[:space:]]*"?[0-9]+([.][0-9]+)?"?' | head -n1 | grep -Eo '[0-9]+([.][0-9]+)?')"
-        limit="$(printf '%s' "$output" | grep -Eo '"(limit|quota|max)"[[:space:]]*:[[:space:]]*"?[0-9]+([.][0-9]+)?"?' | head -n1 | grep -Eo '[0-9]+([.][0-9]+)?')"
-        period="$(printf '%s' "$output" | grep -Eo '"(period|billing_period|window)"[[:space:]]*:[[:space:]]*"[^"]+"' | head -n1 | sed -E 's/.*:[[:space:]]*"([^"]+)"/\1/')"
-        unit="$(printf '%s' "$output" | grep -Eo '"(unit|metric)"[[:space:]]*:[[:space:]]*"[^"]+"' | head -n1 | sed -E 's/.*:[[:space:]]*"([^"]+)"/\1/')"
-    fi
+    used="$(printf '%s' "$output" | grep -Eo '"(used|total_used|usage)"[[:space:]]*:[[:space:]]*"?[0-9]+([.][0-9]+)?"?' | head -n1 | grep -Eo '[0-9]+([.][0-9]+)?')"
+    limit="$(printf '%s' "$output" | grep -Eo '"(limit|quota|max)"[[:space:]]*:[[:space:]]*"?[0-9]+([.][0-9]+)?"?' | head -n1 | grep -Eo '[0-9]+([.][0-9]+)?')"
+    period="$(printf '%s' "$output" | grep -Eo '"(period|billing_period|window)"[[:space:]]*:[[:space:]]*"[^"]+"' | head -n1 | sed -E 's/.*:[[:space:]]*"([^"]+)"/\1/')"
+    unit="$(printf '%s' "$output" | grep -Eo '"(unit|metric)"[[:space:]]*:[[:space:]]*"[^"]+"' | head -n1 | sed -E 's/.*:[[:space:]]*"([^"]+)"/\1/')"
 
     [[ -z "$used" ]] && used="n/a"
     [[ -z "$limit" ]] && limit="n/a"
     [[ -z "$period" ]] && period="current"
-    [[ -z "$unit" || "$unit" == "null" ]] && unit="$(detect_unit_from_text "$output")"
+    [[ -z "$unit" ]] && unit="$(detect_unit_from_text "$output")"
 
     append_usage_result "$provider" "$period" "$used" "$limit" "$unit" "api" "ok" "API usage fetched"
     return 0
@@ -236,9 +225,6 @@ run_command_capture_with_timeout() {
     local elapsed=0
     while kill -0 "$cmd_pid" 2>/dev/null; do
         if [[ $elapsed -ge $timeout_secs ]]; then
-            if command -v pkill &> /dev/null; then
-                pkill -P "$cmd_pid" 2>/dev/null || true
-            fi
             kill "$cmd_pid" 2>/dev/null || true
             wait "$cmd_pid" 2>/dev/null || true
             cat "$tmp_file"
@@ -274,9 +260,16 @@ fetch_usage_claude_experimental() {
     local credentials_file="${HOME}/.claude/.credentials.json"
     local endpoint="https://api.anthropic.com/api/oauth/usage"
 
+    token="${CLAUDE_API_TOKEN:-}"
     token="$(extract_json_value_from_file "$credentials_file" "access_token")"
     if [[ -z "$token" ]]; then
         token="$(extract_json_value_from_file "$credentials_file" "accessToken")"
+    fi
+    if [[ -z "$token" ]]; then
+        token="${CLAUDE_API_TOKEN:-}"
+    fi
+    if [[ -z "$token" ]]; then
+        token="$(extract_env_value_from_dotenv "CLAUDE_API_TOKEN")"
     fi
 
     if [[ -z "$token" ]] && command -v security &> /dev/null; then
@@ -289,7 +282,7 @@ fetch_usage_claude_experimental() {
     fi
 
     local output
-    output="$(curl -sS \
+    output="$(curl -sS -w $'\n__HTTP_STATUS__:%{http_code}' \
         -H "Authorization: Bearer ${token}" \
         -H "Accept: application/json" \
         -H "Content-Type: application/json" \
@@ -298,16 +291,55 @@ fetch_usage_claude_experimental() {
         "$endpoint" 2>&1)"
     local rc=$?
     if [[ $rc -ne 0 ]]; then
-        append_usage_result "claude-code" "current" "n/a" "n/a" "requests" "oauth" "error" "Claude experimental API request failed" "experimental_oauth_api"
+        local curl_preview
+        curl_preview="$(printf '%s' "$output" | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g' | cut -c1-180)"
+        append_usage_result "claude-code" "current" "n/a" "n/a" "requests" "oauth" "error" "Claude experimental API request failed: ${curl_preview}" "experimental_oauth_api"
+        return 1
+    fi
+
+    local http_status body
+    http_status="$(printf '%s' "$output" | sed -n 's/^__HTTP_STATUS__://p' | tail -n1)"
+    body="$(printf '%s' "$output" | sed '/^__HTTP_STATUS__:/d')"
+    if [[ -z "$http_status" ]]; then
+        http_status="000"
+    fi
+    if [[ "$http_status" -lt 200 || "$http_status" -ge 300 ]]; then
+        local err_preview
+        err_preview="$(printf '%s' "$body" | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g' | cut -c1-180)"
+        append_usage_result "claude-code" "current" "n/a" "n/a" "requests" "oauth" "error" "Claude experimental API HTTP ${http_status}: ${err_preview}" "experimental_oauth_api"
         return 1
     fi
 
     local five_hour seven_day
-    five_hour="$(printf '%s' "$output" | grep -Eo '"five_hour"[^{]*\{[^}]*"utilization"[[:space:]]*:[[:space:]]*[0-9]+([.][0-9]+)?' | grep -Eo '[0-9]+([.][0-9]+)?' | tail -n1)"
-    seven_day="$(printf '%s' "$output" | grep -Eo '"seven_day"[^{]*\{[^}]*"utilization"[[:space:]]*:[[:space:]]*[0-9]+([.][0-9]+)?' | grep -Eo '[0-9]+([.][0-9]+)?' | tail -n1)"
+    five_hour="$(python3 - <<'PY' "$body"
+import json,sys
+raw=sys.argv[1]
+try:
+    d=json.loads(raw)
+except Exception:
+    print("")
+    raise SystemExit(0)
+v=((d.get("five_hour") or {}).get("utilization"))
+print("" if v is None else v)
+PY
+)"
+    seven_day="$(python3 - <<'PY' "$body"
+import json,sys
+raw=sys.argv[1]
+try:
+    d=json.loads(raw)
+except Exception:
+    print("")
+    raise SystemExit(0)
+v=((d.get("seven_day") or {}).get("utilization"))
+print("" if v is None else v)
+PY
+)"
 
     if [[ -z "$five_hour" ]] && [[ -z "$seven_day" ]]; then
-        append_usage_result "claude-code" "current" "n/a" "n/a" "requests" "oauth" "error" "Claude experimental API parse failed" "experimental_oauth_api"
+        local preview
+        preview="$(printf '%s' "$body" | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g' | cut -c1-180)"
+        append_usage_result "claude-code" "current" "n/a" "n/a" "requests" "oauth" "error" "Claude experimental API parse failed: ${preview}" "experimental_oauth_api"
         return 1
     fi
 
@@ -354,44 +386,315 @@ fetch_usage_codex_experimental() {
 
 fetch_usage_gemini_experimental() {
     local oauth_file="${HOME}/.gemini/oauth_creds.json"
-    local endpoint="${OCT_GEMINI_CODEASSIST_ENDPOINT:-}"
-    local token
+    local token_endpoint="https://oauth2.googleapis.com/token"
+    local codeassist_base="https://cloudcode-pa.googleapis.com/v1internal"
+    local token refresh_token expiry_date now_ms
+    local client_id client_secret
+    local load_output load_status load_body project_id
+    local quota_output quota_status quota_body
+    local parse_result used limit unit primary_model secondary_model
 
     token="$(extract_json_value_from_file "$oauth_file" "access_token")"
     if [[ -z "$token" ]]; then
         token="$(extract_json_value_from_file "$oauth_file" "accessToken")"
     fi
+    refresh_token="$(extract_json_value_from_file "$oauth_file" "refresh_token")"
+    expiry_date="$(sed -nE 's/.*"expiry_date"[[:space:]]*:[[:space:]]*([0-9]+).*/\1/p' "$oauth_file" | head -n1)"
 
     if [[ -z "$token" ]]; then
         append_usage_result "gemini" "current" "n/a" "n/a" "requests" "oauth" "error" "No Gemini OAuth token in ~/.gemini/oauth_creds.json" "experimental_oauth_api"
         return 1
     fi
 
-    if [[ -z "$endpoint" ]]; then
-        append_usage_result "gemini" "current" "n/a" "n/a" "requests" "oauth" "error" "Set OCT_GEMINI_CODEASSIST_ENDPOINT for experimental Gemini quota API" "experimental_oauth_api"
+    if [[ -n "$expiry_date" ]]; then
+        now_ms="$(($(date +%s) * 1000))"
+        if [[ "$expiry_date" -le $((now_ms + 60000)) ]] && [[ -n "$refresh_token" ]]; then
+            client_id="$(python3 - <<'PY'
+import os, re
+candidates = []
+gemini = None
+try:
+    import subprocess
+    out = subprocess.check_output(["/usr/bin/env", "which", "gemini"], stderr=subprocess.DEVNULL).decode().strip()
+    if out:
+        gemini = os.path.realpath(out)
+except Exception:
+    pass
+if gemini:
+    root = os.path.dirname(os.path.dirname(gemini))
+    candidates.append(os.path.join(root, "node_modules", "@google", "gemini-cli-core", "dist/src/code_assist/oauth2.js"))
+candidates.extend([
+    "/opt/homebrew/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/code_assist/oauth2.js",
+    "/usr/local/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/code_assist/oauth2.js",
+])
+for p in candidates:
+    if not os.path.exists(p):
+        continue
+    src = open(p, encoding="utf-8", errors="ignore").read()
+    m = re.search(r"const OAUTH_CLIENT_ID = '([^']+)';", src)
+    if m:
+        print(m.group(1))
+        raise SystemExit(0)
+PY
+)"
+            client_secret="$(python3 - <<'PY'
+import os, re
+candidates = []
+gemini = None
+try:
+    import subprocess
+    out = subprocess.check_output(["/usr/bin/env", "which", "gemini"], stderr=subprocess.DEVNULL).decode().strip()
+    if out:
+        gemini = os.path.realpath(out)
+except Exception:
+    pass
+if gemini:
+    root = os.path.dirname(os.path.dirname(gemini))
+    candidates.append(os.path.join(root, "node_modules", "@google", "gemini-cli-core", "dist/src/code_assist/oauth2.js"))
+candidates.extend([
+    "/opt/homebrew/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/code_assist/oauth2.js",
+    "/usr/local/lib/node_modules/@google/gemini-cli/node_modules/@google/gemini-cli-core/dist/src/code_assist/oauth2.js",
+])
+for p in candidates:
+    if not os.path.exists(p):
+        continue
+    src = open(p, encoding="utf-8", errors="ignore").read()
+    m = re.search(r"const OAUTH_CLIENT_SECRET = '([^']+)';", src)
+    if m:
+        print(m.group(1))
+        raise SystemExit(0)
+PY
+)"
+
+            if [[ -n "$client_id" ]] && [[ -n "$client_secret" ]]; then
+                local refresh_resp
+                refresh_resp="$(curl -sS -X POST "$token_endpoint" \
+                    -H "Content-Type: application/x-www-form-urlencoded" \
+                    --data-urlencode "client_id=${client_id}" \
+                    --data-urlencode "client_secret=${client_secret}" \
+                    --data-urlencode "refresh_token=${refresh_token}" \
+                    --data-urlencode "grant_type=refresh_token" 2>&1)"
+                local refresh_rc=$?
+                if [[ $refresh_rc -eq 0 ]]; then
+                    local refreshed
+                    refreshed="$(printf '%s' "$refresh_resp" | sed -nE 's/.*"access_token"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' | head -n1)"
+                    if [[ -n "$refreshed" ]]; then
+                        token="$refreshed"
+                    fi
+                fi
+            fi
+        fi
+    fi
+
+    load_output="$(curl -sS -w $'\n__HTTP_STATUS__:%{http_code}' \
+        -X POST "${codeassist_base}:loadCodeAssist" \
+        -H "Authorization: Bearer ${token}" \
+        -H "Accept: application/json" \
+        -H "Content-Type: application/json" \
+        -d '{"metadata":{"ideType":"IDE_UNSPECIFIED","platform":"PLATFORM_UNSPECIFIED","pluginType":"GEMINI"}}' 2>&1)"
+    if [[ $? -ne 0 ]]; then
+        append_usage_result "gemini" "current" "n/a" "n/a" "requests" "oauth" "error" "Gemini loadCodeAssist request failed" "experimental_oauth_api"
+        return 1
+    fi
+    load_status="$(printf '%s' "$load_output" | sed -n 's/^__HTTP_STATUS__://p' | tail -n1)"
+    load_body="$(printf '%s' "$load_output" | sed '/^__HTTP_STATUS__:/d')"
+    if [[ -z "$load_status" ]]; then load_status="000"; fi
+    if [[ "$load_status" -lt 200 || "$load_status" -ge 300 ]]; then
+        append_usage_result "gemini" "current" "n/a" "n/a" "requests" "oauth" "error" "Gemini loadCodeAssist HTTP ${load_status}" "experimental_oauth_api"
         return 1
     fi
 
-    local output
-    output="$(curl -sS -H "Authorization: Bearer ${token}" -H "Accept: application/json" "$endpoint" 2>&1)"
-    local rc=$?
-    if [[ $rc -ne 0 ]]; then
-        append_usage_result "gemini" "current" "n/a" "n/a" "requests" "oauth" "error" "Gemini experimental API request failed" "experimental_oauth_api"
+    project_id="$(python3 - <<'PY' "$load_body"
+import json, sys
+try:
+    d = json.loads(sys.argv[1])
+except Exception:
+    print("")
+    raise SystemExit(0)
+print(d.get("cloudaicompanionProject",""))
+PY
+)"
+    if [[ -z "$project_id" ]]; then
+        append_usage_result "gemini" "current" "n/a" "n/a" "requests" "oauth" "error" "Gemini loadCodeAssist parse failed (no project id)" "experimental_oauth_api"
         return 1
     fi
 
-    local used limit unit
-    used="$(printf '%s' "$output" | grep -Eo '"(used|usage|currentUsage)"[[:space:]]*:[[:space:]]*[0-9]+([.][0-9]+)?' | head -n1 | grep -Eo '[0-9]+([.][0-9]+)?')"
-    limit="$(printf '%s' "$output" | grep -Eo '"(limit|quota|max|total)"[[:space:]]*:[[:space:]]*[0-9]+([.][0-9]+)?' | head -n1 | grep -Eo '[0-9]+([.][0-9]+)?')"
-    unit="$(detect_unit_from_text "$output")"
-
-    if [[ -z "$used" ]]; then
-        append_usage_result "gemini" "current" "n/a" "n/a" "requests" "oauth" "error" "Gemini experimental API parse failed" "experimental_oauth_api"
+    quota_output="$(curl -sS -w $'\n__HTTP_STATUS__:%{http_code}' \
+        -X POST "${codeassist_base}:retrieveUserQuota" \
+        -H "Authorization: Bearer ${token}" \
+        -H "Accept: application/json" \
+        -H "Content-Type: application/json" \
+        -d "{\"project\":\"${project_id}\"}" 2>&1)"
+    if [[ $? -ne 0 ]]; then
+        append_usage_result "gemini" "current" "n/a" "n/a" "requests" "oauth" "error" "Gemini retrieveUserQuota request failed" "experimental_oauth_api"
         return 1
     fi
-    [[ -z "$limit" ]] && limit="n/a"
-    append_usage_result "gemini" "current" "$used" "$limit" "$unit" "oauth" "ok" "Gemini experimental API usage fetched" "experimental_oauth_api"
+    quota_status="$(printf '%s' "$quota_output" | sed -n 's/^__HTTP_STATUS__://p' | tail -n1)"
+    quota_body="$(printf '%s' "$quota_output" | sed '/^__HTTP_STATUS__:/d')"
+    if [[ -z "$quota_status" ]]; then quota_status="000"; fi
+    if [[ "$quota_status" -lt 200 || "$quota_status" -ge 300 ]]; then
+        append_usage_result "gemini" "current" "n/a" "n/a" "requests" "oauth" "error" "Gemini retrieveUserQuota HTTP ${quota_status}" "experimental_oauth_api"
+        return 1
+    fi
+
+    parse_result="$(python3 - <<'PY' "$quota_body"
+import json, sys, math
+try:
+    d = json.loads(sys.argv[1])
+except Exception:
+    print("")
+    raise SystemExit(0)
+buckets = d.get("buckets") or []
+primary_ids = {"gemini-2.5-pro","gemini-3.1-pro-preview","gemini-3-pro-preview"}
+secondary_ids = {"gemini-2.5-flash","gemini-2.5-flash-lite","gemini-3-flash-preview","gemini-3.1-flash-lite-preview"}
+def pick(ids):
+    for b in buckets:
+        if b.get("modelId") in ids and b.get("remainingFraction") is not None:
+            return b
+    for b in buckets:
+        if b.get("tokenType") == "REQUESTS" and b.get("remainingFraction") is not None:
+            return b
+    return None
+pb = pick(primary_ids); sb = pick(secondary_ids)
+if not pb and not sb:
+    print("")
+    raise SystemExit(0)
+target = pb or sb
+rem = target.get("remainingFraction")
+used = int(max(0, min(100, round((1-float(rem))*100)))) if rem is not None else 0
+print(f"{used}|100|percent|{(pb or {}).get('modelId','n/a')}|{(sb or {}).get('modelId','n/a')}")
+PY
+)"
+    if [[ -z "$parse_result" ]]; then
+        append_usage_result "gemini" "current" "n/a" "n/a" "requests" "oauth" "error" "Gemini retrieveUserQuota parse failed" "experimental_oauth_api"
+        return 1
+    fi
+
+    IFS='|' read -r used limit unit primary_model secondary_model <<< "$parse_result"
+    append_usage_result "gemini" "current" "$used" "$limit" "$unit" "oauth" "ok" "Gemini quota fetched (Pro/Flash buckets)" "experimental_oauth_api primary=${primary_model} secondary=${secondary_model}"
     return 0
+}
+
+fetch_usage_copilot_api() {
+    local endpoint="$1"
+    local token="$2"
+    local output rc http_status body parse_result used unit period
+
+    output="$(curl -sS -w $'\n__HTTP_STATUS__:%{http_code}' \
+        -H "Accept: application/vnd.github+json" \
+        -H "Authorization: Bearer ${token}" \
+        -H "X-GitHub-Api-Version: 2026-03-10" \
+        "$endpoint" 2>&1)"
+    rc=$?
+    if [[ $rc -ne 0 ]]; then
+        local preview
+        preview="$(printf '%s' "$output" | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g' | cut -c1-180)"
+        append_usage_result "copilot" "current" "n/a" "n/a" "requests" "api" "error" "Copilot API request failed: ${preview}"
+        return 1
+    fi
+
+    http_status="$(printf '%s' "$output" | sed -n 's/^__HTTP_STATUS__://p' | tail -n1)"
+    body="$(printf '%s' "$output" | sed '/^__HTTP_STATUS__:/d')"
+    if [[ -z "$http_status" ]]; then
+        http_status="000"
+    fi
+    if [[ "$http_status" -lt 200 || "$http_status" -ge 300 ]]; then
+        local err_preview
+        err_preview="$(printf '%s' "$body" | tr '\n' ' ' | sed -E 's/[[:space:]]+/ /g' | cut -c1-180)"
+        append_usage_result "copilot" "current" "n/a" "n/a" "requests" "api" "error" "Copilot API HTTP ${http_status}: ${err_preview}"
+        return 1
+    fi
+
+    parse_result="$(python3 - <<'PY' "$body"
+import json, sys
+try:
+    data = json.loads(sys.argv[1])
+except Exception:
+    print("")
+    raise SystemExit(0)
+
+items = data.get("usageItems") or []
+copilot_items = []
+for it in items:
+    product = str(it.get("product", "")).lower()
+    sku = str(it.get("sku", "")).lower()
+    if "copilot" in product or "copilot" in sku:
+        copilot_items.append(it)
+
+if not copilot_items:
+    print("")
+    raise SystemExit(0)
+
+used = 0.0
+unit = "requests"
+for it in copilot_items:
+    q = it.get("netQuantity")
+    if q is None:
+        q = it.get("grossQuantity")
+    if q is None:
+        q = it.get("quantity")
+    if q is None:
+        continue
+    try:
+        used += float(q)
+    except Exception:
+        pass
+    if it.get("unitType"):
+        unit = str(it.get("unitType"))
+
+period_obj = data.get("timePeriod") or {}
+year = period_obj.get("year")
+month = period_obj.get("month")
+day = period_obj.get("day")
+if year and month and day:
+    period = f"{year}-{int(month):02d}-{int(day):02d}"
+elif year and month:
+    period = f"{year}-{int(month):02d}"
+elif year:
+    period = str(year)
+else:
+    period = "current"
+
+used_out = int(used) if float(used).is_integer() else round(used, 2)
+print(f"{used_out}|{unit}|{period}")
+PY
+)"
+
+    if [[ -z "$parse_result" ]]; then
+        append_usage_result "copilot" "current" "n/a" "n/a" "requests" "api" "error" "Copilot API parse failed (no copilot usageItems)"
+        return 1
+    fi
+
+    IFS='|' read -r used unit period <<< "$parse_result"
+    append_usage_result "copilot" "$period" "$used" "n/a" "$unit" "api" "ok" "GitHub billing premium_request usage fetched"
+    return 0
+}
+
+fetch_github_login_from_api() {
+    local token="$1"
+    local output http_status body
+    output="$(curl -sS -w $'\n__HTTP_STATUS__:%{http_code}' \
+        -H "Accept: application/vnd.github+json" \
+        -H "Authorization: Bearer ${token}" \
+        -H "X-GitHub-Api-Version: 2026-03-10" \
+        "https://api.github.com/user" 2>/dev/null)" || return 1
+    http_status="$(printf '%s' "$output" | sed -n 's/^__HTTP_STATUS__://p' | tail -n1)"
+    body="$(printf '%s' "$output" | sed '/^__HTTP_STATUS__:/d')"
+    if [[ -z "$http_status" ]] || [[ "$http_status" -lt 200 || "$http_status" -ge 300 ]]; then
+        return 1
+    fi
+    python3 - <<'PY' "$body"
+import json, sys
+try:
+    d = json.loads(sys.argv[1])
+except Exception:
+    raise SystemExit(1)
+login = d.get("login") or ""
+if login:
+    print(login)
+    raise SystemExit(0)
+raise SystemExit(1)
+PY
 }
 
 get_usage_codex() {
@@ -451,6 +754,104 @@ get_usage_gemini() {
         "gemini billing"
 }
 
+get_usage_copilot() {
+    local api_key="${GITHUB_TOKEN:-${GH_TOKEN:-${GITHUB_API_TOKEN:-${COPILOT_API_KEY:-}}}}"
+    local endpoint="${OCT_COPILOT_USAGE_ENDPOINT:-}"
+    local enterprise="${OCT_GITHUB_ENTERPRISE:-${GITHUB_ENTERPRISE:-}}"
+    local org="${OCT_GITHUB_ORG:-${GITHUB_ORG:-}}"
+    local user_name="${OCT_GITHUB_USER:-${GITHUB_USER:-}}"
+    local attempted_api=0
+
+    if [[ -z "$api_key" ]]; then
+        api_key="$(extract_env_value_from_dotenv "GITHUB_TOKEN")"
+    fi
+    if [[ -z "$api_key" ]]; then
+        api_key="$(extract_env_value_from_dotenv "GH_TOKEN")"
+    fi
+    if [[ -z "$api_key" ]]; then
+        api_key="$(extract_env_value_from_dotenv "GITHUB_API_TOKEN")"
+    fi
+    if [[ -z "$api_key" ]]; then
+        api_key="$(extract_env_value_from_dotenv "COPILOT_API_KEY")"
+    fi
+    if [[ -z "$api_key" ]] && command -v gh &> /dev/null; then
+        api_key="$(gh auth token 2>/dev/null || true)"
+    fi
+    if [[ -z "$endpoint" ]]; then
+        endpoint="$(extract_env_value_from_dotenv "OCT_COPILOT_USAGE_ENDPOINT")"
+    fi
+    if [[ -z "$org" ]]; then
+        org="$(extract_env_value_from_dotenv "OCT_GITHUB_ORG")"
+    fi
+    if [[ -z "$org" ]]; then
+        org="$(extract_env_value_from_dotenv "GITHUB_ORG")"
+    fi
+    if [[ -z "$enterprise" ]]; then
+        enterprise="$(extract_env_value_from_dotenv "OCT_GITHUB_ENTERPRISE")"
+    fi
+    if [[ -z "$enterprise" ]]; then
+        enterprise="$(extract_env_value_from_dotenv "GITHUB_ENTERPRISE")"
+    fi
+    if [[ -z "$user_name" ]]; then
+        user_name="$(extract_env_value_from_dotenv "OCT_GITHUB_USER")"
+    fi
+    if [[ -z "$user_name" ]]; then
+        user_name="$(extract_env_value_from_dotenv "GITHUB_USER")"
+    fi
+
+    if [[ -z "$api_key" ]]; then
+        append_usage_result "copilot" "current" "n/a" "n/a" "requests" "api" "error" "No GitHub token set (GITHUB_TOKEN/GH_TOKEN/GITHUB_API_TOKEN or gh auth token)"
+    fi
+
+    if [[ -n "$api_key" ]] && [[ -n "$endpoint" ]]; then
+        attempted_api=1
+        if fetch_usage_copilot_api "$endpoint" "$api_key"; then
+            return 0
+        fi
+    fi
+
+    if [[ -n "$api_key" ]] && [[ -n "$enterprise" ]]; then
+        endpoint="https://api.github.com/enterprises/${enterprise}/settings/billing/premium_request/usage"
+        attempted_api=1
+        if fetch_usage_copilot_api "$endpoint" "$api_key"; then
+            return 0
+        fi
+    fi
+
+    if [[ -n "$api_key" ]] && [[ -n "$org" ]]; then
+        endpoint="https://api.github.com/organizations/${org}/settings/billing/premium_request/usage"
+        attempted_api=1
+        if fetch_usage_copilot_api "$endpoint" "$api_key"; then
+            return 0
+        fi
+    fi
+
+    if [[ -n "$api_key" ]] && [[ -n "$user_name" ]]; then
+        endpoint="https://api.github.com/users/${user_name}/settings/billing/premium_request/usage"
+        attempted_api=1
+        if fetch_usage_copilot_api "$endpoint" "$api_key"; then
+            return 0
+        fi
+    fi
+
+    if [[ -n "$api_key" ]] && [[ -z "$user_name" ]]; then
+        user_name="$(fetch_github_login_from_api "$api_key" 2>/dev/null || true)"
+        if [[ -n "$user_name" ]]; then
+            endpoint="https://api.github.com/users/${user_name}/settings/billing/premium_request/usage"
+            attempted_api=1
+            if fetch_usage_copilot_api "$endpoint" "$api_key"; then
+                return 0
+            fi
+        fi
+    fi
+
+    if [[ -n "$api_key" ]] && [[ $attempted_api -eq 0 ]]; then
+        append_usage_result "copilot" "current" "n/a" "n/a" "requests" "api" "error" "Copilot API skipped: set OCT_COPILOT_USAGE_ENDPOINT or OCT_GITHUB_ENTERPRISE/OCT_GITHUB_ORG/OCT_GITHUB_USER"
+    fi
+
+    return 1
+}
+
 get_usage_all() {
     local output_mode="${1:-table}"
     local ok_count=0
@@ -459,6 +860,7 @@ get_usage_all() {
     get_usage_codex && ok_count=$((ok_count + 1))
     get_usage_claude && ok_count=$((ok_count + 1))
     get_usage_gemini && ok_count=$((ok_count + 1))
+    get_usage_copilot && ok_count=$((ok_count + 1))
 
     if [[ "$output_mode" == "json" ]]; then
         emit_usage_json
@@ -582,7 +984,7 @@ run_npm_with_sudo_retry() {
 
     if echo "$output" | grep -qiE "EACCES|permission denied"; then
         echo -e "${YELLOW}Permission issue detected for ${pkg}. Retrying with sudo...${NC}"
-        sudo "$(command -v npm)" "$action" -g "$pkg"
+        sudo npm "$action" -g "$pkg"
         return $?
     fi
 
@@ -604,7 +1006,7 @@ run_npm_force_install_with_sudo_retry() {
     [[ -n "$output" ]] && echo "$output"
     if echo "$output" | grep -qiE "EACCES|permission denied"; then
         echo -e "${YELLOW}Permission issue detected for ${pkg}. Retrying forced install with sudo...${NC}"
-        sudo "$(command -v npm)" install -g --force "$pkg"
+        sudo npm install -g --force "$pkg"
         return $?
     fi
 
@@ -707,10 +1109,6 @@ update_macos() {
         warn_missing_manager_and_exit "brew"
     fi
 
-    if ! command -v npm &> /dev/null; then
-        warn_missing_manager_and_exit "npm"
-    fi
-
     echo -e "${YELLOW}Detected macOS. Updating Homebrew formulae...${NC}"
     if ! brew update; then
         echo -e "${YELLOW}Warning: brew update failed. Continuing with tool-level install/upgrade attempts.${NC}"
@@ -722,17 +1120,13 @@ update_macos() {
         echo -e "${YELLOW}Warning: brew upgrade failed. Continuing with tool-level install/upgrade attempts.${NC}"
     fi
 
-    echo -e "${BLUE}Caching global npm packages...${NC}"
-    local global_npm_packages
-    global_npm_packages="$(npm list -g --depth=0 2>/dev/null || true)"
-
     for i in "${!TOOLS[@]}"; do
         tool_name="${TOOLS[$i]}"
         pkg="${NPM_PACKAGES[$i]}"
         bin_name="${BINARY_NAMES[$i]}"
         echo -e "${BLUE}Checking update for: ${tool_name} (${pkg})...${NC}"
         
-        if echo "$global_npm_packages" | grep -qE "(^|[[:space:]])${pkg}@" || echo "$global_npm_packages" | grep -qE "(^|[[:space:]])${pkg}$"; then
+        if npm list -g --depth=0 "$pkg" &> /dev/null; then
             echo -e "${YELLOW}Upgrading ${pkg}...${NC}"
             if run_npm_with_sudo_retry "update" "$pkg"; then
                 record_success "${tool_name} (${pkg}, npm update -g)"
@@ -798,17 +1192,13 @@ update_ubuntu() {
 
     echo -e "${YELLOW}Detected Ubuntu. Updating npm global packages...${NC}"
 
-    echo -e "${BLUE}Caching global npm packages...${NC}"
-    local global_npm_packages
-    global_npm_packages="$(npm list -g --depth=0 2>/dev/null || true)"
-
     for i in "${!TOOLS[@]}"; do
         tool_name="${TOOLS[$i]}"
         pkg="${NPM_PACKAGES[$i]}"
         bin_name="${BINARY_NAMES[$i]}"
 
         echo -e "${BLUE}Checking update for: ${tool_name} (${pkg})...${NC}"
-        if echo "$global_npm_packages" | grep -qE "(^|[[:space:]])${pkg}@" || echo "$global_npm_packages" | grep -qE "(^|[[:space:]])${pkg}$"; then
+        if npm list -g --depth=0 "$pkg" &> /dev/null; then
             echo -e "${YELLOW}Upgrading ${pkg}...${NC}"
             if run_npm_with_sudo_retry "update" "$pkg"; then
                 record_success "${tool_name} (${pkg}, npm update -g)"
@@ -912,7 +1302,7 @@ show_help() {
     echo -e "  oct update          Update oct itself to latest stable"
     echo -e "  oct update --beta   Update oct itself to latest beta"
     echo -e "  oct agent-update    Update all supported AI CLI agents"
-    echo -e "  oct usage [--json] [--experimental-oauth-usage]  Show codex/claude/gemini usage summary"
+    echo -e "  oct usage [--json] [--experimental-oauth-usage]  Show codex/claude/gemini/copilot usage summary"
     echo -e "  oct help            Show this help message"
     echo -e ""
     echo -e "${YELLOW}Supported Tools:${NC}"
