@@ -129,10 +129,24 @@ extract_json_value_from_file() {
 extract_env_value_from_dotenv() {
     local key="$1"
     local dotenv_path="${2:-.env}"
-    if [[ ! -f "$dotenv_path" ]]; then
-        return 1
+    local -a dotenv_candidates=()
+
+    if [[ -n "${2:-}" ]]; then
+        dotenv_candidates+=("$dotenv_path")
+    else
+        dotenv_candidates+=(".env" "${HOME}/.env")
     fi
-    sed -nE "s/^[[:space:]]*${key}[[:space:]]*=[[:space:]]*\"?([^\"]*)\"?[[:space:]]*$/\\1/p" "$dotenv_path" | head -n1
+
+    local candidate value
+    for candidate in "${dotenv_candidates[@]}"; do
+        [[ -f "$candidate" ]] || continue
+        value="$(sed -nE "s/^[[:space:]]*${key}[[:space:]]*=[[:space:]]*\"?([^\"]*)\"?[[:space:]]*$/\\1/p" "$candidate" | head -n1)"
+        if [[ -n "$value" ]]; then
+            printf '%s' "$value"
+            return 0
+        fi
+    done
+    return 1
 }
 
 extract_first_number() {
