@@ -104,7 +104,11 @@ extract_json_value_from_file() {
     if [[ ! -f "$file_path" ]]; then
         return 1
     fi
-    sed -nE "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"([^\"]+)\".*/\1/p" "$file_path" | head -n1
+    if command -v jq &> /dev/null; then
+        jq -r ".${key} // empty" "$file_path" 2>/dev/null | head -n1
+    else
+        sed -nE "s/.*\"${key}\"[[:space:]]*:[[:space:]]*\"([^\"]+)\".*/\1/p" "$file_path" | head -n1
+    fi
 }
 
 extract_first_number() {
@@ -728,7 +732,7 @@ update_macos() {
         bin_name="${BINARY_NAMES[$i]}"
         echo -e "${BLUE}Checking update for: ${tool_name} (${pkg})...${NC}"
         
-        if echo "$global_npm_packages" | grep -q "$pkg"; then
+        if echo "$global_npm_packages" | grep -qE "(^|[[:space:]])${pkg}@" || echo "$global_npm_packages" | grep -qE "(^|[[:space:]])${pkg}$"; then
             echo -e "${YELLOW}Upgrading ${pkg}...${NC}"
             if run_npm_with_sudo_retry "update" "$pkg"; then
                 record_success "${tool_name} (${pkg}, npm update -g)"
@@ -804,7 +808,7 @@ update_ubuntu() {
         bin_name="${BINARY_NAMES[$i]}"
 
         echo -e "${BLUE}Checking update for: ${tool_name} (${pkg})...${NC}"
-        if echo "$global_npm_packages" | grep -q "$pkg"; then
+        if echo "$global_npm_packages" | grep -qE "(^|[[:space:]])${pkg}@" || echo "$global_npm_packages" | grep -qE "(^|[[:space:]])${pkg}$"; then
             echo -e "${YELLOW}Upgrading ${pkg}...${NC}"
             if run_npm_with_sudo_retry "update" "$pkg"; then
                 record_success "${tool_name} (${pkg}, npm update -g)"
