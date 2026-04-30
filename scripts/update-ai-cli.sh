@@ -28,11 +28,13 @@ source "${LIB_DIR}/results.sh"
 source "${LIB_DIR}/logging.sh"
 source "${LIB_DIR}/npm.sh"
 source "${LIB_DIR}/package-managers.sh"
+source "${LIB_DIR}/config-manager.sh"
 source "${LIB_DIR}/update-macos.sh"
 source "${LIB_DIR}/update-ubuntu.sh"
 source "${LIB_DIR}/agent-update.sh"
 source "${LIB_DIR}/self-update.sh"
 source "${LIB_DIR}/usage-report.sh"
+source "${LIB_DIR}/schedule.sh"
 source "${LIB_DIR}/help.sh"
 
 # Command dispatcher
@@ -58,6 +60,12 @@ case "$COMMAND" in
     agent-update)
         setup_logging_for_agent_update
         agent_update
+        ;;
+    config)
+        config_command "${@:2}"
+        ;;
+    schedule)
+        schedule_command "${@:2}"
         ;;
     usage)
         usage_command "${@:2}"

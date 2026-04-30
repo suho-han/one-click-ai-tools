@@ -5,12 +5,20 @@ update_ubuntu() {
 
     echo -e "${YELLOW}Detected Ubuntu. Updating npm global packages...${NC}"
 
-    for i in "${!TOOLS[@]}"; do
+    local -a enabled_indices=()
+    local _i
+    for _i in "${!TOOLS[@]}"; do
+        is_tool_enabled "${BINARY_NAMES[$_i]}" && enabled_indices+=("$_i")
+    done
+    local _total=${#enabled_indices[@]}
+    local _count=0
+
+    for i in "${enabled_indices[@]}"; do
         tool_name="${TOOLS[$i]}"
         pkg="${NPM_PACKAGES[$i]}"
         bin_name="${BINARY_NAMES[$i]}"
-
-        echo -e "${BLUE}Checking update for: ${tool_name} (${pkg})...${NC}"
+        _count=$((_count + 1))
+        echo -e "${BLUE}[${_count}/${_total}] Checking update for: ${tool_name} (${pkg})...${NC}"
         if npm list -g --depth=0 "$pkg" &> /dev/null; then
             echo -e "${YELLOW}Upgrading ${pkg}...${NC}"
             if run_npm_with_sudo_retry "update" "$pkg"; then
