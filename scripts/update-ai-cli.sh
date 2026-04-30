@@ -5,7 +5,15 @@
 
 set -u
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Resolve the real script path, following symlinks (works on macOS without GNU readlink).
+_oct_source="${BASH_SOURCE[0]}"
+while [[ -L "$_oct_source" ]]; do
+    _oct_dir="$(cd -P "$(dirname "$_oct_source")" && pwd)"
+    _oct_source="$(readlink "$_oct_source")"
+    [[ "$_oct_source" != /* ]] && _oct_source="${_oct_dir}/${_oct_source}"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$_oct_source")" && pwd)"
+unset _oct_source _oct_dir
 LIB_DIR="${SCRIPT_DIR}/lib"
 
 LOG_FILE=""
