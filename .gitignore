@@ -2,3 +2,6 @@ node_modules/
 npm-debug.log*
 DEPLOY_COMMAND.md
 .env
+# Go binaries
+oct
+bin/

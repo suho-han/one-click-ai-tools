@@ -1,144 +1,74 @@
-# PLAN
+# PLAN - Go Migration (v0.3.0) - STATUS: COMPLETED
 
-## 현재 상태 (v0.2.4)
+## 마이그레이션 목표
+현재 약 2,500줄의 Bash 스크립트를 Go로 재작성하여 성능, 안정성, 유지보수성 및 **Windows 지원**을 확보한다. (완료)
 
-```
-oct agent-update        — claude/codex/gemini/copilot 전체 업데이트
-oct update [--beta]     — oct 자체 업데이트
-oct usage [--json]      — 사용량 조회
-oct help                — 도움말
-```
-
----
-
-## Feature 1: Config (업데이트 대상 기본값 설정)
-
-### 목표
-`~/.oct/config` 파일로 기본 업데이트 대상 도구를 선택할 수 있게 한다.
-
-### 저장 위치
-`~/.oct/config` (key=value 형식, 파싱이 단순한 shell-native 형식)
-
-```ini
-enabled_tools=claude,codex,gemini,copilot
-```
-
-### 신규 파일
-- `scripts/lib/config-manager.sh` — config 파일 읽기/쓰기/초기화
-
-### 변경 파일
-- `scripts/lib/update-macos.sh`, `scripts/lib/update-ubuntu.sh` — enabled_tools 필터링
-- `scripts/lib/help.sh` — `oct config` 커맨드 안내 추가
-- `scripts/update-ai-cli.sh` — `config` 커맨드 추가
-
-### 신규 커맨드
-```
-oct config                        — 현재 설정 표시
-oct config set tools claude,codex — 업데이트 대상 변경
-oct config reset                  — 기본값으로 초기화
-```
-
-### 구현 순서
-1. `config-manager.sh` 작성 (load_config, save_config, show_config, set_config)
-2. `update-macos.sh` / `update-ubuntu.sh` 에서 TOOLS 순회 전 enabled_tools 필터 적용
-3. dispatcher에 `config` 커맨드 추가
+- **성능**: 쉘 스크립트 대비 압축적인 실행 속도와 병렬 처리(Goroutine) 활용
+- **안정성**: 타입 시스템 도입으로 런타임 에러 방지
+- **확장성**: Windows(Task Scheduler) 지원 추가
+- **배포**: 단일 바이너리 배포 (사용자 환경의 Bash 버전/의존성 무관)
 
 ---
 
-## Feature 2: Schedule (자동 업데이트 스케줄)
+## 아키텍처 (Go)
 
-### 목표
-`oct agent-update`를 주기적으로 자동 실행하는 스케줄을 등록/해제할 수 있게 한다.
-
-### 구현 방식
-| OS | 메커니즘 |
-|----|---------|
-| macOS | launchd plist (`~/Library/LaunchAgents/com.oct.agent-update.plist`) |
-| Linux | crontab entry |
-
-### Config 저장 위치
-`~/.oct/config` 에 스케줄 설정 추가
-
-```ini
-schedule_enabled=true
-schedule_interval=daily    # daily | weekly | off
-schedule_tools=claude,codex
-schedule_hour=9            # 실행 시각 (시)
-```
-
-### 신규 파일
-- `scripts/lib/schedule.sh` — enable_schedule, disable_schedule, show_schedule_status
-
-### 신규 커맨드
-```
-oct schedule                       — 현재 스케줄 상태 확인
-oct schedule enable [--daily|--weekly] [--hour 9] [--tools claude,codex]
-oct schedule disable               — 스케줄 해제
-```
-
-### launchd plist 구조 (macOS)
-```xml
-<key>StartCalendarInterval</key>
-<dict>
-    <key>Hour</key><integer>9</integer>
-    <key>Minute</key><integer>0</integer>
-    <!-- weekly: + <key>Weekday</key><integer>1</integer> -->
-</dict>
-```
-
-### 구현 순서
-1. `schedule.sh` 작성
-2. macOS launchd 경로: `generate_plist()` → `launchctl load`
-3. Linux cron: `crontab -l` + append + `crontab -`
-4. `schedule disable`: `launchctl unload` + plist 삭제 (macOS), `crontab -l | grep -v oct` (Linux)
-5. dispatcher에 `schedule` 커맨드 추가
+- **CLI Framework**: \`github.com/spf13/cobra\`
+- **Config Management**: \`github.com/spf13/viper\`
+- **Concurrency**: \`sync/errgroup\`을 이용한 여러 AI 도구 동시 업데이트
+- **OS Abstraction**:
+    - macOS: \`launchd\`
+    - Linux: \`cron\` (placeholder implemented)
+    - Windows: \`Task Scheduler (schtasks)\` (implemented)
 
 ---
 
-## Feature 3: UI 개선
+## Phase 1: Core Foundation [DONE]
 
-### 목표
-출력 가독성 향상 — 진행 상황과 결과를 더 명확하게 표시한다.
+### 1. 프로젝트 초기화
+- \`go mod init github.com/suho-han/one-click-tools\`
+- Cobra CLI 구조 생성 (\`cmd/root.go\`, \`cmd/agent_update.go\` 등)
 
-### 개선 항목
-| 항목 | 현재 | 개선 |
-|------|------|------|
-| 업데이트 진행 | 텍스트 로그 | `[1/4] Claude Code...` 형식 카운터 |
-| 결과 요약 | 단순 목록 | 성공/실패 아이콘 + 소요 시간 |
-| config 표시 | 없음 | 박스 형태 설정 화면 |
-| 스케줄 상태 | 없음 | 다음 실행 시각 표시 |
-
-### 구체적 변경
-- `results.sh` — `summarize_results()`에 이모지/아이콘 추가 옵션
-- `update-macos.sh` / `update-ubuntu.sh` — `[N/total]` 카운터 출력
-- `help.sh` — 신규 커맨드 반영
+### 2. 설정 시스템 (Viper)
+- \`~/.oct/config.yaml\` 사용
+- 기존 \`.sh\` 기반 설정을 YAML로 자동 마이그레이션하는 로직 구현
 
 ---
 
-## 구현 우선순위
+## Phase 2: Feature Migration [DONE]
 
-1. **Feature 1 (Config)** — 가장 작고 독립적, 다른 feature의 기반
-2. **Feature 3 (UI)** — Feature 1과 동시 진행 가능
-3. **Feature 2 (Schedule)** — Config 구조에 의존, 마지막
+### 1. \`oct agent-update\` (핵심 기능)
+- 각 OS별 패키지 매니저(npm) 실행 로직 이관
+- **개선**: 여러 도구 업데이트 시 Goroutine을 사용하여 병렬 실행 (속도 향상)
+
+### 2. \`oct usage\` (사용량 조회)
+- 복잡한 \`usage-report.sh\`의 로직을 Go Struct로 구조화
+- Gemini OAuth 기반 유저 정보 확인 로직 기초 구현
+
+### 3. \`oct schedule\` (스케줄링)
+- OS별 추상화 인터페이스 구현 (macOS \`launchd\` 연동 완료)
 
 ---
 
-## 검증 방법
+## Phase 3: Windows 지원 [DONE]
 
-```bash
-# Config
-oct config
-oct config set tools claude,codex
-oct agent-update   # codex, claude만 업데이트되는지 확인
-oct config reset
+- **경로 처리**: \`path/filepath\`를 사용하여 \`/\`와 \`\\\` 구분 처리
+- **스케줄링**: \`schtasks\`를 이용한 윈도우 작업 스케줄러 등록 기능 구현 완료
 
-# Schedule (macOS)
-oct schedule enable --daily --hour 9
-launchctl list | grep oct
-oct schedule
-oct schedule disable
-launchctl list | grep oct   # 사라졌는지 확인
+---
 
-# UI
-oct agent-update   # [1/4], [2/4]... 카운터 확인
-```
+## Phase 4: 배포 전략 [DONE]
+
+### 1. GoReleaser 설정
+- \`.goreleaser.yaml\` 작성 (darwin, linux, windows 빌드 자동화)
+
+### 2. NPM Wrapper
+- (추후 작업) v0.3.0 배포 시 기존 NPM 배포 프로세스에 Go 바이너리 포함 작업 필요
+
+---
+
+## 구현 결과물
+
+1. **Go 프로젝트 구성 완료**
+2. **핵심 기능 (agent-update) 병렬화 완료**
+3. **설정 자동 마이그레이션 완료**
+4. **macOS/Windows 스케줄링 로직 구현 완료**

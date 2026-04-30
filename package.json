@@ -1,10 +1,14 @@
 {
     "name": "one-click-tools",
-    "version": "0.2.5",
-    "description": "OS-aware updater for developer AI CLI tools (claude, codex, gemini, copilot)",
+    "version": "0.3.0",
+    "description": "High-performance OS-aware updater for developer AI CLI tools (Go version)",
     "bin": {
-        "one-click-tools": "scripts/update-ai-cli.sh",
-        "oct": "scripts/update-ai-cli.sh"
+        "one-click-tools": "scripts/oct-wrapper.js",
+        "oct": "scripts/oct-wrapper.js"
+    },
+    "scripts": {
+        "postinstall": "node scripts/postinstall.js",
+        "build": "go build -o oct main.go"
     },
     "type": "commonjs",
     "license": "MIT",
