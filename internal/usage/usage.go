@@ -22,8 +22,8 @@ func GetUsage() ([]UsageResult, error) {
 	
 	results = append(results, FetchGeminiUsage())
 	results = append(results, FetchClaudeUsage())
-	
-	// Add other providers...
+	results = append(results, FetchCopilotUsage())
+	results = append(results, FetchCodexUsage())
 	
 	return results, nil
 }

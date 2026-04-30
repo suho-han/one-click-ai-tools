@@ -3,8 +3,9 @@ package update
 import (
 	"context"
 	"fmt"
-	"os/exec"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/spf13/viper"
 	"golang.org/x/sync/errgroup"
@@ -32,33 +33,45 @@ func Run() error {
 		return nil
 	}
 
-	fmt.Printf("Updating %d tools...\n", len(toolsToUpdate))
+	total := len(toolsToUpdate)
+	fmt.Printf("Updating %d tools...\n", total)
 
 	g, _ := errgroup.WithContext(context.Background())
+	var mu sync.Mutex
+	count := 0
 
 	for _, t := range toolsToUpdate {
 		t := t // capture range variable
 		g.Go(func() error {
-			return updateTool(t)
+			manager := DetectManager(t.Package, t.BinaryName)
+			
+			mu.Lock()
+			count++
+			current := count
+			fmt.Printf("[%d/%d] %s: Detecting manager... (using %s)\n", current, total, t.Name, manager)
+			mu.Unlock()
+
+			start := time.Now()
+			cmd := manager.InstallCommand(t.Package)
+			
+			output, err := cmd.CombinedOutput()
+			duration := time.Since(start).Round(time.Second)
+
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				fmt.Printf("[%s] ✗ Failed after %v: %v\nOutput: %s\n", t.Name, duration, err, string(output))
+				return err
+			}
+
+			fmt.Printf("[%s] ✓ Updated successfully in %v\n", t.Name, duration)
+			return nil
 		})
 	}
 
-	return g.Wait()
-}
-
-func updateTool(t Tool) error {
-	fmt.Printf("[%s] Starting update...\n", t.Name)
-	
-	// For now, assuming npm is used as in the bash version
-	cmd := exec.Command("npm", "install", "-g", t.Package)
-	
-	// In a real implementation, we might want to capture output and format it nicely
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		fmt.Printf("[%s] Error: %v\nOutput: %s\n", t.Name, err, string(output))
-		return err
+	err := g.Wait()
+	if err == nil {
+		fmt.Println("\nAll tools updated successfully!")
 	}
-
-	fmt.Printf("[%s] Successfully updated.\n", t.Name)
-	return nil
+	return err
 }
