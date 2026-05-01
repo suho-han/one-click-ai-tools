@@ -26,10 +26,29 @@
 
 ## Installation
 
-Install globally via npm:
+Choose one of the following methods to install **oct**:
 
+### 1. Via npm (Recommended)
+Install globally using npm:
 ```bash
 npm install -g one-click-tools
+```
+
+### 2. Via pnpm
+Install globally using pnpm:
+```bash
+pnpm add -g one-click-tools
+```
+
+### 3. Via Git Clone (For Development)
+Clone the repository and build from source (requires [Go](https://go.dev/) and [Node.js](https://nodejs.org/)):
+```bash
+git clone https://github.com/suho-han/one-click-tools.git
+cd one-click-tools
+pnpm install
+npm run build
+# You can then use the binary directly or link it
+./oct --help
 ```
 
 ## Beta Channel (Other Device)
