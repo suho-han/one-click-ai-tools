@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/AlecAivazis/survey/v2"
+	"github.com/AlecAivazis/survey/v2/terminal"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/suho-han/one-click-tools/internal/update"
@@ -11,15 +13,15 @@ import (
 
 var configCmd = &cobra.Command{
 	Use:   "config",
-	Short: "Manage configuration",
+	Short: "Manage configuration (interactive selection if no sub-command)",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("=== one-click-tools config ===")
-		fmt.Printf("Config file: %s\n\n", viper.ConfigFileUsed())
-		
+		// If no args, enter interactive mode
+		var options []string
+		var defaults []string
 		enabledTools := viper.GetStringSlice("enabled_tools")
-		fmt.Println("Enabled tools (agent-update):")
-		
+
 		for _, t := range update.Tools {
+			options = append(options, t.Name)
 			enabled := false
 			if len(enabledTools) == 0 {
 				enabled = true
@@ -31,13 +33,47 @@ var configCmd = &cobra.Command{
 					}
 				}
 			}
-			
 			if enabled {
-				fmt.Printf("  ✓ %s\n", t.Name)
-			} else {
-				fmt.Printf("  ✗ %s\n", t.Name)
+				defaults = append(defaults, t.Name)
 			}
 		}
+
+		prompt := &survey.MultiSelect{
+			Message:  "Select tools to enable for agent-update:",
+			Options:  options,
+			Default:  defaults,
+			PageSize: 10,
+		}
+
+		var selected []string
+		err := survey.AskOne(prompt, &selected)
+		if err != nil {
+			if err == terminal.InterruptErr {
+				fmt.Println("\nConfiguration cancelled.")
+				return
+			}
+			fmt.Printf("Prompt failed: %v\n", err)
+			return
+		}
+
+		var newEnabledTools []string
+		for _, s := range selected {
+			for _, t := range update.Tools {
+				if t.Name == s {
+					newEnabledTools = append(newEnabledTools, t.BinaryName)
+					break
+				}
+			}
+		}
+
+		// If all tools selected, we can just empty the list to mean "all" (default behavior)
+		// Or we can keep them explicitly. Let's keep them explicit if the user manually selected.
+		viper.Set("enabled_tools", newEnabledTools)
+		if err := viper.WriteConfig(); err != nil {
+			fmt.Printf("Failed to write config: %v\n", err)
+			return
+		}
+		fmt.Println("Config updated successfully.")
 	},
 }
 
@@ -91,8 +127,41 @@ var configResetCmd = &cobra.Command{
 	},
 }
 
+var configListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "Show current configuration",
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Println("=== one-click-tools config ===")
+		fmt.Printf("Config file: %s\n\n", viper.ConfigFileUsed())
+
+		enabledTools := viper.GetStringSlice("enabled_tools")
+		fmt.Println("Enabled tools (agent-update):")
+
+		for _, t := range update.Tools {
+			enabled := false
+			if len(enabledTools) == 0 {
+				enabled = true
+			} else {
+				for _, et := range enabledTools {
+					if strings.EqualFold(et, t.BinaryName) {
+						enabled = true
+						break
+					}
+				}
+			}
+
+			if enabled {
+				fmt.Printf("  ✓ %s\n", t.Name)
+			} else {
+				fmt.Printf("  ✗ %s\n", t.Name)
+			}
+		}
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(configCmd)
+	configCmd.AddCommand(configListCmd)
 	configCmd.AddCommand(configSetCmd)
 	configCmd.AddCommand(configResetCmd)
 	configSetCmd.AddCommand(configSetToolsCmd)
