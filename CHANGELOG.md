@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.3.6](https://github.com/suho-han/one-click-tools/compare/v0.3.5...v0.3.6) (2026-05-01)
+
+
+### Documentation
+
+* **readme:** update package name to scoped package ([9d6313a](https://github.com/suho-han/one-click-tools/commit/9d6313aaaa7a155b362952a40a0c4d8206b185cd))
+
 ### [0.3.5](https://github.com/suho-han/one-click-tools/compare/v0.3.4...v0.3.5) (2026-05-01)
 
 
