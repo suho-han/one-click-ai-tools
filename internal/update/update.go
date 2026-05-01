@@ -57,11 +57,15 @@ func Run() error {
 			mu.Lock()
 			count++
 			current := count
-			// Print brand logo if supported
+			// Print high-density logo if supported
 			if t.LobeIcon != "" {
 				ui.PrintIcon(t.LobeIcon, 32)
 			}
-			fmt.Printf("[%d/%d] %s: Detecting manager... (using %s)\n", current, total, t.Colorize(t.Name), manager)
+			icon := ui.InlineIcon(t.LobeIcon, 6)
+			if icon != "" {
+				icon = icon + " "
+			}
+			fmt.Printf("[%d/%d] %s%s: Detecting manager... (using %s)\n", current, total, icon, t.Colorize(t.Name), manager)
 			mu.Unlock()
 
 			start := time.Now()

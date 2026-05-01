@@ -67,24 +67,6 @@ func PrintIcon(name string, size int) {
 	printTextFallback(name)
 }
 
-// PrintIconComparison prints the icon in both Half-block and Braille styles for testing.
-func PrintIconComparison(name string, size int) {
-	img, err := renderIconPNG(name)
-	if err != nil {
-		fmt.Printf("Error loading icon %s: %v\n", name, err)
-		return
-	}
-
-	fmt.Printf("\x1b[1m\n--- Icon: %s (Target Width: %d) ---\x1b[0m\n", name, size)
-	
-	fmt.Println("\n[1] Half-block Style (2x Vertical Density)")
-	printANSIImage(img, size)
-	
-	fmt.Println("\n[2] Braille Style (2x4 Density)")
-	printBrailleImage(img, size)
-	fmt.Println()
-}
-
 // InlineIcon returns a compact ANSI icon for inline list rendering.
 func InlineIcon(name string, width int) string {
 	if getRendererChoice() == rendererText {
@@ -405,18 +387,29 @@ func buildBrailleInlineIcon(img image.Image, targetWidth int) string {
 		targetWidth = 4
 	}
 
-	stepX := maxInt(w/(targetWidth*2), 1)
-	stepY := stepX
-	yMid := b.Min.Y + h/2 - stepY*2
-	
+	size := maxInt(w, h)
+	offsetX := (size - w) / 2
+	offsetY := (size - h) / 2
+
+	// We assume a single line icon is 4 dots high.
+	// To match InlineIconLines(..., 3) which is 12 dots high, 
+	// a single line icon is naturally 1/3 of that height.
+	// But here we just want a single stable Braille line.
+	step := maxInt(size/4, 1) 
+
 	var out strings.Builder
-	for x := b.Min.X; x < b.Max.X; x += stepX * 2 {
+	for j := 0; j < targetWidth; j++ {
 		var offset rune
 		dotMap := [4][2]rune{{0x01, 0x08}, {0x02, 0x10}, {0x04, 0x20}, {0x40, 0x80}}
 		for dy := 0; dy < 4; dy++ {
 			for dx := 0; dx < 2; dx++ {
-				px, py := x+dx*stepX, yMid+dy*stepY
-				if px < b.Max.X && py < b.Max.Y {
+				dotX := j*2 + dx
+				dotY := dy // Single line uses top 4 dots of the square-mapped area
+				
+				px := b.Min.X - offsetX + dotX*step
+				py := b.Min.Y - offsetY + dotY*step
+				
+				if px >= b.Min.X && px < b.Max.X && py >= b.Min.Y && py < b.Max.Y {
 					_, _, _, a := sampleRGBA(img, px, py)
 					if a >= 0x6000 {
 						offset |= dotMap[dy][dx]
