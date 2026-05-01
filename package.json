@@ -1,17 +1,57 @@
 {
     "name": "one-click-tools",
-    "version": "0.3.3",
+    "version": "0.3.4",
     "description": "High-performance OS-aware updater for developer AI CLI tools (Go version)",
     "bin": {
         "one-click-tools": "scripts/oct-wrapper.js",
         "oct": "scripts/oct-wrapper.js"
     },
     "scripts": {
+        "release": "standard-version",
         "generate:icons": "node scripts/generate-icons.js",
         "prebuild": "npm run generate:icons",
         "prepack": "npm run generate:icons",
         "postinstall": "node scripts/postinstall.js",
         "build": "go build -o oct main.go"
+    },
+    "standard-version": {
+        "skip": {
+            "tag": false
+        },
+        "types": [
+            {
+                "type": "feat",
+                "section": "Features"
+            },
+            {
+                "type": "fix",
+                "section": "Bug Fixes"
+            },
+            {
+                "type": "chore",
+                "hidden": true
+            },
+            {
+                "type": "docs",
+                "section": "Documentation"
+            },
+            {
+                "type": "style",
+                "hidden": true
+            },
+            {
+                "type": "refactor",
+                "section": "Refactors"
+            },
+            {
+                "type": "perf",
+                "section": "Performance"
+            },
+            {
+                "type": "test",
+                "hidden": true
+            }
+        ]
     },
     "type": "commonjs",
     "license": "MIT",
@@ -37,5 +77,8 @@
     "dependencies": {
         "@resvg/resvg-js": "^2.6.2",
         "simple-icons": "^14.15.0"
+    },
+    "devDependencies": {
+        "standard-version": "^9.5.0"
     }
 }
