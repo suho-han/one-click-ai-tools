@@ -3,6 +3,7 @@ package usage
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 type UsageResult struct {
@@ -33,17 +34,21 @@ func PrintTable(results []UsageResult) {
 		"provider", "period", "used", "limit", "unit", "source", "status", "message")
 	for _, r := range results {
 		icon := ""
-		switch r.Provider {
-		case "claude-code":
-			icon = "🤖"
-		case "codex":
-			icon = "⚛️"
-		case "gemini":
+		p := strings.ToLower(r.Provider)
+		if strings.Contains(p, "gemini") {
 			icon = "✨"
-		case "copilot":
+		} else if strings.Contains(p, "claude") {
+			icon = "🤖"
+		} else if strings.Contains(p, "codex") || strings.Contains(p, "openai") {
+			icon = "⚛️"
+		} else if strings.Contains(p, "copilot") || strings.Contains(p, "github") {
 			icon = "🐙"
 		}
+
 		provider := fmt.Sprintf("%s %s", icon, r.Provider)
+		if icon == "" {
+			provider = r.Provider
+		}
 		fmt.Printf("%-16s %-12s %-12s %-12s %-10s %-8s %-8s %s\n",
 			provider, r.Period, r.Used, r.Limit, r.Unit, r.Source, r.Status, r.Message)
 	}

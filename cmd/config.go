@@ -72,7 +72,7 @@ var configCmd = &cobra.Command{
 				fmt.Println("\nConfiguration cancelled.")
 				return
 			}
-			fmt.Printf("Prompt failed: %v\n", err)
+			fmt.Printf("\nPrompt failed: %v (type: %T)\n", err, err)
 			return
 		}
 
