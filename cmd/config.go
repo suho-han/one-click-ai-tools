@@ -8,6 +8,7 @@ import (
 	"github.com/AlecAivazis/survey/v2/terminal"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/suho-han/one-click-tools/internal/ui"
 	"github.com/suho-han/one-click-tools/internal/update"
 )
 
@@ -34,6 +35,9 @@ var configCmd = &cobra.Command{
 	Use:   "config",
 	Short: "Manage configuration (interactive selection if no sub-command)",
 	Run: func(cmd *cobra.Command, args []string) {
+		// Show LobeHub logo if supported by terminal
+		ui.PrintIconFromURL(ui.GetLobeIconURL("lobehub"), 64)
+
 		// If no args, enter interactive mode
 		var options []string
 		var defaults []string

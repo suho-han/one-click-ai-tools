@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+	"github.com/suho-han/one-click-tools/internal/ui"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -56,6 +57,10 @@ func Run() error {
 			mu.Lock()
 			count++
 			current := count
+			// Print brand logo if supported
+			if t.LobeIcon != "" {
+				ui.PrintIconFromURL(ui.GetLobeIconURL(t.LobeIcon), 32)
+			}
 			fmt.Printf("[%d/%d] %s %s: Detecting manager... (using %s)\n", current, total, t.Icon, t.Colorize(t.Name), manager)
 			mu.Unlock()
 
