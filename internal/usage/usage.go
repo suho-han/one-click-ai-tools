@@ -34,18 +34,23 @@ func PrintTable(results []UsageResult) {
 		"provider", "period", "used", "limit", "unit", "source", "status", "message")
 	for _, r := range results {
 		icon := ""
+		colorPrefix := ""
 		p := strings.ToLower(r.Provider)
 		if strings.Contains(p, "gemini") {
 			icon = "✨"
+			colorPrefix = "\x1b[38;2;66;133;244m" // #4285F4
 		} else if strings.Contains(p, "claude") {
 			icon = "🤖"
+			colorPrefix = "\x1b[38;2;217;119;87m" // #D97757
 		} else if strings.Contains(p, "codex") || strings.Contains(p, "openai") {
 			icon = "⚛️"
+			colorPrefix = "\x1b[38;2;0;166;126m" // #00A67E
 		} else if strings.Contains(p, "copilot") || strings.Contains(p, "github") {
 			icon = "🐙"
+			colorPrefix = "\x1b[38;2;188;140;242m" // #BC8CF2
 		}
 
-		provider := fmt.Sprintf("%s %s", icon, r.Provider)
+		provider := fmt.Sprintf("%s %s%s\x1b[0m", icon, colorPrefix, r.Provider)
 		if icon == "" {
 			provider = r.Provider
 		}

@@ -56,7 +56,7 @@ func Run() error {
 			mu.Lock()
 			count++
 			current := count
-			fmt.Printf("[%d/%d] %s %s: Detecting manager... (using %s)\n", current, total, t.Icon, t.Name, manager)
+			fmt.Printf("[%d/%d] %s %s: Detecting manager... (using %s)\n", current, total, t.Icon, t.Colorize(t.Name), manager)
 			mu.Unlock()
 
 			start := time.Now()
@@ -68,11 +68,11 @@ func Run() error {
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
-				fmt.Printf("[%s %s] ✗ Failed after %v: %v\nOutput: %s\n", t.Icon, t.Name, duration, err, string(output))
+				fmt.Printf("[%s %s] ✗ Failed after %v: %v\nOutput: %s\n", t.Icon, t.Colorize(t.Name), duration, err, string(output))
 				return err
 			}
 
-			fmt.Printf("[%s %s] ✓ Updated successfully in %v\n", t.Icon, t.Name, duration)
+			fmt.Printf("[%s %s] ✓ Updated successfully in %v\n", t.Icon, t.Colorize(t.Name), duration)
 			return nil
 		})
 	}

@@ -40,7 +40,7 @@ var configCmd = &cobra.Command{
 		enabledTools := viper.GetStringSlice("enabled_tools")
 
 		for _, t := range update.Tools {
-			label := fmt.Sprintf("%s %s", t.Icon, t.Name)
+			label := fmt.Sprintf("%s %s", t.Icon, t.Colorize(t.Name))
 			options = append(options, label)
 			enabled := false
 			if len(enabledTools) == 0 {
@@ -79,7 +79,7 @@ var configCmd = &cobra.Command{
 		var newEnabledTools []string
 		for _, s := range selected {
 			for _, t := range update.Tools {
-				label := fmt.Sprintf("%s %s", t.Icon, t.Name)
+				label := fmt.Sprintf("%s %s", t.Icon, t.Colorize(t.Name))
 				if label == s {
 					newEnabledTools = append(newEnabledTools, t.BinaryName)
 					break
@@ -172,9 +172,9 @@ var configListCmd = &cobra.Command{
 			}
 
 			if enabled {
-				fmt.Printf("  ✓ %s %s\n", t.Icon, t.Name)
+				fmt.Printf("  ✓ %s %s\n", t.Icon, t.Colorize(t.Name))
 			} else {
-				fmt.Printf("  ✗ %s %s\n", t.Icon, t.Name)
+				fmt.Printf("  ✗ %s %s\n", t.Icon, t.Colorize(t.Name))
 			}
 		}
 	},
