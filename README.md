@@ -16,10 +16,12 @@
 
 ## Supported AI Agents
 
-- **Claude Code** (`@anthropic-ai/claude-code`)
-- **OpenAI Codex** (`@openai/codex`)
-- **Gemini CLI** (`@google/gemini-cli`)
-- **GitHub Copilot** (`@github/copilot`)
+| Agent | Icon | Package |
+| :--- | :---: | :--- |
+| **Claude Code** | <img src="https://registry.npmmirror.com/@lobehub/icons-static-svg/latest/files/icons/claude-code.svg" height="24" /> | `@anthropic-ai/claude-code` |
+| **OpenAI Codex** | <img src="https://registry.npmmirror.com/@lobehub/icons-static-svg/latest/files/icons/codex.svg" height="24" /> | `@openai/codex` |
+| **Gemini CLI** | <img src="https://registry.npmmirror.com/@lobehub/icons-static-svg/latest/files/icons/gemini-cli.svg" height="24" /> | `@google/gemini-cli` |
+| **GitHub Copilot** | <img src="https://registry.npmmirror.com/@lobehub/icons-static-svg/latest/files/icons/github-copilot.svg" height="24" /> | `@github/copilot` |
 
 ## Installation
 
