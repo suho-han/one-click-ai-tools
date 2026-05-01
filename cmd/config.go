@@ -20,10 +20,10 @@ func init() {
 {{- if .ShowAnswer }}{{ color "cyan" }} {{ range $ix, $ans := .Answer }}{{ if $ix }}, {{ end }}{{ $ans }}{{ end }}{{ color "reset" }}{{ "\n" }}
 {{- else }}
 {{- "\n" }}
-{{- range $ix, $option := .PageOptions }}
+{{- range $ix, $option := .PageEntries }}
   {{- if eq $ix $.SelectedIndex }}{{ color $.Config.Icons.SelectFocus.Format }}{{ $.Config.Icons.SelectFocus.Text }}{{ color "reset" }}{{ else }}  {{ end }}
   {{- if index $.Checked $ix }}{{ color $.Config.Icons.Marked.Format }}{{ $.Config.Icons.Marked.Text }}{{ color "reset" }}{{ else }}{{ color $.Config.Icons.Unmarked.Format }}{{ $.Config.Icons.Unmarked.Text }}{{ color "reset" }}{{ end }}
-  {{- " " }}{{ $option }}{{ "\n" }}
+  {{- " " }}{{ $option.Value }}{{ "\n" }}
 {{- end }}
 {{- color "cyan" }}[Use arrows to move, space to select, <right> to all, <left> to none, type to filter]{{ color "reset" }}{{ "\n" }}
 {{- end }}`
