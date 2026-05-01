@@ -34,13 +34,13 @@ func PrintTable(results []UsageResult) {
 	for _, r := range results {
 		icon := ""
 		switch r.Provider {
-		case "Claude":
+		case "claude-code":
 			icon = "🤖"
-		case "OpenAI":
+		case "codex":
 			icon = "⚛️"
-		case "Gemini":
+		case "gemini":
 			icon = "✨"
-		case "Copilot":
+		case "copilot":
 			icon = "🐙"
 		}
 		provider := fmt.Sprintf("%s %s", icon, r.Provider)

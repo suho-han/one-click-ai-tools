@@ -26,7 +26,7 @@ func init() {
   {{- " " }}{{ $option.Value }}{{ "\n" }}
 {{- end }}
 {{- color "cyan" }}[Use arrows to move, space to select, <right> to all, <left> to none, type to filter]
-[Enter to Confirm, Esc to exit]{{ color "reset" }}{{ "\n" }}
+[Enter to Confirm, Ctrl+C to exit]{{ color "reset" }}{{ "\n" }}
 {{- end }}`
 }
 
@@ -172,9 +172,9 @@ var configListCmd = &cobra.Command{
 			}
 
 			if enabled {
-				fmt.Printf("  ✓ %s\n", t.Name)
+				fmt.Printf("  ✓ %s %s\n", t.Icon, t.Name)
 			} else {
-				fmt.Printf("  ✗ %s\n", t.Name)
+				fmt.Printf("  ✗ %s %s\n", t.Icon, t.Name)
 			}
 		}
 	},
