@@ -1,80 +1,83 @@
-# 로컬 테스트 가이드
+# 로컬 테스트 가이드 (Go 버전)
 
-## 1. 스크립트 직접 실행 (가장 빠름)
+## 1. `go run`으로 즉시 실행 (가장 빠름)
 
-npm 설치 없이 스크립트를 직접 호출해 동작을 확인한다.
+빌드 단계 없이 소스 코드를 직접 실행하여 동작을 확인한다.
 
 ```bash
-# 도움말
-bash scripts/update-ai-cli.sh help
+# 도움말 출력
+go run main.go help
 
-# 잘못된 명령어 처리 확인
-bash scripts/update-ai-cli.sh unknown-cmd
+# 특정 도구 사용량 조회 (JSON 출력)
+go run main.go usage --json
 
-# AI 도구 업데이트 (실제 brew/npm 호출됨 — 주의)
-bash scripts/update-ai-cli.sh agent-update
+# AI 도구 업데이트 (실제 brew/npm/pnpm 등 호출됨 — 주의)
+go run main.go agent-update
 
-# oct 자체 업데이트 (실제 npm install 호출됨 — 주의)
-bash scripts/update-ai-cli.sh update
-bash scripts/update-ai-cli.sh update --beta
+# 설정 목록 확인
+go run main.go config list
 ```
 
-## 2. npm link로 `oct` 명령어 테스트
+## 2. 바이너리 빌드 및 실행
 
-로컬 소스를 전역 `oct` 명령어로 등록해 실제 설치 환경과 동일하게 테스트한다.
+실제 배포될 바이너리 형태로 빌드하여 테스트한다.
 
 ```bash
-# 프로젝트 루트에서 실행
+# 바이너리 빌드 (프로젝트 루트에 'oct' 생성)
+go build -o oct main.go
+
+# 빌드된 바이너리 실행
+./oct help
+./oct usage
+```
+
+## 3. npm link로 `oct` 명령어 테스트
+
+Go로 빌드된 바이너리를 `npm link`를 통해 전역 명령어로 등록하여 실제 설치 환경과 동일하게 테스트한다.
+`package.json`의 `bin` 설정이 `scripts/oct-wrapper.js`를 가리키고 있으므로, 이 래퍼가 로컬에서 빌드된 바이너리나 소스를 실행하게 된다.
+
+```bash
+# 1. 먼저 Go 바이너리 빌드
+go build -o oct main.go
+
+# 2. npm link 실행
 npm link
 
-# 이후 oct 명령어로 테스트
+# 3. 이후 어디서나 oct 명령어로 테스트
 oct help
-oct agent-update
-oct update --beta
+oct usage
 
 # 테스트 완료 후 해제
 npm unlink -g one-click-tools
 ```
 
-## 3. 문법 검사
+## 4. 유닛 및 통합 테스트 실행
 
-코드 변경 후 Bash 문법 오류를 빠르게 확인한다.
+Go의 테스트 도구를 사용하여 코드의 논리적 무결성을 검증한다.
 
 ```bash
-# 메인 파일
-bash -n scripts/update-ai-cli.sh
+# 전체 테스트 실행
+go test ./...
 
-# 모든 lib 파일
-for f in scripts/lib/*.sh; do bash -n "$f" && echo "OK: $f"; done
+# 특정 패키지 테스트 (예: usage)
+go test ./internal/usage/... -v
+
+# 테스트 커버리지 확인
+go test -cover ./...
 ```
 
-## 4. 로그 파일 확인
+## 5. 환경 변수를 이용한 API Mocking 테스트
 
-`agent-update` 실행 시 `~/.oct/logs/`에 로그가 생성된다.
-
-```bash
-# 최근 로그 확인
-ls -lt ~/.oct/logs/
-cat ~/.oct/logs/$(ls -t ~/.oct/logs/ | head -1)
-```
-
-## 5. 드라이런 — 실제 설치 없이 분기 확인
-
-특정 도구가 설치되어 있지 않은 상황을 시뮬레이션하려면 PATH를 조작한다.
+`usage` 커맨드 등을 테스트할 때 실제 API 호출 대신 환경 변수를 조작하여 동작을 확인할 수 있다.
 
 ```bash
-# brew, npm 명령어를 숨겨서 fallback 경로 테스트
-PATH_ORIG=$PATH
-
-# npm 없는 환경 시뮬레이션
-PATH=$(echo "$PATH" | tr ':' '\n' | grep -v "$(dirname $(which npm))" | tr '\n' ':') \
-  bash scripts/update-ai-cli.sh agent-update
-
-PATH=$PATH_ORIG
+# Mock 엔드포인트 설정 (예시)
+OCT_CLAUDE_USAGE_ENDPOINT="http://localhost:8080/usage" \
+  go run main.go usage
 ```
 
 ## 주의사항
 
-- `agent-update`는 실제로 brew/npm을 실행하므로 패키지가 업데이트될 수 있다.
-- `update` / `update --beta`는 실제로 `one-click-tools` npm 패키지를 재설치한다.
-- 안전하게 확인하려면 **섹션 1의 `help`** 또는 **섹션 3의 문법 검사**부터 시작한다.
+- `agent-update`는 시스템의 `brew`, `npm`, `pnpm`, `yarn` 등을 실제로 호출하므로 의도치 않게 패키지가 업데이트될 수 있다.
+- `update` 커맨드는 Go 버전에서 `npm install -g one-click-tools`를 실행하여 자기 자신을 업데이트한다.
+- 새로운 기능을 추가한 경우 `go test`를 통해 기존 기능에 영향이 없는지 반드시 확인한다.
