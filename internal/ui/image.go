@@ -387,15 +387,12 @@ func buildBrailleInlineIcon(img image.Image, targetWidth int) string {
 		targetWidth = 4
 	}
 
-	size := maxInt(w, h)
-	offsetX := (size - w) / 2
-	offsetY := (size - h) / 2
-
-	// We assume a single line icon is 4 dots high.
-	// To match InlineIconLines(..., 3) which is 12 dots high, 
-	// a single line icon is naturally 1/3 of that height.
-	// But here we just want a single stable Braille line.
-	step := maxInt(size/4, 1) 
+	// Map full image height to 4 dots
+	step := maxInt(h/4, 1)
+	
+	// Left-align horizontally
+	offsetX := 0
+	offsetY := 0
 
 	var out strings.Builder
 	for j := 0; j < targetWidth; j++ {
@@ -404,11 +401,11 @@ func buildBrailleInlineIcon(img image.Image, targetWidth int) string {
 		for dy := 0; dy < 4; dy++ {
 			for dx := 0; dx < 2; dx++ {
 				dotX := j*2 + dx
-				dotY := dy // Single line uses top 4 dots of the square-mapped area
-				
+				dotY := dy
+
 				px := b.Min.X - offsetX + dotX*step
 				py := b.Min.Y - offsetY + dotY*step
-				
+
 				if px >= b.Min.X && px < b.Max.X && py >= b.Min.Y && py < b.Max.Y {
 					_, _, _, a := sampleRGBA(img, px, py)
 					if a >= 0x6000 {
@@ -427,16 +424,17 @@ func buildBrailleInlineIcon(img image.Image, targetWidth int) string {
 }
 
 func buildBrailleInlineIconLines(img image.Image, targetWidth, lines int) []string {
-	// 1. Get tight bounds but calculate a square canvas to preserve aspect ratio
+	// 1. Get tight bounds
 	b := nonTransparentBounds(img, img.Bounds())
 	w, h := b.Dx(), b.Dy()
 	if w <= 0 || h <= 0 || lines <= 0 {
 		return nil
 	}
 
-	// Determine the square size based on the larger dimension
+	// Determine the square size based on the larger dimension to preserve aspect ratio
 	size := maxInt(w, h)
-	offsetX := (size - w) / 2
+	// Left-align horizontally, center vertically
+	offsetX := 0
 	offsetY := (size - h) / 2
 
 	if targetWidth <= 0 {
@@ -445,27 +443,23 @@ func buildBrailleInlineIconLines(img image.Image, targetWidth, lines int) []stri
 
 	// 2. Use a consistent step for both axes to prevent distortion
 	step := maxInt(size/(lines*4), 1)
-	
-	// Adjust targetWidth to match lines if not specified correctly for a square
-	// or just use it as a boundary. 
-	// Braille cell is 2 dots wide, 4 dots high.
-	
+
 	out := make([]string, 0, lines)
 	for i := 0; i < lines; i++ {
 		var line strings.Builder
 		for j := 0; j < targetWidth; j++ {
 			var offset rune
 			dotMap := [4][2]rune{{0x01, 0x08}, {0x02, 0x10}, {0x04, 0x20}, {0x40, 0x80}}
-			
+
 			for dy := 0; dy < 4; dy++ {
 				for dx := 0; dx < 2; dx++ {
-					// Map dot to image coordinates considering the centering offset
+					// Map dot to image coordinates
 					dotX := j*2 + dx
 					dotY := i*4 + dy
-					
+
 					px := b.Min.X - offsetX + dotX*step
 					py := b.Min.Y - offsetY + dotY*step
-					
+
 					if px >= b.Min.X && px < b.Max.X && py >= b.Min.Y && py < b.Max.Y {
 						_, _, _, a := sampleRGBA(img, px, py)
 						if a >= 0x6000 {
@@ -474,7 +468,7 @@ func buildBrailleInlineIconLines(img image.Image, targetWidth, lines int) []stri
 					}
 				}
 			}
-			
+
 			if offset == 0 {
 				line.WriteByte(' ')
 			} else {

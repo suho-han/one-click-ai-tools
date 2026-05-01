@@ -57,15 +57,17 @@ func Run() error {
 			mu.Lock()
 			count++
 			current := count
-			// Print high-density logo if supported
-			if t.LobeIcon != "" {
-				ui.PrintIcon(t.LobeIcon, 32)
+
+			// Match config icon layout: 3 lines, 1:1 aspect ratio.
+			lines := ui.InlineIconLines(t.LobeIcon, 6, 3)
+			if len(lines) >= 3 {
+				// Each tool block takes 3 lines. We lock the print to avoid interleaving.
+				fmt.Printf("      %s\n", lines[0])
+				fmt.Printf("[%d/%d] %s %s: Detecting manager... (using %s)\n", current, total, lines[1], t.Colorize(t.Name), manager)
+				fmt.Printf("      %s\n", lines[2])
+			} else {
+				fmt.Printf("[%d/%d] %s: Detecting manager... (using %s)\n", current, total, t.Colorize(t.Name), manager)
 			}
-			icon := ui.InlineIcon(t.LobeIcon, 6)
-			if icon != "" {
-				icon = icon + " "
-			}
-			fmt.Printf("[%d/%d] %s%s: Detecting manager... (using %s)\n", current, total, icon, t.Colorize(t.Name), manager)
 			mu.Unlock()
 
 			start := time.Now()
