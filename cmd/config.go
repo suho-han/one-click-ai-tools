@@ -11,6 +11,24 @@ import (
 	"github.com/suho-han/one-click-tools/internal/update"
 )
 
+func init() {
+	// Customize survey template to move help text to the bottom
+	survey.MultiSelectQuestionTemplate = `
+{{- if .ShowHelp }}{{ color .Config.Icons.Help.Format }}{{ .Config.Icons.Help.Text }} {{ .Help }}{{ color "reset" }}{{ "\n" }}{{ end -}}
+{{- color .Config.Icons.Question.Format }}{{ .Config.Icons.Question.Text }} {{ color "reset" }}{{ color "default+hb" }}{{ .Message }}{{ color "reset" }}
+{{- if .FilterMessage }}{{ color "cyan" }} {{ .FilterMessage }}{{ color "reset" }}{{ end }}
+{{- if .ShowAnswer }}{{ color "cyan" }} {{ range $ix, $ans := .Answer }}{{ if $ix }}, {{ end }}{{ $ans }}{{ end }}{{ color "reset" }}{{ "\n" }}
+{{- else }}
+{{- "\n" }}
+{{- range $ix, $option := .PageOptions }}
+  {{- if eq $ix $.SelectedIndex }}{{ color $.Config.Icons.SelectFocus.Format }}{{ $.Config.Icons.SelectFocus.Text }}{{ color "reset" }}{{ else }}  {{ end }}
+  {{- if index $.Checked $ix }}{{ color $.Config.Icons.Marked.Format }}{{ $.Config.Icons.Marked.Text }}{{ color "reset" }}{{ else }}{{ color $.Config.Icons.Unmarked.Format }}{{ $.Config.Icons.Unmarked.Text }}{{ color "reset" }}{{ end }}
+  {{- " " }}{{ $option }}{{ "\n" }}
+{{- end }}
+{{- color "cyan" }}[Use arrows to move, space to select, <right> to all, <left> to none, type to filter]{{ color "reset" }}{{ "\n" }}
+{{- end }}`
+}
+
 var configCmd = &cobra.Command{
 	Use:   "config",
 	Short: "Manage configuration (interactive selection if no sub-command)",
@@ -21,7 +39,8 @@ var configCmd = &cobra.Command{
 		enabledTools := viper.GetStringSlice("enabled_tools")
 
 		for _, t := range update.Tools {
-			options = append(options, t.Name)
+			label := fmt.Sprintf("%s %s", t.Icon, t.Name)
+			options = append(options, label)
 			enabled := false
 			if len(enabledTools) == 0 {
 				enabled = true
@@ -34,7 +53,7 @@ var configCmd = &cobra.Command{
 				}
 			}
 			if enabled {
-				defaults = append(defaults, t.Name)
+				defaults = append(defaults, label)
 			}
 		}
 
@@ -59,7 +78,8 @@ var configCmd = &cobra.Command{
 		var newEnabledTools []string
 		for _, s := range selected {
 			for _, t := range update.Tools {
-				if t.Name == s {
+				label := fmt.Sprintf("%s %s", t.Icon, t.Name)
+				if label == s {
 					newEnabledTools = append(newEnabledTools, t.BinaryName)
 					break
 				}
