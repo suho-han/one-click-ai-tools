@@ -17,7 +17,7 @@ func init() {
 {{- if .ShowHelp }}{{ color .Config.Icons.Help.Format }}{{ .Config.Icons.Help.Text }} {{ .Help }}{{ color "reset" }}{{ "\n" }}{{ end -}}
 {{- color .Config.Icons.Question.Format }}{{ .Config.Icons.Question.Text }} {{ color "reset" }}{{ color "default+hb" }}{{ .Message }}{{ color "reset" }}
 {{- if .FilterMessage }}{{ color "cyan" }} {{ .FilterMessage }}{{ color "reset" }}{{ end }}
-{{- if .ShowAnswer }}{{ color "cyan" }} {{ range $ix, $ans := .Answer }}{{ if $ix }}, {{ end }}{{ $ans }}{{ end }}{{ color "reset" }}{{ "\n" }}
+{{- if .ShowAnswer }}{{ color "cyan" }} {{ .Answer }}{{ color "reset" }}{{ "\n" }}
 {{- else }}
 {{- "\n" }}
 {{- range $ix, $option := .PageEntries }}
@@ -25,7 +25,8 @@ func init() {
   {{- if index $.Checked $ix }}{{ color $.Config.Icons.MarkedOption.Format }}{{ $.Config.Icons.MarkedOption.Text }}{{ color "reset" }}{{ else }}{{ color $.Config.Icons.UnmarkedOption.Format }}{{ $.Config.Icons.UnmarkedOption.Text }}{{ color "reset" }}{{ end }}
   {{- " " }}{{ $option.Value }}{{ "\n" }}
 {{- end }}
-{{- color "cyan" }}[Use arrows to move, space to select, <right> to all, <left> to none, type to filter]{{ color "reset" }}{{ "\n" }}
+{{- color "cyan" }}[Use arrows to move, space to select, <right> to all, <left> to none, type to filter]
+[Enter to Confirm, Esc to exit]{{ color "reset" }}{{ "\n" }}
 {{- end }}`
 }
 
