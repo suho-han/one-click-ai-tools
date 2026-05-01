@@ -3,6 +3,8 @@ package update
 import (
 	"context"
 	"fmt"
+	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -31,6 +33,12 @@ func Run() error {
 	if len(toolsToUpdate) == 0 {
 		fmt.Println("No tools selected for update.")
 		return nil
+	}
+
+	// Run brew update once if any tool might use brew
+	if runtime.GOOS == "darwin" {
+		fmt.Println("Updating Homebrew...")
+		exec.Command("brew", "update").Run()
 	}
 
 	total := len(toolsToUpdate)
