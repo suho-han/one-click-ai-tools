@@ -29,11 +29,23 @@ func GetUsage() ([]UsageResult, error) {
 }
 
 func PrintTable(results []UsageResult) {
-	fmt.Printf("%-12s %-12s %-12s %-12s %-10s %-8s %-8s %s\n",
+	fmt.Printf("%-16s %-12s %-12s %-12s %-10s %-8s %-8s %s\n",
 		"provider", "period", "used", "limit", "unit", "source", "status", "message")
 	for _, r := range results {
-		fmt.Printf("%-12s %-12s %-12s %-12s %-10s %-8s %-8s %s\n",
-			r.Provider, r.Period, r.Used, r.Limit, r.Unit, r.Source, r.Status, r.Message)
+		icon := ""
+		switch r.Provider {
+		case "Claude":
+			icon = "🤖"
+		case "OpenAI":
+			icon = "⚛️"
+		case "Gemini":
+			icon = "✨"
+		case "Copilot":
+			icon = "🐙"
+		}
+		provider := fmt.Sprintf("%s %s", icon, r.Provider)
+		fmt.Printf("%-16s %-12s %-12s %-12s %-10s %-8s %-8s %s\n",
+			provider, r.Period, r.Used, r.Limit, r.Unit, r.Source, r.Status, r.Message)
 	}
 }
 
