@@ -47,6 +47,8 @@
 - **Parallelism:** When performing operations on multiple tools, use the patterns established in `internal/update/update.go` with `errgroup`.
 - **OS Compatibility:** Always consider cross-platform compatibility. Use `path/filepath` for path manipulations and check `runtime.GOOS` for platform-specific logic.
 - **Logging:** Execution logs are typically saved to `~/.oct/logs/`.
+- **Package Management:** Use `pnpm` for Node.js dependency management.
+- **Release Workflow:** Use `npm run release` (standard-version) to bump versions and update the CHANGELOG. Follow with `git push --follow-tags` and `npm publish`.
 
 ## Important Commands (CLI)
 
