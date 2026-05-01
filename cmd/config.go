@@ -68,7 +68,7 @@ func (m configModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.move(-1)
 		case "down", "j":
 			m.move(1)
-		case "space":
+		case "space", " ":
 			i := m.index()
 			if i >= 0 {
 				m.items[i].check = !m.items[i].check
@@ -126,14 +126,18 @@ func (m configModel) View() string {
 		if it.cursor {
 			cursor = ">"
 		}
-		
+
 		// Each item line starts with "X[X] ", where X is cursor and [X] is mark.
 		// That's 1 (cursor) + 3 (mark) + 1 (space) = 5 characters.
-		// To align icon3[0] and icon3[2] with icon3[1], they should also have 5 spaces.
-		indent := "     " 
-		
+		// To align icon top/bottom with the center row, they should have 5 spaces.
+		indent := "     "
+
 		b.WriteString(fmt.Sprintf("%s%s\n", indent, it.icon3[0]))
-		b.WriteString(fmt.Sprintf("%s%s %s %s\n", cursor, mark, it.icon3[1], it.tool.Colorize(it.tool.Name)))
+		name := it.tool.Colorize(it.tool.Name)
+		if it.cursor {
+			name = it.tool.ColorizeWithBackgroundBlackText(it.tool.Name)
+		}
+		b.WriteString(fmt.Sprintf("%s%s %s %s\n", cursor, mark, it.icon3[1], name))
 		b.WriteString(fmt.Sprintf("%s%s\n", indent, it.icon3[2]))
 	}
 	b.WriteString("\n[Use arrows to move, space to select, <right> to all, <left> to none]\n")
@@ -144,7 +148,7 @@ func (m configModel) View() string {
 func runInteractiveConfig() ([]string, bool, error) {
 	enabledTools := viper.GetStringSlice("enabled_tools")
 	model := newConfigModel(enabledTools)
-	p := tea.NewProgram(model)
+	p := tea.NewProgram(model, tea.WithAltScreen())
 	finalModel, err := p.Run()
 	if err != nil {
 		return nil, false, err
@@ -184,6 +188,11 @@ var configCmd = &cobra.Command{
 			return
 		}
 		fmt.Println("Config updated successfully.")
+		if len(newEnabledTools) == 0 {
+			fmt.Println("Summary: no tools selected.")
+		} else {
+			fmt.Printf("Summary: %d selected (%s)\n", len(newEnabledTools), strings.Join(newEnabledTools, ", "))
+		}
 	},
 }
 
