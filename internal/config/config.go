@@ -12,6 +12,7 @@ import (
 
 type Config struct {
 	EnabledTools []string `mapstructure:"enabled_tools"`
+	IconStyle    string   `mapstructure:"icon_style"` // "braille" or "half-block"
 }
 
 func MigrateLegacyConfig() error {

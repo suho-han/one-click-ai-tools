@@ -45,6 +45,7 @@ func initConfig() {
 		viper.SetConfigType("yaml")
 	}
 
+	viper.SetDefault("icon_style", "braille")
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err == nil {

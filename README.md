@@ -12,16 +12,17 @@
 - **Smart Updates**: Detects if a tool is missing (installs it) or already present (updates it).
 - **macOS Brew Maintenance**: Runs `brew update` and `brew upgrade` before agent-level updates.
 - **Collision-Safe Install Flow**: If a CLI binary already exists from a non-npm install, skips npm install to avoid `EEXIST` errors.
+- **Embedded Simple Icons**: Bundles `simple-icons` (same icon set used by shadcn simple-icons registry items) as PNG assets into the Go binary for offline icon rendering.
 - **Consolidated Workflow**: No need to remember individual update commands for different agents.
 
 ## Supported AI Agents
 
 | Agent | Icon | Package |
 | :--- | :---: | :--- |
-| **Claude Code** | <img src="https://registry.npmmirror.com/@lobehub/icons-static-svg/latest/files/icons/claude-code.svg" height="24" /> | `@anthropic-ai/claude-code` |
-| **OpenAI Codex** | <img src="https://registry.npmmirror.com/@lobehub/icons-static-svg/latest/files/icons/codex.svg" height="24" /> | `@openai/codex` |
-| **Gemini CLI** | <img src="https://registry.npmmirror.com/@lobehub/icons-static-svg/latest/files/icons/gemini-cli.svg" height="24" /> | `@google/gemini-cli` |
-| **GitHub Copilot** | <img src="https://registry.npmmirror.com/@lobehub/icons-static-svg/latest/files/icons/github-copilot.svg" height="24" /> | `@github/copilot` |
+| **Claude Code** | <img src="https://cdn.simpleicons.org/claude" height="24" /> | `@anthropic-ai/claude-code` |
+| **OpenAI Codex** | <img src="https://cdn.simpleicons.org/openai" height="24" /> | `@openai/codex` |
+| **Gemini CLI** | <img src="https://cdn.simpleicons.org/googlegemini" height="24" /> | `@google/gemini-cli` |
+| **GitHub Copilot** | <img src="https://cdn.simpleicons.org/githubcopilot" height="24" /> | `@github/copilot` |
 
 ## Installation
 
@@ -150,3 +151,5 @@ Additional endpoint for experimental Gemini OAuth path:
 - On Ubuntu, global npm operations may require `sudo` permissions.
 - The script will automatically attempt to use `sudo` if a permission error is detected during npm operations.
 - On macOS, Homebrew upgrade failures are treated as warnings so agent-level npm updates can still proceed.
+- At npm install time, terminal image-icon capability is detected and saved to `~/.oct/terminal-capabilities.json`. If unsupported (common in multiplexers), `oct` automatically falls back to text-only labels.
+- Icon renderer fallback order is `native_image -> ansi_asset -> text` and can be overridden with `OCT_ICON_RENDERER=native_image|ansi_asset|text`.

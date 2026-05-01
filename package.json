@@ -1,12 +1,15 @@
 {
     "name": "one-click-tools",
-    "version": "0.3.1",
+    "version": "0.3.2",
     "description": "High-performance OS-aware updater for developer AI CLI tools (Go version)",
     "bin": {
         "one-click-tools": "scripts/oct-wrapper.js",
         "oct": "scripts/oct-wrapper.js"
     },
     "scripts": {
+        "generate:icons": "node scripts/generate-icons.js",
+        "prebuild": "npm run generate:icons",
+        "prepack": "npm run generate:icons",
         "postinstall": "node scripts/postinstall.js",
         "build": "go build -o oct main.go"
     },
@@ -32,6 +35,7 @@
         "linux"
     ],
     "dependencies": {
-        "@lobehub/icons": "^5.6.0"
+        "@resvg/resvg-js": "^2.6.2",
+        "simple-icons": "^14.15.0"
     }
 }

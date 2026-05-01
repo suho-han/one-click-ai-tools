@@ -16,7 +16,7 @@ import (
 
 func Run() error {
 	enabledTools := viper.GetStringSlice("enabled_tools")
-	
+
 	var toolsToUpdate []Tool
 	if len(enabledTools) == 0 {
 		toolsToUpdate = Tools
@@ -53,31 +53,31 @@ func Run() error {
 		t := t // capture range variable
 		g.Go(func() error {
 			manager := DetectManager(t)
-			
+
 			mu.Lock()
 			count++
 			current := count
 			// Print brand logo if supported
 			if t.LobeIcon != "" {
-				ui.PrintIconFromURL(ui.GetLobeIconURL(t.LobeIcon), 32)
+				ui.PrintIcon(t.LobeIcon, 32)
 			}
-			fmt.Printf("[%d/%d] %s %s: Detecting manager... (using %s)\n", current, total, t.Icon, t.Colorize(t.Name), manager)
+			fmt.Printf("[%d/%d] %s: Detecting manager... (using %s)\n", current, total, t.Colorize(t.Name), manager)
 			mu.Unlock()
 
 			start := time.Now()
 			cmd := manager.InstallCommand(t)
-			
+
 			output, err := cmd.CombinedOutput()
 			duration := time.Since(start).Round(time.Second)
 
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
-				fmt.Printf("[%s %s] ✗ Failed after %v: %v\nOutput: %s\n", t.Icon, t.Colorize(t.Name), duration, err, string(output))
+				fmt.Printf("[%s] ✗ Failed after %v: %v\nOutput: %s\n", t.Colorize(t.Name), duration, err, string(output))
 				return err
 			}
 
-			fmt.Printf("[%s %s] ✓ Updated successfully in %v\n", t.Icon, t.Colorize(t.Name), duration)
+			fmt.Printf("[%s] ✓ Updated successfully in %v\n", t.Colorize(t.Name), duration)
 			return nil
 		})
 	}

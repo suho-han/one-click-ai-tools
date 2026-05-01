@@ -4,7 +4,8 @@ const path = require('path');
 const https = require('https');
 const { execSync } = require('child_process');
 
-const version = 'v0.3.0'; // Should ideally be dynamic or matched to package.json
+const packageJson = require(path.join(__dirname, '..', 'package.json'));
+const version = `v${packageJson.version}`;
 const repo = 'suho-han/one-click-tools';
 
 const platformMap = {
@@ -37,8 +38,74 @@ if (!fs.existsSync(binDir)) {
 }
 
 const targetPath = path.join(binDir, binName);
+const homeDir = os.homedir();
+const octDir = path.join(homeDir, '.oct');
+const terminalCapabilitiesPath = path.join(octDir, 'terminal-capabilities.json');
 
 console.log(`one-click-tools: Downloading ${archiveName} from GitHub...`);
+
+function detectImageIconSupport() {
+    const termProgram = (process.env.TERM_PROGRAM || '').toLowerCase();
+    const term = (process.env.TERM || '').toLowerCase();
+    const terminalEmulator = (process.env.TERMINAL_EMULATOR || '').toLowerCase();
+    const termFeatures = (process.env.TERM_FEATURES || '').toLowerCase();
+
+    const isKnownImageTerminal =
+        termProgram === 'iterm.app' ||
+        termProgram === 'wezterm' ||
+        termProgram === 'ghostty' ||
+        terminalEmulator === 'kitty' ||
+        term.includes('kitty');
+
+    const hasMultiplexer =
+        !!process.env.TMUX ||
+        !!process.env.STY ||
+        !!process.env.ZELLIJ ||
+        !!process.env.CMUX ||
+        term.includes('tmux') ||
+        term.includes('screen') ||
+        term.includes('cmux');
+
+    const chafaAvailable = (() => {
+        try {
+            execSync('chafa --version', { stdio: 'ignore' });
+            return true;
+        } catch {
+            return false;
+        }
+    })();
+
+    const sixelSupported =
+        term.includes('sixel') ||
+        termFeatures.includes('sixel') ||
+        process.env.XTERM_SIXEL === '1';
+
+    const imageIconsSupported = isKnownImageTerminal && !hasMultiplexer;
+    const bestRenderer = imageIconsSupported ? 'native_image' : 'ansi_asset';
+
+    return {
+        image_icons_supported: imageIconsSupported,
+        best_renderer: bestRenderer,
+        chafa_available: chafaAvailable,
+        sixel_supported: sixelSupported,
+        detected_terminal: termProgram || term || 'unknown',
+        has_multiplexer: hasMultiplexer,
+        detected_at: new Date().toISOString(),
+    };
+}
+
+function writeTerminalCapabilities() {
+    try {
+        fs.mkdirSync(octDir, { recursive: true });
+        const capability = detectImageIconSupport();
+        fs.writeFileSync(terminalCapabilitiesPath, JSON.stringify(capability, null, 2), 'utf8');
+        console.log(
+            `one-click-tools: terminal image icon support = ${capability.image_icons_supported ? 'enabled' : 'disabled'} (${capability.detected_terminal})`
+        );
+    } catch (err) {
+        console.warn(`one-click-tools: Failed to write terminal capability file: ${err.message}`);
+    }
+}
 
 function download(url, dest) {
     return new Promise((resolve, reject) => {
@@ -66,6 +133,7 @@ function download(url, dest) {
 async function install() {
     const archivePath = path.join(os.tmpdir(), archiveName);
     try {
+        writeTerminalCapabilities();
         await download(downloadUrl, archivePath);
         console.log('one-click-tools: Extracting binary...');
         
