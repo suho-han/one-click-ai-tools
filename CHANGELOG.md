@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.3.5](https://github.com/suho-han/one-click-tools/compare/v0.3.4...v0.3.5) (2026-05-01)
+
+
+### Bug Fixes
+
+* **config:** improve interactive selection UX and summary output ([751a34d](https://github.com/suho-han/one-click-tools/commit/751a34dc62af74b79860bd176cd4e3edefc2a7c1))
+
+
+### Refactors
+
+* **update:** align agent-update icon layout with config ([91008b6](https://github.com/suho-han/one-click-tools/commit/91008b61cb90894f73c75ae7d65430b051727fda))
+
+
+### Documentation
+
+* **gemini:** add release workflow notes ([767a6a0](https://github.com/suho-han/one-click-tools/commit/767a6a0f460987c01796cd1aae1525d542d4f486))
+* **repo:** add AGENTS repository guidelines ([a23f904](https://github.com/suho-han/one-click-tools/commit/a23f9046901f8852f207f78dbe219cb9eb45cf8f))
+
 ### [0.3.4](https://github.com/suho-han/one-click-tools/compare/v0.3.1...v0.3.4) (2026-05-01)
 
 
