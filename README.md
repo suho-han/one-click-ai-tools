@@ -1,7 +1,7 @@
 # one-click-tools (oct)
 
-[![npm version](https://img.shields.io/npm/v/@unbroken2650/one-click-tools.svg?style=flat-square)](https://www.npmjs.com/package/@unbroken2650/one-click-tools)
-[![npm downloads](https://img.shields.io/npm/dm/@unbroken2650/one-click-tools.svg?style=flat-square)](https://www.npmjs.com/package/@unbroken2650/one-click-tools)
+[![npm version](https://img.shields.io/npm/v/one-click-tools.svg?style=flat-square)](https://www.npmjs.com/package/one-click-tools)
+[![npm downloads](https://img.shields.io/npm/dm/one-click-tools.svg?style=flat-square)](https://www.npmjs.com/package/one-click-tools)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 
 **one-click-tools (oct)** is an OS-aware CLI utility to bootstrap and update popular AI developer tools with a single command.
@@ -31,13 +31,13 @@ Choose one of the following methods to install **oct**:
 ### 1. Via npm (Recommended)
 Install globally using npm:
 ```bash
-npm install -g @unbroken2650/one-click-tools
+npm install -g one-click-tools
 ```
 
 ### 2. Via pnpm
 Install globally using pnpm:
 ```bash
-pnpm add -g @unbroken2650/one-click-tools
+pnpm add -g one-click-tools
 ```
 
 ### 3. Via Git Clone (For Development)
@@ -56,7 +56,7 @@ npm run build
 To install or update to the latest beta release on another machine, use:
 
 ```bash
-npm install -g @unbroken2650/one-click-tools@beta
+npm install -g one-click-tools@beta
 ```
 
 Then verify the installed version:
