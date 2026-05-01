@@ -43,7 +43,7 @@ func Run() error {
 	for _, t := range toolsToUpdate {
 		t := t // capture range variable
 		g.Go(func() error {
-			manager := DetectManager(t.Package, t.BinaryName)
+			manager := DetectManager(t)
 			
 			mu.Lock()
 			count++
@@ -52,7 +52,7 @@ func Run() error {
 			mu.Unlock()
 
 			start := time.Now()
-			cmd := manager.InstallCommand(t.Package)
+			cmd := manager.InstallCommand(t)
 			
 			output, err := cmd.CombinedOutput()
 			duration := time.Since(start).Round(time.Second)
