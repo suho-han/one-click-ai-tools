@@ -198,11 +198,11 @@ func promptToken(prompt string) string {
 }
 
 func promptYesNo(prompt string, defaultYes bool) bool {
+	choices := " [y/N]"
 	if defaultYes {
-		fmt.Print(prompt + " [Y/n]: ")
-	} else {
-		fmt.Print(prompt + " [y/N]: ")
+		choices = " [Y/n]"
 	}
+	fmt.Print(prompt + choices + ": ")
 	reader := bufio.NewReader(os.Stdin)
 	text, _ := reader.ReadString('\n')
 	text = strings.TrimSpace(strings.ToLower(text))
@@ -213,26 +213,33 @@ func promptYesNo(prompt string, defaultYes bool) bool {
 }
 
 func setupTokens(tools []string) {
+	fmt.Println("\n--- Provider Setup ---")
 	var needsClaudeAuth, needsGeminiAuth bool
 
 	for _, tool := range tools {
 		switch tool {
 		case "claude":
 			needsClaudeAuth = true
+			fmt.Println("✓ Claude Code: Local authentication (OAuth)")
 		case "gemini":
 			needsGeminiAuth = true
+			fmt.Println("✓ Gemini CLI:  Local authentication (OAuth)")
+		case "codex":
+			fmt.Println("✓ OpenAI Codex: Local session logs (~/.codex/sessions)")
 		case "copilot":
 			isUpdate := false
-			if viper.GetString("github_api_token") != "" {
-				if !promptYesNo("\nGitHub API Token is already registered. Do you want to update it?", false) {
+			existingToken := viper.GetString("github_api_token")
+			if existingToken != "" {
+				if !promptYesNo("GitHub API Token is already registered. Do you want to update it?", false) {
+					fmt.Println("✓ GitHub Copilot: Using existing token")
 					continue
 				}
 				isUpdate = true
 			}
 
-			promptStr := "\nEnter GitHub API Token:\n[Doc] : https://github.com/settings/tokens\n> "
+			promptStr := "Enter GitHub API Token\n[Doc] : https://github.com/settings/tokens\n> "
 			if isUpdate {
-				promptStr = "\nEnter GitHub API Token (leave empty to skip):\n[Doc] : https://github.com/settings/tokens\n> "
+				promptStr = "Enter new GitHub API Token (leave empty to skip)\n> "
 			}
 			token := promptToken(promptStr)
 			if token != "" {
@@ -241,8 +248,17 @@ func setupTokens(tools []string) {
 				if user != "" {
 					viper.Set("github_user", user)
 				}
-				writeConfig()
-				fmt.Println("Saved GitHub credentials to config")
+				if err := writeConfig(); err != nil {
+					fmt.Printf("Error saving config: %v\n", err)
+				} else {
+					fmt.Println("✓ GitHub Copilot: Token saved")
+				}
+			} else {
+				if existingToken != "" {
+					fmt.Println("✓ GitHub Copilot: Kept existing token")
+				} else {
+					fmt.Println("⚠ GitHub Copilot: No token provided (usage reporting may fail)")
+				}
 			}
 		}
 	}
@@ -250,10 +266,10 @@ func setupTokens(tools []string) {
 	if needsClaudeAuth || needsGeminiAuth {
 		fmt.Println("\n--- Authentication Reminders ---")
 		if needsClaudeAuth {
-			fmt.Println("Claude Code: Run 'claude auth login' in your terminal to authenticate via browser.")
+			fmt.Println("Claude Code: Run 'claude auth login' to authenticate.")
 		}
 		if needsGeminiAuth {
-			fmt.Println("Gemini CLI:  Run 'gemini auth' in your terminal to authenticate via browser.")
+			fmt.Println("Gemini CLI:  Run 'gemini auth' to authenticate.")
 		}
 	}
 }
