@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.3.8](https://github.com/suho-han/one-click-tools/compare/v0.3.6...v0.3.8) (2026-05-02)
+
+
+### Features
+
+* **usage:** fix and improve usage reporting for claude, gemini, copilot and codex ([c75f289](https://github.com/suho-han/one-click-tools/commit/c75f2897eb98b489459bfd3d28042743476973a3))
+
 ### [0.3.7](https://github.com/suho-han/one-click-tools/compare/v0.3.6...v0.3.7) (2026-05-01)
 
 ### [0.3.6](https://github.com/suho-han/one-click-tools/compare/v0.3.5...v0.3.6) (2026-05-01)
