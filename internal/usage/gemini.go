@@ -92,6 +92,9 @@ func loadGeminiProjectID(token string) (string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusUnauthorized {
+			return "", fmt.Errorf("Invalid API Token (HTTP 401)")
+		}
 		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 

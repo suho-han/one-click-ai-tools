@@ -1,5 +1,32 @@
 # 로컬 테스트 가이드 (Go 버전)
 
+## 0. Go 설치하기
+
+이 프로젝트를 로컬에서 실행하고 빌드하려면 Go 언어가 설치되어 있어야 합니다.
+
+**macOS (현재 환경)**
+
+```bash
+# Homebrew를 사용한 설치 (권장)
+brew install go
+```
+
+**Ubuntu (Linux)**
+
+```bash
+# APT 패키지 매니저를 사용한 설치
+sudo apt update
+sudo apt install golang-go
+```
+
+또는 [Go 공식 웹사이트(go.dev/dl/)](https://go.dev/dl/)에서 각 운영체제에 맞는 설치 패키지를 다운로드하여 설치할 수 있습니다.
+
+설치 확인:
+
+```bash
+go version
+```
+
 ## 1. `go run`으로 즉시 실행 (가장 빠름)
 
 빌드 단계 없이 소스 코드를 직접 실행하여 동작을 확인한다.

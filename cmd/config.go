@@ -1,7 +1,10 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -60,7 +63,7 @@ func (m configModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "ctrl+c", "q":
+		case "ctrl+c", "ctrl+q", "q":
 			m.cancelled = true
 			m.done = true
 			return m, tea.Quit
@@ -141,8 +144,26 @@ func (m configModel) View() string {
 		b.WriteString(fmt.Sprintf("%s%s\n", indent, it.icon3[2]))
 	}
 	b.WriteString("\n[Use arrows to move, space to select, <right> to all, <left> to none]\n")
-	b.WriteString("[Enter to Confirm, Ctrl+C to exit]\n")
+	b.WriteString("[Enter to Confirm, Ctrl+C/Ctrl+Q to exit]\n")
 	return b.String()
+}
+
+func writeConfig() error {
+	configPath := viper.ConfigFileUsed()
+	if configPath == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		configPath = filepath.Join(home, ".oct", "config.yaml")
+	}
+
+	err := os.MkdirAll(filepath.Dir(configPath), 0755)
+	if err != nil {
+		return err
+	}
+
+	return viper.WriteConfigAs(configPath)
 }
 
 func runInteractiveConfig() ([]string, bool, error) {
@@ -169,6 +190,74 @@ func runInteractiveConfig() ([]string, bool, error) {
 	return selected, false, nil
 }
 
+func promptToken(prompt string) string {
+	fmt.Print(prompt)
+	reader := bufio.NewReader(os.Stdin)
+	text, _ := reader.ReadString('\n')
+	return strings.TrimSpace(text)
+}
+
+func promptYesNo(prompt string, defaultYes bool) bool {
+	if defaultYes {
+		fmt.Print(prompt + " [Y/n]: ")
+	} else {
+		fmt.Print(prompt + " [y/N]: ")
+	}
+	reader := bufio.NewReader(os.Stdin)
+	text, _ := reader.ReadString('\n')
+	text = strings.TrimSpace(strings.ToLower(text))
+	if text == "" {
+		return defaultYes
+	}
+	return text == "y" || text == "yes"
+}
+
+func setupTokens(tools []string) {
+	var needsClaudeAuth, needsGeminiAuth bool
+
+	for _, tool := range tools {
+		switch tool {
+		case "claude":
+			needsClaudeAuth = true
+		case "gemini":
+			needsGeminiAuth = true
+		case "copilot":
+			isUpdate := false
+			if viper.GetString("github_api_token") != "" {
+				if !promptYesNo("\nGitHub API Token is already registered. Do you want to update it?", false) {
+					continue
+				}
+				isUpdate = true
+			}
+
+			promptStr := "\nEnter GitHub API Token:\n[Doc] : https://github.com/settings/tokens\n> "
+			if isUpdate {
+				promptStr = "\nEnter GitHub API Token (leave empty to skip):\n[Doc] : https://github.com/settings/tokens\n> "
+			}
+			token := promptToken(promptStr)
+			if token != "" {
+				viper.Set("github_api_token", token)
+				user := promptToken("Enter GitHub Username: ")
+				if user != "" {
+					viper.Set("github_user", user)
+				}
+				writeConfig()
+				fmt.Println("Saved GitHub credentials to config")
+			}
+		}
+	}
+
+	if needsClaudeAuth || needsGeminiAuth {
+		fmt.Println("\n--- Authentication Reminders ---")
+		if needsClaudeAuth {
+			fmt.Println("Claude Code: Run 'claude auth login' in your terminal to authenticate via browser.")
+		}
+		if needsGeminiAuth {
+			fmt.Println("Gemini CLI:  Run 'gemini auth' in your terminal to authenticate via browser.")
+		}
+	}
+}
+
 var configCmd = &cobra.Command{
 	Use:   "config",
 	Short: "Manage configuration (interactive selection if no sub-command)",
@@ -183,7 +272,7 @@ var configCmd = &cobra.Command{
 			return
 		}
 		viper.Set("enabled_tools", newEnabledTools)
-		if err := viper.WriteConfig(); err != nil {
+		if err := writeConfig(); err != nil {
 			fmt.Printf("Failed to write config: %v\n", err)
 			return
 		}
@@ -192,6 +281,7 @@ var configCmd = &cobra.Command{
 			fmt.Println("Summary: no tools selected.")
 		} else {
 			fmt.Printf("Summary: %d selected (%s)\n", len(newEnabledTools), strings.Join(newEnabledTools, ", "))
+			setupTokens(newEnabledTools)
 		}
 	},
 }
@@ -225,7 +315,7 @@ var configSetToolsCmd = &cobra.Command{
 		}
 
 		viper.Set("enabled_tools", validTools)
-		if err := viper.WriteConfig(); err != nil {
+		if err := writeConfig(); err != nil {
 			fmt.Printf("Failed to write config: %v\n", err)
 			return
 		}
@@ -238,7 +328,7 @@ var configResetCmd = &cobra.Command{
 	Short: "Reset configuration to defaults",
 	Run: func(cmd *cobra.Command, args []string) {
 		viper.Set("enabled_tools", []string{})
-		if err := viper.WriteConfig(); err != nil {
+		if err := writeConfig(); err != nil {
 			fmt.Printf("Failed to write config: %v\n", err)
 			return
 		}

@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 )
 
@@ -24,13 +25,30 @@ func FetchClaudeUsage() UsageResult {
 	}
 
 	var token string
-	if _, err := os.Stat(credsFile); err == nil {
-		data, _ := os.ReadFile(credsFile)
-		var creds struct {
-			AccessToken string `json:"access_token"`
+
+	// Try macOS Keychain first for Claude Code-credentials
+	cmd := exec.Command("security", "find-generic-password", "-s", "Claude Code-credentials", "-w")
+	out, err := cmd.Output()
+	if err == nil && len(out) > 0 {
+		var keychainCreds struct {
+			ClaudeAiOauth struct {
+				AccessToken string `json:"accessToken"`
+			} `json:"claudeAiOauth"`
 		}
-		if err := json.Unmarshal(data, &creds); err == nil && creds.AccessToken != "" {
-			token = creds.AccessToken
+		if json.Unmarshal(out, &keychainCreds) == nil && keychainCreds.ClaudeAiOauth.AccessToken != "" {
+			token = keychainCreds.ClaudeAiOauth.AccessToken
+		}
+	}
+
+	if token == "" {
+		if _, err := os.Stat(credsFile); err == nil {
+			data, _ := os.ReadFile(credsFile)
+			var creds struct {
+				AccessToken string `json:"access_token"`
+			}
+			if err := json.Unmarshal(data, &creds); err == nil && creds.AccessToken != "" {
+				token = creds.AccessToken
+			}
 		}
 	}
 
@@ -39,6 +57,8 @@ func FetchClaudeUsage() UsageResult {
 	}
 
 	if token == "" {
+		result.Status = "ok"
+		result.Used = "0"
 		result.Message = "No Claude OAuth token found (check ~/.claude/.credentials.json or CLAUDE_API_TOKEN)"
 		return result
 	}
@@ -58,6 +78,16 @@ func FetchClaudeUsage() UsageResult {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode == http.StatusTooManyRequests {
+			result.Status = "ok"
+			result.Used = "100"
+			result.Message = "API Rate Limited (assuming 100%)"
+			return result
+		}
+		if resp.StatusCode == http.StatusUnauthorized {
+			result.Message = "Invalid API Token (HTTP 401)"
+			return result
+		}
 		result.Message = fmt.Sprintf("API HTTP %d", resp.StatusCode)
 		return result
 	}

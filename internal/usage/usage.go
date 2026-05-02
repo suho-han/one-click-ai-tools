@@ -45,12 +45,12 @@ func PrintTable(results []UsageResult) {
 			colorPrefix = "\x1b[38;2;188;140;242m" // #BC8CF2
 		}
 
-		provider := r.Provider
+		paddedProvider := fmt.Sprintf("%-16s", r.Provider)
 		if colorPrefix != "" {
-			provider = fmt.Sprintf("%s%s\x1b[0m", colorPrefix, r.Provider)
+			paddedProvider = fmt.Sprintf("%s%s\x1b[0m", colorPrefix, paddedProvider)
 		}
-		fmt.Printf("%-16s %-12s %-12s %-12s %-10s %-8s %-8s %s\n",
-			provider, r.Period, r.Used, r.Limit, r.Unit, r.Source, r.Status, r.Message)
+		fmt.Printf("%s %-12s %-12s %-12s %-10s %-8s %-8s %s\n",
+			paddedProvider, r.Period, r.Used, r.Limit, r.Unit, r.Source, r.Status, r.Message)
 	}
 }
 

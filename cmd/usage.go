@@ -9,6 +9,13 @@ import (
 var usageCmd = &cobra.Command{
 	Use:   "usage",
 	Short: "Show tool usage report",
+	Long: `Show tool usage report for configured AI developer tools.
+
+To properly fetch usage, ensure you are authenticated:
+  - Gemini:  Run 'gemini auth' to log in via browser
+  - Claude:  Run 'claude auth login' to log in via browser
+  - Copilot: Configure your token via 'oct config'
+  - Codex:   Automatically reads from local session logs`,
 	Run: func(cmd *cobra.Command, args []string) {
 		results, err := usage.GetUsage()
 		if err != nil {
@@ -21,6 +28,7 @@ var usageCmd = &cobra.Command{
 			usage.PrintJSON(results)
 		} else {
 			usage.PrintTable(results)
+			fmt.Println("\nTip: Run 'oct usage --help' for authentication instructions.")
 		}
 	},
 }

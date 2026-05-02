@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"os"
+
+	"github.com/spf13/viper"
 )
 
 func FetchCopilotUsage() UsageResult {
@@ -19,20 +21,51 @@ func FetchCopilotUsage() UsageResult {
 		Status:   "error",
 	}
 
-	token := os.Getenv("GITHUB_API_TOKEN")
+	token := viper.GetString("github_api_token")
+	if token == "" {
+		token = os.Getenv("GITHUB_API_TOKEN")
+	}
 	if token == "" {
 		token = os.Getenv("GITHUB_TOKEN")
 	}
 	if token == "" {
-		result.Message = "No GitHub token found (GITHUB_API_TOKEN)"
+		result.Status = "ok"
+		result.Used = "0.00"
+		result.Message = "No GitHub token found (GITHUB_API_TOKEN or config)"
 		return result
 	}
 
-	user := os.Getenv("GITHUB_USER")
+	user := viper.GetString("github_user")
 	if user == "" {
-		// In a real scenario, we would fetch the user from /user endpoint
-		result.Message = "GITHUB_USER not set"
-		return result
+		user = os.Getenv("GITHUB_USER")
+	}
+	if user == "" {
+		reqUser, _ := http.NewRequest("GET", "https://api.github.com/user", nil)
+		reqUser.Header.Set("Accept", "application/vnd.github+json")
+		reqUser.Header.Set("Authorization", "Bearer "+token)
+		
+		clientUser := &http.Client{}
+		respUser, err := clientUser.Do(reqUser)
+		if err == nil {
+			defer respUser.Body.Close()
+			if respUser.StatusCode == http.StatusOK {
+				bodyUser, _ := io.ReadAll(respUser.Body)
+				var userData struct {
+					Login string `json:"login"`
+				}
+				if json.Unmarshal(bodyUser, &userData) == nil && userData.Login != "" {
+					user = userData.Login
+				}
+			} else if respUser.StatusCode == http.StatusUnauthorized {
+				result.Message = "Invalid GitHub Token (HTTP 401)"
+				return result
+			}
+		}
+
+		if user == "" {
+			result.Message = "GITHUB_USER not set and failed to fetch from /user"
+			return result
+		}
 	}
 
 	endpoint := fmt.Sprintf("https://api.github.com/users/%s/settings/billing/premium_request/usage", user)
@@ -82,6 +115,8 @@ func FetchCopilotUsage() UsageResult {
 	}
 
 	if !found {
+		result.Status = "ok"
+		result.Used = "0.00"
 		result.Message = "No Copilot usage items found"
 		return result
 	}

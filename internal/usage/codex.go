@@ -24,30 +24,26 @@ func FetchCodexUsage() UsageResult {
 	home, _ := os.UserHomeDir()
 	sessionDir := filepath.Join(home, ".codex", "sessions")
 
-	if _, err := os.Stat(sessionDir); os.IsNotExist(err) {
-		result.Message = "Codex session directory not found"
-		return result
-	}
-
-	files, err := os.ReadDir(sessionDir)
-	if err != nil {
-		result.Message = fmt.Sprintf("Failed to read session directory: %v", err)
-		return result
-	}
-
+	// Scan ~/.codex/sessions/**/*.jsonl
 	var logFiles []string
-	for _, f := range files {
-		if !f.IsDir() && strings.HasSuffix(f.Name(), ".jsonl") {
-			logFiles = append(logFiles, filepath.Join(sessionDir, f.Name()))
+	err := filepath.Walk(sessionDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
 		}
-	}
+		if !info.IsDir() && strings.HasSuffix(info.Name(), ".jsonl") {
+			logFiles = append(logFiles, path)
+		}
+		return nil
+	})
 
-	if len(logFiles) == 0 {
-		result.Message = "No .jsonl session logs found"
+	if err != nil || len(logFiles) == 0 {
+		result.Status = "ok"
+		result.Used = "0"
+		result.Message = "No .jsonl session logs found in ~/.codex/sessions"
 		return result
 	}
 
-	// Sort to get the latest file (assuming naming convention or just take the last modified)
+	// Sort to get the latest file by name (which includes timestamp)
 	sort.Strings(logFiles)
 	latestLog := logFiles[len(logFiles)-1]
 
@@ -61,16 +57,36 @@ func FetchCodexUsage() UsageResult {
 	var lastUsedPercent string
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		var entry struct {
-			UsedPercent float64 `json:"used_percent"`
+		var line struct {
+			Type    string `json:"type"`
+			Payload struct {
+				Type string `json:"type"`
+				Info struct {
+					TotalTokenUsage struct {
+						InputTokens int `json:"input_tokens"`
+					} `json:"total_token_usage"`
+				} `json:"info"`
+				RateLimits struct {
+					Primary struct {
+						UsedPercent float64 `json:"used_percent"`
+					} `json:"primary"`
+				} `json:"rate_limits"`
+			} `json:"payload"`
 		}
-		if err := json.Unmarshal(scanner.Bytes(), &entry); err == nil && entry.UsedPercent > 0 {
-			lastUsedPercent = fmt.Sprintf("%.1f", entry.UsedPercent)
+
+		if err := json.Unmarshal(scanner.Bytes(), &line); err == nil {
+			if line.Type == "event_msg" && line.Payload.Type == "token_count" {
+				if line.Payload.RateLimits.Primary.UsedPercent > 0 {
+					lastUsedPercent = fmt.Sprintf("%.1f", line.Payload.RateLimits.Primary.UsedPercent)
+				}
+			}
 		}
 	}
 
 	if lastUsedPercent == "" {
-		result.Message = "Could not find used_percent in session logs"
+		result.Status = "ok"
+		result.Used = "0"
+		result.Message = "No usage metrics found in latest session log"
 		return result
 	}
 
