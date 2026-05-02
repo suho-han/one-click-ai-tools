@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.3.9](https://github.com/suho-han/one-click-tools/compare/v0.3.8...v0.3.9) (2026-05-02)
+
+
+### Bug Fixes
+
+* **config:** ensure provider setup status and token prompts are visible ([048e690](https://github.com/suho-han/one-click-tools/commit/048e6903c0abfc5a4ce7a4eabcdaa21378bf13a1))
+
 ### [0.3.8](https://github.com/suho-han/one-click-tools/compare/v0.3.6...v0.3.8) (2026-05-02)
 
 
