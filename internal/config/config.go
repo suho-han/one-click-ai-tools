@@ -12,6 +12,7 @@ import (
 
 type Config struct {
 	EnabledTools []string `mapstructure:"enabled_tools"`
+	AgentOrder   []string `mapstructure:"agent_order"`
 	IconStyle    string   `mapstructure:"icon_style"` // "braille" or "half-block"
 }
 

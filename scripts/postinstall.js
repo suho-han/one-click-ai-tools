@@ -109,22 +109,25 @@ function writeTerminalCapabilities() {
 
 function download(url, dest) {
     return new Promise((resolve, reject) => {
-        const file = fs.createWriteStream(dest);
         https.get(url, (response) => {
             if (response.statusCode === 302 || response.statusCode === 301) {
                 download(response.headers.location, dest).then(resolve).catch(reject);
                 return;
             }
             if (response.statusCode !== 200) {
-                reject(new Error(`Failed to download: HTTP ${response.statusCode}`));
+                reject(new Error(`Failed to download: HTTP ${response.statusCode} for ${url}`));
                 return;
             }
+            const file = fs.createWriteStream(dest);
             response.pipe(file);
             file.on('finish', () => {
                 file.close(resolve);
             });
+            file.on('error', (err) => {
+                fs.unlink(dest, () => {});
+                reject(err);
+            });
         }).on('error', (err) => {
-            fs.unlink(dest, () => {});
             reject(err);
         });
     });
@@ -134,6 +137,7 @@ async function install() {
     const archivePath = path.join(os.tmpdir(), archiveName);
     try {
         writeTerminalCapabilities();
+        console.log(`one-click-tools: Downloading from ${downloadUrl}...`);
         await download(downloadUrl, archivePath);
         console.log('one-click-tools: Extracting binary...');
         
@@ -145,23 +149,55 @@ async function install() {
             execSync(`tar -xzf "${archivePath}" -C "${binDir}"`);
         }
         
+        // Verify multiple possible locations in case tarball structure is different
+        let foundPath = null;
         if (fs.existsSync(targetPath)) {
-            fs.chmodSync(targetPath, 0755);
+            foundPath = targetPath;
+        } else {
+            // Check if binary is nested in a directory inside the archive
+            const files = fs.readdirSync(binDir);
+            for (const file of files) {
+                const fullPath = path.join(binDir, file);
+                if (fs.statSync(fullPath).isDirectory()) {
+                    const nestedPath = path.join(fullPath, binName);
+                    if (fs.existsSync(nestedPath)) {
+                        foundPath = nestedPath;
+                        // Move it to the expected targetPath
+                        fs.renameSync(nestedPath, targetPath);
+                        foundPath = targetPath;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (foundPath && fs.existsSync(foundPath)) {
+            fs.chmodSync(foundPath, 0o755);
             console.log('one-click-tools: Installation successful.');
         } else {
-            throw new Error('Binary not found after extraction');
+            throw new Error(`Binary '${binName}' not found in ${binDir} after extraction.`);
         }
     } catch (err) {
         console.error(`one-click-tools: Installation failed: ${err.message}`);
         console.log('one-click-tools: Falling back to source build (requires Go)...');
         try {
             execSync('npm run build', { stdio: 'inherit', cwd: path.join(__dirname, '..') });
+            const builtBin = path.join(__dirname, '..', binName);
+            if (fs.existsSync(builtBin)) {
+                if (!fs.existsSync(binDir)) fs.mkdirSync(binDir, { recursive: true });
+                fs.renameSync(builtBin, targetPath);
+                fs.chmodSync(targetPath, 0o755);
+                console.log('one-click-tools: Source build and installation successful.');
+            } else {
+                throw new Error('Source build did not produce the expected binary.');
+            }
         } catch (buildErr) {
-            console.error('one-click-tools: Fallback build failed.');
+            console.error(`one-click-tools: Fallback build failed: ${buildErr.message}`);
+            console.error('one-click-tools: Please ensure Go is installed or check your internet connection.');
         }
     } finally {
         if (fs.existsSync(archivePath)) {
-            fs.unlinkSync(archivePath);
+            try { fs.unlinkSync(archivePath); } catch (e) {}
         }
     }
 }

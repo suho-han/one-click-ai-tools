@@ -4,6 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/spf13/viper"
+	"github.com/suho-han/one-click-tools/internal/update"
+	"golang.org/x/sync/errgroup"
 )
 
 type UsageResult struct {
@@ -13,20 +17,53 @@ type UsageResult struct {
 	Limit        string `json:"limit"`
 	Unit         string `json:"unit"`
 	Source       string `json:"source"`
-	Status       string `json:"status"`
-	Message      string `json:"message"`
-	SourceDetail string `json:"source_detail"`
+	Status       string            `json:"status"`
+	Message      string            `json:"message"`
+	SourceDetail string            `json:"source_detail"`
+	Buckets      map[string]string `json:"buckets"` // e.g. {"5h": "10", "7d": "20"}
 }
 
 func GetUsage() ([]UsageResult, error) {
-	var results []UsageResult
+	order := viper.GetStringSlice("agent_order")
+	if len(order) == 0 {
+		order = []string{"gemini", "claude", "copilot", "codex"}
+	}
 
-	results = append(results, FetchGeminiUsage())
-	results = append(results, FetchClaudeUsage())
-	results = append(results, FetchCopilotUsage())
-	results = append(results, FetchCodexUsage())
+	orderedTools := update.GetOrderedTools(order)
+	
+	fetchers := map[string]func() UsageResult{
+		"gemini":  FetchGeminiUsage,
+		"claude":  FetchClaudeUsage,
+		"copilot": FetchCopilotUsage,
+		"codex":   FetchCodexUsage,
+	}
 
-	return results, nil
+	results := make([]UsageResult, len(orderedTools))
+	g := new(errgroup.Group)
+
+	for i, t := range orderedTools {
+		i, t := i, t // Capture for goroutine
+		if fetcher, ok := fetchers[strings.ToLower(t.BinaryName)]; ok {
+			g.Go(func() error {
+				results[i] = fetcher()
+				return nil
+			})
+		}
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
+	}
+
+	// Filter out empty results if any tools were skipped
+	var filtered []UsageResult
+	for _, r := range results {
+		if r.Provider != "" {
+			filtered = append(filtered, r)
+		}
+	}
+
+	return filtered, nil
 }
 
 func PrintTable(results []UsageResult) {
@@ -49,8 +86,28 @@ func PrintTable(results []UsageResult) {
 		if colorPrefix != "" {
 			paddedProvider = fmt.Sprintf("%s%s\x1b[0m", colorPrefix, paddedProvider)
 		}
+
+		usedDisplay := r.Used
+		if len(r.Buckets) > 1 {
+			var parts []string
+			// Deterministic order: 5h, then others
+			if val, ok := r.Buckets["5h"]; ok {
+				parts = append(parts, fmt.Sprintf("%s%%(5h)", val))
+			}
+			if val, ok := r.Buckets["7d"]; ok {
+				parts = append(parts, fmt.Sprintf("%s%%(7d)", val))
+			}
+			// Append any others
+			for k, v := range r.Buckets {
+				if k != "5h" && k != "7d" {
+					parts = append(parts, fmt.Sprintf("%s%%(%s)", v, k))
+				}
+			}
+			usedDisplay = strings.Join(parts, " / ")
+		}
+
 		fmt.Printf("%s %-12s %-12s %-12s %-10s %-8s %-8s %s\n",
-			paddedProvider, r.Period, r.Used, r.Limit, r.Unit, r.Source, r.Status, r.Message)
+			paddedProvider, r.Period, usedDisplay, r.Limit, r.Unit, r.Source, r.Status, r.Message)
 	}
 }
 

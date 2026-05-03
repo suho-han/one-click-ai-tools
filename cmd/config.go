@@ -27,9 +27,10 @@ type configModel struct {
 	done      bool
 }
 
-func newConfigModel(enabledTools []string) configModel {
-	items := make([]toolItem, 0, len(update.Tools))
-	for i, t := range update.Tools {
+func newConfigModel(enabledTools []string, agentOrder []string) configModel {
+	orderedTools := update.GetOrderedTools(agentOrder)
+	items := make([]toolItem, 0, len(orderedTools))
+	for i, t := range orderedTools {
 		enabled := len(enabledTools) == 0
 		if len(enabledTools) > 0 {
 			for _, et := range enabledTools {
@@ -71,6 +72,10 @@ func (m configModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.move(-1)
 		case "down", "j":
 			m.move(1)
+		case "shift+up", "K":
+			m.swap(-1)
+		case "shift+down", "J":
+			m.swap(1)
 		case "space", " ":
 			i := m.index()
 			if i >= 0 {
@@ -106,6 +111,18 @@ func (m *configModel) move(delta int) {
 		n = 0
 	}
 	m.items[n].cursor = true
+}
+
+func (m *configModel) swap(delta int) {
+	i := m.index()
+	if i < 0 {
+		return
+	}
+	n := i + delta
+	if n < 0 || n >= len(m.items) {
+		return
+	}
+	m.items[i], m.items[n] = m.items[n], m.items[i]
 }
 
 func (m configModel) index() int {
@@ -144,6 +161,7 @@ func (m configModel) View() string {
 		b.WriteString(fmt.Sprintf("%s%s\n", indent, it.icon3[2]))
 	}
 	b.WriteString("\n[Use arrows to move, space to select, <right> to all, <left> to none]\n")
+	b.WriteString("[K/J or Shift+Arrows to reorder items]\n")
 	b.WriteString("[Enter to Confirm, Ctrl+C/Ctrl+Q to exit]\n")
 	return b.String()
 }
@@ -166,28 +184,31 @@ func writeConfig() error {
 	return viper.WriteConfigAs(configPath)
 }
 
-func runInteractiveConfig() ([]string, bool, error) {
+func runInteractiveConfig() ([]string, []string, bool, error) {
 	enabledTools := viper.GetStringSlice("enabled_tools")
-	model := newConfigModel(enabledTools)
+	agentOrder := viper.GetStringSlice("agent_order")
+	model := newConfigModel(enabledTools, agentOrder)
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	finalModel, err := p.Run()
 	if err != nil {
-		return nil, false, err
+		return nil, nil, false, err
 	}
 	m, ok := finalModel.(configModel)
 	if !ok {
-		return nil, false, fmt.Errorf("unexpected model type")
+		return nil, nil, false, fmt.Errorf("unexpected model type")
 	}
 	if m.cancelled {
-		return nil, true, nil
+		return nil, nil, true, nil
 	}
 	var selected []string
+	var order []string
 	for _, it := range m.items {
 		if it.check {
 			selected = append(selected, it.tool.BinaryName)
 		}
+		order = append(order, it.tool.BinaryName)
 	}
-	return selected, false, nil
+	return selected, order, false, nil
 }
 
 func promptToken(prompt string) string {
@@ -278,7 +299,7 @@ var configCmd = &cobra.Command{
 	Use:   "config",
 	Short: "Manage configuration (interactive selection if no sub-command)",
 	Run: func(cmd *cobra.Command, args []string) {
-		newEnabledTools, cancelled, err := runInteractiveConfig()
+		newEnabledTools, newOrder, cancelled, err := runInteractiveConfig()
 		if err != nil {
 			fmt.Printf("Prompt failed: %v\n", err)
 			return
@@ -288,6 +309,7 @@ var configCmd = &cobra.Command{
 			return
 		}
 		viper.Set("enabled_tools", newEnabledTools)
+		viper.Set("agent_order", newOrder)
 		if err := writeConfig(); err != nil {
 			fmt.Printf("Failed to write config: %v\n", err)
 			return

@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/suho-han/one-click-tools/internal/netclient"
 )
 
 func FetchGeminiUsage() UsageResult {
@@ -84,18 +86,14 @@ func loadGeminiProjectID(token string) (string, error) {
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := netclient.DefaultClient.DoWithRetry(req)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("%s", netclient.FormatError(resp, err))
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		if resp.StatusCode == http.StatusUnauthorized {
-			return "", fmt.Errorf("Invalid API Token (HTTP 401)")
-		}
-		return "", fmt.Errorf("HTTP %d", resp.StatusCode)
+		return "", fmt.Errorf("%s", netclient.FormatError(resp, nil))
 	}
 
 	var data struct {
@@ -114,12 +112,15 @@ func retrieveGeminiQuota(token, projectID string) (float64, float64, error) {
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := netclient.DefaultClient.DoWithRetry(req)
 	if err != nil {
-		return 0, 0, err
+		return 0, 0, fmt.Errorf("%s", netclient.FormatError(resp, err))
 	}
 	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return 0, 0, fmt.Errorf("%s", netclient.FormatError(resp, nil))
+	}
 
 	var data struct {
 		Buckets []struct {

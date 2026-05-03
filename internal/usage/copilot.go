@@ -1,13 +1,17 @@
 package usage
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/spf13/viper"
+	"github.com/suho-han/one-click-tools/internal/netclient"
 )
 
 func FetchCopilotUsage() UsageResult {
@@ -44,8 +48,7 @@ func FetchCopilotUsage() UsageResult {
 		reqUser.Header.Set("Accept", "application/vnd.github+json")
 		reqUser.Header.Set("Authorization", "Bearer "+token)
 		
-		clientUser := &http.Client{}
-		respUser, err := clientUser.Do(reqUser)
+		respUser, err := netclient.DefaultClient.DoWithRetry(reqUser)
 		if err == nil {
 			defer respUser.Body.Close()
 			if respUser.StatusCode == http.StatusOK {
@@ -56,10 +59,13 @@ func FetchCopilotUsage() UsageResult {
 				if json.Unmarshal(bodyUser, &userData) == nil && userData.Login != "" {
 					user = userData.Login
 				}
-			} else if respUser.StatusCode == http.StatusUnauthorized {
-				result.Message = "Invalid GitHub Token (HTTP 401)"
+			} else {
+				result.Message = netclient.FormatError(respUser, nil)
 				return result
 			}
+		} else {
+			result.Message = netclient.FormatError(respUser, err)
+			return result
 		}
 
 		if user == "" {
@@ -74,16 +80,15 @@ func FetchCopilotUsage() UsageResult {
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("X-GitHub-Api-Version", "2026-03-10")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := netclient.DefaultClient.DoWithRetry(req)
 	if err != nil {
-		result.Message = fmt.Sprintf("API request failed: %v", err)
+		result.Message = netclient.FormatError(resp, err)
 		return result
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		result.Message = fmt.Sprintf("API HTTP %d", resp.StatusCode)
+		result.Message = netclient.FormatError(resp, nil)
 		return result
 	}
 
@@ -97,8 +102,7 @@ func FetchCopilotUsage() UsageResult {
 	}
 
 	if err := json.Unmarshal(body, &data); err != nil {
-		result.Message = "Failed to parse API response"
-		return result
+		return FetchCopilotLocalUsage()
 	}
 
 	var used float64
@@ -115,15 +119,59 @@ func FetchCopilotUsage() UsageResult {
 	}
 
 	if !found {
-		result.Status = "ok"
-		result.Used = "0.00"
-		result.Message = "No Copilot usage items found"
-		return result
+		return FetchCopilotLocalUsage()
 	}
 
 	result.Status = "ok"
 	result.Used = fmt.Sprintf("%.2f", used)
 	result.Unit = unit
 	result.Message = "Usage fetched from GitHub Billing API"
+	return result
+}
+
+func FetchCopilotLocalUsage() UsageResult {
+	result := UsageResult{
+		Provider: "copilot",
+		Period:   "local",
+		Used:     "0",
+		Limit:    "n/a",
+		Unit:     "messages",
+		Source:   "local",
+		Status:   "ok",
+		Message:  "Scanned from local session logs (~/.copilot)",
+	}
+
+	home, _ := os.UserHomeDir()
+	sessionDir := filepath.Join(home, ".copilot", "session-state")
+
+	var totalMessages int
+	err := filepath.Walk(sessionDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if !info.IsDir() && filepath.Base(path) == "events.jsonl" {
+			file, err := os.Open(path)
+			if err != nil {
+				return nil
+			}
+			defer file.Close()
+
+			scanner := bufio.NewScanner(file)
+			for scanner.Scan() {
+				if strings.Contains(scanner.Text(), "\"type\":\"assistant.message\"") {
+					totalMessages++
+				}
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		result.Status = "error"
+		result.Message = fmt.Sprintf("Failed to scan logs: %v", err)
+		return result
+	}
+
+	result.Used = fmt.Sprintf("%d", totalMessages)
 	return result
 }

@@ -78,3 +78,34 @@ var Tools = []Tool{
 		HexColor:   "#BC8CF2",
 	},
 }
+
+func GetOrderedTools(order []string) []Tool {
+	if len(order) == 0 {
+		return Tools
+	}
+
+	var ordered []Tool
+	toolMap := make(map[string]Tool)
+	for _, t := range Tools {
+		toolMap[strings.ToLower(t.BinaryName)] = t
+	}
+
+	for _, name := range order {
+		if t, ok := toolMap[strings.ToLower(name)]; ok {
+			ordered = append(ordered, t)
+			delete(toolMap, strings.ToLower(name))
+		}
+	}
+
+	// Optionally append remaining tools that were not in the order list
+	// For now, we only return what was requested to strictly follow the order, 
+	// or everything if order is empty.
+	// But to be safe, let's append the rest if some were missing from the order list.
+	for _, t := range Tools {
+		if _, ok := toolMap[strings.ToLower(t.BinaryName)]; ok {
+			ordered = append(ordered, t)
+		}
+	}
+
+	return ordered
+}

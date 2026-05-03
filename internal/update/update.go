@@ -16,13 +16,16 @@ import (
 
 func Run() error {
 	enabledTools := viper.GetStringSlice("enabled_tools")
+	agentOrder := viper.GetStringSlice("agent_order")
 
+	orderedTools := GetOrderedTools(agentOrder)
 	var toolsToUpdate []Tool
+
 	if len(enabledTools) == 0 {
-		toolsToUpdate = Tools
+		toolsToUpdate = orderedTools
 	} else {
 		for _, et := range enabledTools {
-			for _, t := range Tools {
+			for _, t := range orderedTools {
 				if strings.EqualFold(et, t.BinaryName) {
 					toolsToUpdate = append(toolsToUpdate, t)
 					break

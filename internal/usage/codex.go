@@ -92,6 +92,6 @@ func FetchCodexUsage() UsageResult {
 
 	result.Status = "ok"
 	result.Used = lastUsedPercent
-	result.Message = fmt.Sprintf("Extracted from %s", filepath.Base(latestLog))
+	result.Message = fmt.Sprintf("extracted from \x1b]8;;file://%s\x07jsonl\x1b]8;;\x07", latestLog)
 	return result
 }

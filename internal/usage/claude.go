@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"github.com/suho-han/one-click-tools/internal/netclient"
 )
 
 func FetchClaudeUsage() UsageResult {
@@ -69,10 +70,9 @@ func FetchClaudeUsage() UsageResult {
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("anthropic-beta", "oauth-2025-04-20")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := netclient.DefaultClient.DoWithRetry(req)
 	if err != nil {
-		result.Message = fmt.Sprintf("API request failed: %v", err)
+		result.Message = netclient.FormatError(resp, err)
 		return result
 	}
 	defer resp.Body.Close()
@@ -84,11 +84,7 @@ func FetchClaudeUsage() UsageResult {
 			result.Message = "API Rate Limited (assuming 100%)"
 			return result
 		}
-		if resp.StatusCode == http.StatusUnauthorized {
-			result.Message = "Invalid API Token (HTTP 401)"
-			return result
-		}
-		result.Message = fmt.Sprintf("API HTTP %d", resp.StatusCode)
+		result.Message = netclient.FormatError(resp, nil)
 		return result
 	}
 
@@ -105,6 +101,14 @@ func FetchClaudeUsage() UsageResult {
 	if err := json.Unmarshal(body, &data); err != nil {
 		result.Message = "Failed to parse API response"
 		return result
+	}
+
+	result.Buckets = make(map[string]string)
+	if data.FiveHour.Utilization > 0 {
+		result.Buckets["5h"] = fmt.Sprintf("%.1f", data.FiveHour.Utilization)
+	}
+	if data.SevenDay.Utilization > 0 {
+		result.Buckets["7d"] = fmt.Sprintf("%.1f", data.SevenDay.Utilization)
 	}
 
 	if data.FiveHour.Utilization > 0 {
