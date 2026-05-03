@@ -3,6 +3,7 @@ package usage
 import (
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -11,12 +12,12 @@ import (
 )
 
 type UsageResult struct {
-	Provider     string `json:"provider"`
-	Period       string `json:"period"`
-	Used         string `json:"used"`
-	Limit        string `json:"limit"`
-	Unit         string `json:"unit"`
-	Source       string `json:"source"`
+	Provider     string            `json:"provider"`
+	Period       string            `json:"period"`
+	Used         string            `json:"used"`
+	Limit        string            `json:"limit"`
+	Unit         string            `json:"unit"`
+	Source       string            `json:"source"`
 	Status       string            `json:"status"`
 	Message      string            `json:"message"`
 	SourceDetail string            `json:"source_detail"`
@@ -30,7 +31,7 @@ func GetUsage() ([]UsageResult, error) {
 	}
 
 	orderedTools := update.GetOrderedTools(order)
-	
+
 	fetchers := map[string]func() UsageResult{
 		"gemini":  FetchGeminiUsage,
 		"claude":  FetchClaudeUsage,
@@ -67,8 +68,13 @@ func GetUsage() ([]UsageResult, error) {
 }
 
 func PrintTable(results []UsageResult) {
-	fmt.Printf("%-16s %-12s %-12s %-12s %-10s %-8s %-8s %s\n",
-		"provider", "period", "used", "limit", "unit", "source", "status", "message")
+	displayMode := strings.ToLower(strings.TrimSpace(viper.GetString("usage_display_mode")))
+	if displayMode != "used" && displayMode != "remaining" {
+		displayMode = "used"
+	}
+
+	fmt.Printf("%-16s %-12s %-8s %-8s %-12s %-12s %-10s %-8s %-8s %s\n",
+		"provider", "period", "5h", "1w", "used", "limit", "unit", "source", "status", "message")
 	for _, r := range results {
 		colorPrefix := ""
 		p := strings.ToLower(r.Provider)
@@ -87,28 +93,62 @@ func PrintTable(results []UsageResult) {
 			paddedProvider = fmt.Sprintf("%s%s\x1b[0m", colorPrefix, paddedProvider)
 		}
 
-		usedDisplay := r.Used
-		if len(r.Buckets) > 1 {
-			var parts []string
-			// Deterministic order: 5h, then others
-			if val, ok := r.Buckets["5h"]; ok {
-				parts = append(parts, fmt.Sprintf("%s%%(5h)", val))
+		fiveHour := "-"
+		oneWeek := "-"
+		if val, ok := r.Buckets["5h"]; ok && val != "" {
+			fiveHour = formatBucketDisplay(r, val, displayMode)
+		}
+		if val, ok := r.Buckets["7d"]; ok && val != "" {
+			oneWeek = formatBucketDisplay(r, val, displayMode)
+		}
+		// Fallback for providers that currently expose a single percent usage value.
+		if fiveHour == "-" && r.Unit == "percent" && r.Used != "" && r.Used != "n/a" {
+			provider := strings.ToLower(r.Provider)
+			if strings.Contains(provider, "gemini") || strings.Contains(provider, "claude") {
+				fiveHour = formatBucketDisplay(r, r.Used, displayMode)
 			}
-			if val, ok := r.Buckets["7d"]; ok {
-				parts = append(parts, fmt.Sprintf("%s%%(7d)", val))
-			}
-			// Append any others
-			for k, v := range r.Buckets {
-				if k != "5h" && k != "7d" {
-					parts = append(parts, fmt.Sprintf("%s%%(%s)", v, k))
-				}
-			}
-			usedDisplay = strings.Join(parts, " / ")
 		}
 
-		fmt.Printf("%s %-12s %-12s %-12s %-10s %-8s %-8s %s\n",
-			paddedProvider, r.Period, usedDisplay, r.Limit, r.Unit, r.Source, r.Status, r.Message)
+		displayUsed := r.Used
+		if displayMode == "remaining" && strings.EqualFold(r.Unit, "percent") {
+			if rem, ok := remainingFromUsed(r.Used); ok {
+				displayUsed = rem
+			}
+		}
+
+		fmt.Printf("%s %-12s %-8s %-8s %-12s %-12s %-10s %-8s %-8s %s\n",
+			paddedProvider, r.Period, fiveHour, oneWeek, displayUsed, r.Limit, r.Unit, r.Source, r.Status, r.Message)
 	}
+}
+
+func formatBucketDisplay(r UsageResult, rawValue, mode string) string {
+	value := rawValue
+	if mode == "remaining" && strings.EqualFold(r.Unit, "percent") {
+		if rem, ok := remainingFromUsed(rawValue); ok {
+			value = rem
+		}
+	}
+
+	// Gemini usage is shown as count-style number in table output.
+	if strings.Contains(strings.ToLower(r.Provider), "gemini") {
+		return value
+	}
+	if strings.EqualFold(r.Unit, "percent") {
+		return value + "%"
+	}
+	return value
+}
+
+func remainingFromUsed(used string) (string, bool) {
+	v, err := strconv.ParseFloat(strings.TrimSpace(used), 64)
+	if err != nil {
+		return "", false
+	}
+	remaining := 100 - v
+	if remaining < 0 {
+		remaining = 0
+	}
+	return fmt.Sprintf("%.1f", remaining), true
 }
 
 func PrintJSON(results []UsageResult) error {

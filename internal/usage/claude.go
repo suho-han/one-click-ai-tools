@@ -3,18 +3,18 @@ package usage
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/suho-han/one-click-tools/internal/netclient"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"github.com/suho-han/one-click-tools/internal/netclient"
 )
 
 func FetchClaudeUsage() UsageResult {
 	home, _ := os.UserHomeDir()
 	credsFile := filepath.Join(home, ".claude", ".credentials.json")
-	
+
 	result := UsageResult{
 		Provider: "claude-code",
 		Period:   "current",
@@ -81,6 +81,10 @@ func FetchClaudeUsage() UsageResult {
 		if resp.StatusCode == http.StatusTooManyRequests {
 			result.Status = "ok"
 			result.Used = "100"
+			result.Buckets = map[string]string{"5h": "100.0"}
+			if os.Getenv("OCT_USAGE_DEBUG") == "1" {
+				result.SourceDetail = "http_status=429;fallback_bucket=5h"
+			}
 			result.Message = "API Rate Limited (assuming 100%)"
 			return result
 		}
@@ -109,6 +113,9 @@ func FetchClaudeUsage() UsageResult {
 	}
 	if data.SevenDay.Utilization > 0 {
 		result.Buckets["7d"] = fmt.Sprintf("%.1f", data.SevenDay.Utilization)
+	}
+	if os.Getenv("OCT_USAGE_DEBUG") == "1" {
+		result.SourceDetail = fmt.Sprintf("five_hour=%.1f;seven_day=%.1f", data.FiveHour.Utilization, data.SevenDay.Utilization)
 	}
 
 	if data.FiveHour.Utilization > 0 {

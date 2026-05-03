@@ -90,13 +90,13 @@ var usageCmd = &cobra.Command{
 	Long: `Show tool usage report for configured AI developer tools.
 
 To properly fetch usage, ensure you are authenticated:
-  - Gemini:  Run 'gemini auth' to log in via browser
+  - Gemini:  Run 'gemini' once and complete browser sign-in
   - Claude:  Run 'claude auth login' to log in via browser
   - Copilot: Configure your token via 'oct config'
   - Codex:   Automatically reads from local session logs`,
 	Run: func(cmd *cobra.Command, args []string) {
 		jsonMode, _ := cmd.Flags().GetBool("json")
-		
+
 		if jsonMode {
 			// For JSON, we might not want a spinner if it goes to stdout/pipe
 			results, err := usage.GetUsage()
@@ -118,7 +118,7 @@ To properly fetch usage, ensure you are authenticated:
 			orderedTools: orderedTools,
 		}
 		p := tea.NewProgram(m)
-		
+
 		// Start spinner tick
 		go func() {
 			time.Sleep(100 * time.Millisecond)

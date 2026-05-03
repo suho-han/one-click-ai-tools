@@ -59,6 +59,8 @@ If `OCT_COPILOT_USAGE_ENDPOINT` is not set, `oct` resolves it based on:
 3. **User**: `OCT_GITHUB_USER` (or `GITHUB_USER`)
 4. **Auto-lookup**: If all are unset, it uses `gh auth token` and `GET /user` to find the current user.
 
+When `GITHUB_API_TOKEN`/`GITHUB_TOKEN` is not configured, `oct` also attempts `gh auth token` as a token-less CLI fallback before using local session logs.
+
 ### Copilot Usage Filtering
 - `OCT_COPILOT_USAGE_YEAR`
 - `OCT_COPILOT_USAGE_MONTH`
@@ -77,6 +79,11 @@ Experimental mode inspired by `codex-opero` to use local OAuth/session state:
 oct usage --experimental-oauth-usage
 oct usage --experimental-oauth-usage --json
 ```
+
+Gemini token-less fallback order:
+1. `~/.gemini/oauth_creds.json`
+2. `gcloud auth print-access-token`
+3. Local session summary from `~/.gemini/antigravity/conversations`
 
 ---
 

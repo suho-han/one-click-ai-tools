@@ -55,6 +55,7 @@ func FetchCodexUsage() UsageResult {
 	defer file.Close()
 
 	var lastUsedPercent string
+	var lastWeeklyPercent string
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		var line struct {
@@ -70,6 +71,10 @@ func FetchCodexUsage() UsageResult {
 					Primary struct {
 						UsedPercent float64 `json:"used_percent"`
 					} `json:"primary"`
+					Secondary struct {
+						UsedPercent   float64 `json:"used_percent"`
+						WindowMinutes int     `json:"window_minutes"`
+					} `json:"secondary"`
 				} `json:"rate_limits"`
 			} `json:"payload"`
 		}
@@ -79,11 +84,15 @@ func FetchCodexUsage() UsageResult {
 				if line.Payload.RateLimits.Primary.UsedPercent > 0 {
 					lastUsedPercent = fmt.Sprintf("%.1f", line.Payload.RateLimits.Primary.UsedPercent)
 				}
+				// Codex secondary bucket is the weekly window (10080 minutes = 7 days).
+				if line.Payload.RateLimits.Secondary.UsedPercent > 0 && line.Payload.RateLimits.Secondary.WindowMinutes >= 10080 {
+					lastWeeklyPercent = fmt.Sprintf("%.1f", line.Payload.RateLimits.Secondary.UsedPercent)
+				}
 			}
 		}
 	}
 
-	if lastUsedPercent == "" {
+	if lastUsedPercent == "" && lastWeeklyPercent == "" {
 		result.Status = "ok"
 		result.Used = "0"
 		result.Message = "No usage metrics found in latest session log"
@@ -91,7 +100,19 @@ func FetchCodexUsage() UsageResult {
 	}
 
 	result.Status = "ok"
-	result.Used = lastUsedPercent
-	result.Message = fmt.Sprintf("extracted from \x1b]8;;file://%s\x07jsonl\x1b]8;;\x07", latestLog)
+	result.Buckets = make(map[string]string)
+	if lastUsedPercent != "" {
+		result.Buckets["5h"] = lastUsedPercent
+		result.Used = lastUsedPercent
+	} else {
+		result.Used = lastWeeklyPercent
+	}
+	if lastWeeklyPercent != "" {
+		result.Buckets["7d"] = lastWeeklyPercent
+	}
+	if os.Getenv("OCT_USAGE_DEBUG") == "1" {
+		result.SourceDetail = fmt.Sprintf("bucket_5h=%s;bucket_7d=%s", lastUsedPercent, lastWeeklyPercent)
+	}
+	result.Message = "Usage extracted from local Codex session logs"
 	return result
 }

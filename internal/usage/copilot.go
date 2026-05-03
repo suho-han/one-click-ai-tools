@@ -8,11 +8,79 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 	"github.com/suho-han/one-click-tools/internal/netclient"
 )
+
+func FetchCopilotLocalUsage() UsageResult {
+	result := UsageResult{
+		Provider: "copilot",
+		Period:   "local",
+		Used:     "0",
+		Limit:    "n/a",
+		Unit:     "msgs",
+		Source:   "local",
+		Status:   "ok",
+	}
+
+	home, _ := os.UserHomeDir()
+	sessionDir := filepath.Join(home, ".copilot", "session-state")
+
+	var logFiles []string
+	filepath.Walk(sessionDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if !info.IsDir() && filepath.Base(path) == "events.jsonl" {
+			logFiles = append(logFiles, path)
+		}
+		return nil
+	})
+
+	if len(logFiles) == 0 {
+		result.Message = "No local session logs found in ~/.copilot"
+		return result
+	}
+
+	var totalMsgs int
+	var totalTokens int
+
+	for _, logFile := range logFiles {
+		file, err := os.Open(logFile)
+		if err != nil {
+			continue
+		}
+
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			var line struct {
+				Type string `json:"type"`
+				Data struct {
+					OutputTokens int `json:"outputTokens"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal(scanner.Bytes(), &line); err == nil {
+				if line.Type == "assistant.message" {
+					totalMsgs++
+					if line.Data.OutputTokens > 0 {
+						totalTokens += line.Data.OutputTokens
+					}
+				}
+			}
+		}
+		file.Close()
+	}
+
+	result.Used = fmt.Sprintf("%d", totalMsgs)
+	if totalTokens > 0 {
+		result.Message = fmt.Sprintf("Estimated from local logs (%d total tokens)", totalTokens)
+	} else {
+		result.Message = "Estimated from local logs"
+	}
+	return result
+}
 
 func FetchCopilotUsage() UsageResult {
 	result := UsageResult{
@@ -33,10 +101,13 @@ func FetchCopilotUsage() UsageResult {
 		token = os.Getenv("GITHUB_TOKEN")
 	}
 	if token == "" {
-		result.Status = "ok"
-		result.Used = "0.00"
-		result.Message = "No GitHub token found (GITHUB_API_TOKEN or config)"
-		return result
+		ghToken, err := commandOutput(3*time.Second, "gh", "auth", "token")
+		if err == nil && ghToken != "" {
+			token = ghToken
+			result.Source = "gh-cli"
+		} else {
+			return FetchCopilotLocalUsage()
+		}
 	}
 
 	user := viper.GetString("github_user")
@@ -47,7 +118,7 @@ func FetchCopilotUsage() UsageResult {
 		reqUser, _ := http.NewRequest("GET", "https://api.github.com/user", nil)
 		reqUser.Header.Set("Accept", "application/vnd.github+json")
 		reqUser.Header.Set("Authorization", "Bearer "+token)
-		
+
 		respUser, err := netclient.DefaultClient.DoWithRetry(reqUser)
 		if err == nil {
 			defer respUser.Body.Close()
@@ -102,7 +173,8 @@ func FetchCopilotUsage() UsageResult {
 	}
 
 	if err := json.Unmarshal(body, &data); err != nil {
-		return FetchCopilotLocalUsage()
+		result.Message = "Failed to parse API response"
+		return result
 	}
 
 	var used float64
@@ -119,59 +191,15 @@ func FetchCopilotUsage() UsageResult {
 	}
 
 	if !found {
-		return FetchCopilotLocalUsage()
+		result.Status = "ok"
+		result.Used = "0.00"
+		result.Message = "No Copilot usage items found"
+		return result
 	}
 
 	result.Status = "ok"
 	result.Used = fmt.Sprintf("%.2f", used)
 	result.Unit = unit
 	result.Message = "Usage fetched from GitHub Billing API"
-	return result
-}
-
-func FetchCopilotLocalUsage() UsageResult {
-	result := UsageResult{
-		Provider: "copilot",
-		Period:   "local",
-		Used:     "0",
-		Limit:    "n/a",
-		Unit:     "messages",
-		Source:   "local",
-		Status:   "ok",
-		Message:  "Scanned from local session logs (~/.copilot)",
-	}
-
-	home, _ := os.UserHomeDir()
-	sessionDir := filepath.Join(home, ".copilot", "session-state")
-
-	var totalMessages int
-	err := filepath.Walk(sessionDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
-		}
-		if !info.IsDir() && filepath.Base(path) == "events.jsonl" {
-			file, err := os.Open(path)
-			if err != nil {
-				return nil
-			}
-			defer file.Close()
-
-			scanner := bufio.NewScanner(file)
-			for scanner.Scan() {
-				if strings.Contains(scanner.Text(), "\"type\":\"assistant.message\"") {
-					totalMessages++
-				}
-			}
-		}
-		return nil
-	})
-
-	if err != nil {
-		result.Status = "error"
-		result.Message = fmt.Sprintf("Failed to scan logs: %v", err)
-		return result
-	}
-
-	result.Used = fmt.Sprintf("%d", totalMessages)
 	return result
 }

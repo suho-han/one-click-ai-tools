@@ -13,7 +13,8 @@ import (
 type Config struct {
 	EnabledTools []string `mapstructure:"enabled_tools"`
 	AgentOrder   []string `mapstructure:"agent_order"`
-	IconStyle    string   `mapstructure:"icon_style"` // "braille" or "half-block"
+	IconStyle    string   `mapstructure:"icon_style"`         // "braille" or "half-block"
+	UsageMode    string   `mapstructure:"usage_display_mode"` // "used" or "remaining"
 }
 
 func MigrateLegacyConfig() error {
@@ -54,7 +55,7 @@ func MigrateLegacyConfig() error {
 	}
 
 	viper.Set("enabled_tools", enabledTools)
-	
+
 	// Create directory if not exists
 	err = os.MkdirAll(filepath.Dir(newPath), 0755)
 	if err != nil {
@@ -67,7 +68,7 @@ func MigrateLegacyConfig() error {
 	}
 
 	fmt.Printf("Migrated legacy config from %s to %s\n", legacyPath, newPath)
-	
+
 	// Optionally backup legacy config
 	return os.Rename(legacyPath, legacyPath+".bak")
 }

@@ -47,6 +47,7 @@ func initConfig() {
 	}
 
 	viper.SetDefault("icon_style", "braille")
+	viper.SetDefault("usage_display_mode", "remaining")
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err == nil {

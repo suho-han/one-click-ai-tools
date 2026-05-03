@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -26,6 +27,8 @@ type configModel struct {
 	cancelled bool
 	done      bool
 }
+
+var ansiPattern = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
 func newConfigModel(enabledTools []string, agentOrder []string) configModel {
 	orderedTools := update.GetOrderedTools(agentOrder)
@@ -184,21 +187,21 @@ func writeConfig() error {
 	return viper.WriteConfigAs(configPath)
 }
 
-func runInteractiveConfig() ([]string, []string, bool, error) {
+func runInteractiveConfig() ([]string, []string, string, bool, error) {
 	enabledTools := viper.GetStringSlice("enabled_tools")
 	agentOrder := viper.GetStringSlice("agent_order")
 	model := newConfigModel(enabledTools, agentOrder)
 	p := tea.NewProgram(model, tea.WithAltScreen())
 	finalModel, err := p.Run()
 	if err != nil {
-		return nil, nil, false, err
+		return nil, nil, "", false, err
 	}
 	m, ok := finalModel.(configModel)
 	if !ok {
-		return nil, nil, false, fmt.Errorf("unexpected model type")
+		return nil, nil, "", false, fmt.Errorf("unexpected model type")
 	}
 	if m.cancelled {
-		return nil, nil, true, nil
+		return nil, nil, "", true, nil
 	}
 	var selected []string
 	var order []string
@@ -208,7 +211,12 @@ func runInteractiveConfig() ([]string, []string, bool, error) {
 		}
 		order = append(order, it.tool.BinaryName)
 	}
-	return selected, order, false, nil
+	mode := strings.ToLower(strings.TrimSpace(viper.GetString("usage_display_mode")))
+	if mode != "used" && mode != "remaining" {
+		mode = "remaining"
+	}
+	mode = promptUsageMode(mode)
+	return selected, order, mode, false, nil
 }
 
 func promptToken(prompt string) string {
@@ -219,11 +227,11 @@ func promptToken(prompt string) string {
 }
 
 func promptYesNo(prompt string, defaultYes bool) bool {
-	choices := " [y/N]"
+	defaultLabel := "n"
 	if defaultYes {
-		choices = " [Y/n]"
+		defaultLabel = "y"
 	}
-	fmt.Print(prompt + choices + ": ")
+	fmt.Printf("%s [default: %s]: ", prompt, defaultLabel)
 	reader := bufio.NewReader(os.Stdin)
 	text, _ := reader.ReadString('\n')
 	text = strings.TrimSpace(strings.ToLower(text))
@@ -231,6 +239,28 @@ func promptYesNo(prompt string, defaultYes bool) bool {
 		return defaultYes
 	}
 	return text == "y" || text == "yes"
+}
+
+func promptUsageMode(defaultMode string) string {
+	// Keep interactive default deterministic for consistency.
+	defaultMode = "remaining"
+	fmt.Print("Usage display mode: remaining(r) / used(u) [default: r]: ")
+	reader := bufio.NewReader(os.Stdin)
+	text, _ := reader.ReadString('\n')
+	text = strings.TrimSpace(strings.ToLower(text))
+
+	if text == "" {
+		return defaultMode
+	}
+	if text == "r" || text == "remaining" {
+		return "remaining"
+	}
+	if text == "u" || text == "used" {
+		return "used"
+	}
+
+	// Invalid input falls back to default choice.
+	return defaultMode
 }
 
 func setupTokens(tools []string) {
@@ -290,16 +320,55 @@ func setupTokens(tools []string) {
 			fmt.Println("Claude Code: Run 'claude auth login' to authenticate.")
 		}
 		if needsGeminiAuth {
-			fmt.Println("Gemini CLI:  Run 'gemini auth' to authenticate.")
+			fmt.Println("Gemini CLI:  Run 'gemini' once and complete browser sign-in (credentials saved to ~/.gemini/oauth_creds.json).")
 		}
 	}
+}
+
+func toolDisplayName(binaryName string) string {
+	for _, t := range update.Tools {
+		if strings.EqualFold(t.BinaryName, binaryName) {
+			return t.Colorize(t.Name)
+		}
+	}
+	return binaryName
+}
+
+func printConfigSummary(enabledTools []string, usageMode string) {
+	const innerWidth = 55
+	fmt.Println()
+	printSummaryBorder(innerWidth)
+	if len(enabledTools) == 0 {
+		printSummaryContent("providers: (none selected)")
+	} else {
+		colored := make([]string, 0, len(enabledTools))
+		for _, tool := range enabledTools {
+			colored = append(colored, toolDisplayName(tool))
+		}
+		printSummaryContent("providers: " + strings.Join(colored, ", "))
+	}
+	printSummaryContent("usage mode: " + usageMode)
+	printSummaryBorder(innerWidth)
+}
+
+func printSummaryBorder(innerWidth int) {
+	fmt.Printf("--||%s||--\n", strings.Repeat("=", innerWidth+2))
+}
+
+func printSummaryContent(content string) {
+	fmt.Printf("  %s\n", content)
+}
+
+func visibleLen(s string) int {
+	clean := ansiPattern.ReplaceAllString(s, "")
+	return len([]rune(clean))
 }
 
 var configCmd = &cobra.Command{
 	Use:   "config",
 	Short: "Manage configuration (interactive selection if no sub-command)",
 	Run: func(cmd *cobra.Command, args []string) {
-		newEnabledTools, newOrder, cancelled, err := runInteractiveConfig()
+		newEnabledTools, newOrder, usageMode, cancelled, err := runInteractiveConfig()
 		if err != nil {
 			fmt.Printf("Prompt failed: %v\n", err)
 			return
@@ -310,17 +379,16 @@ var configCmd = &cobra.Command{
 		}
 		viper.Set("enabled_tools", newEnabledTools)
 		viper.Set("agent_order", newOrder)
+		viper.Set("usage_display_mode", usageMode)
 		if err := writeConfig(); err != nil {
 			fmt.Printf("Failed to write config: %v\n", err)
 			return
 		}
 		fmt.Println("Config updated successfully.")
-		if len(newEnabledTools) == 0 {
-			fmt.Println("Summary: no tools selected.")
-		} else {
-			fmt.Printf("Summary: %d selected (%s)\n", len(newEnabledTools), strings.Join(newEnabledTools, ", "))
+		if len(newEnabledTools) > 0 {
 			setupTokens(newEnabledTools)
 		}
+		printConfigSummary(newEnabledTools, usageMode)
 	},
 }
 
@@ -361,11 +429,31 @@ var configSetToolsCmd = &cobra.Command{
 	},
 }
 
+var configSetUsageModeCmd = &cobra.Command{
+	Use:   "usage-mode <used|remaining>",
+	Short: "Set usage display mode",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		mode := strings.ToLower(strings.TrimSpace(args[0]))
+		if mode != "used" && mode != "remaining" {
+			fmt.Println("Invalid usage mode. Use: used or remaining")
+			return
+		}
+		viper.Set("usage_display_mode", mode)
+		if err := writeConfig(); err != nil {
+			fmt.Printf("Failed to write config: %v\n", err)
+			return
+		}
+		fmt.Printf("Usage display mode set to %s.\n", mode)
+	},
+}
+
 var configResetCmd = &cobra.Command{
 	Use:   "reset",
 	Short: "Reset configuration to defaults",
 	Run: func(cmd *cobra.Command, args []string) {
 		viper.Set("enabled_tools", []string{})
+		viper.Set("usage_display_mode", "remaining")
 		if err := writeConfig(); err != nil {
 			fmt.Printf("Failed to write config: %v\n", err)
 			return
@@ -382,6 +470,11 @@ var configListCmd = &cobra.Command{
 		fmt.Printf("Config file: %s\n\n", viper.ConfigFileUsed())
 
 		enabledTools := viper.GetStringSlice("enabled_tools")
+		usageMode := strings.ToLower(strings.TrimSpace(viper.GetString("usage_display_mode")))
+		if usageMode != "used" && usageMode != "remaining" {
+			usageMode = "remaining"
+		}
+		fmt.Printf("Usage display mode: %s\n\n", usageMode)
 		fmt.Println("Enabled tools (agent-update):")
 
 		for _, t := range update.Tools {
@@ -412,4 +505,5 @@ func init() {
 	configCmd.AddCommand(configSetCmd)
 	configCmd.AddCommand(configResetCmd)
 	configSetCmd.AddCommand(configSetToolsCmd)
+	configSetCmd.AddCommand(configSetUsageModeCmd)
 }
