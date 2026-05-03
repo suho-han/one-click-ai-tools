@@ -1,4 +1,4 @@
-# oct (v0.4.1) TODO & Known Issues - STATUS: ROLLED OVER
+# oct (v0.4.2) TODO & Known Issues - STATUS: ROLLED OVER
 
 ## 🛠 남은 과제 (Remaining Tasks)
 
