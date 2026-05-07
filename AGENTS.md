@@ -1,6 +1,7 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
+
 `one-click-tools` is a Go-first CLI packaged through npm.
 
 - `main.go`: entrypoint.
@@ -13,6 +14,7 @@
 Use `internal/ui/assets/` for icon/image assets and keep generated artifacts in their existing folders.
 
 ## Build, Test, and Development Commands
+
 - `go run main.go help`: run CLI quickly without building.
 - `go build -o oct main.go`: build local binary.
 - `./oct usage --json`: smoke-test built binary behavior.
@@ -25,6 +27,7 @@ Use `internal/ui/assets/` for icon/image assets and keep generated artifacts in 
 Use `pnpm` for Node.js dependency management. Use caution with `go run main.go agent-update`; it can execute real `brew`/`npm` updates on your machine.
 
 ## Coding Style & Naming Conventions
+
 Follow standard Go formatting and idioms:
 
 - Run `gofmt` on changed Go files before opening a PR.
@@ -35,6 +38,7 @@ Follow standard Go formatting and idioms:
 Prefer descriptive flag/command names aligned with existing CLI verbs.
 
 ## Testing Guidelines
+
 Primary framework is Go’s built-in `testing` package.
 
 - Add unit tests near changed code (for example `internal/usage/usage_test.go`).
@@ -44,6 +48,7 @@ Primary framework is Go’s built-in `testing` package.
 Run `go test ./...` before committing.
 
 ## Commit & Pull Request Guidelines
+
 History follows Conventional Commits (examples: `feat(ui): ...`, `fix: ...`, `docs: ...`, `chore(release): ...`).
 
 - Format: `type(scope): short imperative summary`.

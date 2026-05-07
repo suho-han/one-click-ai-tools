@@ -103,6 +103,108 @@ OCT_CLAUDE_USAGE_ENDPOINT="http://localhost:8080/usage" \
   go run main.go usage
 ```
 
+## 6. Windows 검증 가이드
+
+Windows 검증은 `WSL`이 아니라 실제 `Windows 11 + PowerShell` 환경 기준으로 진행한다. 이 프로젝트의 Windows 스케줄링은 `schtasks`를 직접 호출하므로, 실제 `Task Scheduler` 등록과 실행까지 확인해야 한다.
+
+### 6-1. 검증 환경
+
+- 권장 환경: `Windows 11`, `PowerShell 7`
+- 확인 대상: `oct.exe`, `npm install -g` 설치 흐름, `Task Scheduler`
+- 사전 확인:
+  - `go version`
+  - `node -v`
+  - `npm -v`
+  - 필요 시 `pnpm -v`, `yarn -v`
+
+### 6-2. Windows에서 직접 빌드
+
+PowerShell에서 프로젝트 루트로 이동한 뒤 실행한다.
+
+```powershell
+go build -o oct.exe main.go
+.\oct.exe help
+.\oct.exe usage --json
+```
+
+기본 스모크 테스트 통과 조건:
+
+- `help`가 정상 출력된다.
+- `usage --json`이 비정상 종료 없이 실행된다.
+- 설정 관련 커맨드가 Windows 경로에서 오류 없이 동작한다.
+
+### 6-3. npm 설치 흐름 검증
+
+`postinstall.js`는 Windows에서 GitHub Release의 `.zip` 아카이브를 내려받고 `powershell Expand-Archive`로 `bin/oct.exe`를 설치한다. 따라서 다운로드 성공 경로와 fallback 빌드 경로를 둘 다 확인하는 것이 좋다.
+
+```powershell
+npm install
+npx oct help
+```
+
+확인 포인트:
+
+- `bin\oct.exe`가 생성되는지
+- 압축 해제 후 실행 파일을 정상 탐지하는지
+- 다운로드 실패 시 `npm run build` fallback이 동작하는지
+- PowerShell이 없는 환경이 아닌지
+
+### 6-4. 스케줄링 검증
+
+현재 Windows 구현은 `schtasks`로 `OneClickToolsUpdate` 작업을 만들고, 실행 명령은 `oct agent-update` 형태로 등록한다.
+
+```powershell
+.\oct.exe schedule
+.\oct.exe schedule enable --interval daily --hour 9
+.\oct.exe schedule
+schtasks /Query /TN OneClickToolsUpdate
+```
+
+주요 검증 항목:
+
+- `Schedule enabled (daily, 09:00)`가 출력되는지
+- `schtasks /Query`에서 `OneClickToolsUpdate` 작업이 보이는지
+- 등록된 작업의 실행 경로가 올바른지
+- `oct.exe` 경로에 공백이 있을 때도 작업 등록이 깨지지 않는지
+- 로그인 사용자 기준으로 작업이 실행 가능한지
+
+추가로 실제 실행 검증도 진행한다.
+
+```powershell
+schtasks /Run /TN OneClickToolsUpdate
+schtasks /Query /TN OneClickToolsUpdate /V /FO LIST
+```
+
+실행 검증 시 확인할 내용:
+
+- 작업이 수동 실행되는지
+- `agent-update`가 실행되면서 경로 문제나 권한 오류가 없는지
+- 필요 시 로그/출력으로 실패 원인을 추적할 수 있는지
+
+### 6-5. 경로 및 설정 파일 검증
+
+Windows에서는 특히 실행 파일 경로와 사용자 홈 경로를 재확인한다.
+
+- `C:\Users\<user>\...` 형태 절대경로
+- 공백 포함 경로 (예: `C:\Users\<user>\Desktop\oct test\`)
+- `%USERPROFILE%` 기준 설정/캐시 파일 생성 여부
+- PATH에 `oct.exe`가 없는 경우에도 `os.Executable()` fallback이 정상 동작하는지
+
+권장 확인 예시:
+
+```powershell
+where.exe oct
+.\oct.exe config list
+```
+
+### 6-6. 검증 결과 기록 형식
+
+Windows 검증 결과는 아래 형식으로 남긴다.
+
+- 성공 조건: 어떤 명령이 어떤 환경에서 통과했는지
+- 실패 로그: 에러 메시지 원문
+- 수정 필요: 경로 quoting, Task Scheduler 등록값, fallback build 등 후속 조치
+
 ## 주의사항
 
 - `agent-update`는 시스템의 `brew`, `npm`, `pnpm`, `yarn` 등을 실제로 호출하므로 의도치 않게 패키지가 업데이트될 수 있다.
