@@ -3,9 +3,9 @@ package update
 import (
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"runtime"
-	"strings"
 	"sync"
 	"time"
 
@@ -19,41 +19,28 @@ func Run() error {
 	agentOrder := viper.GetStringSlice("agent_order")
 
 	orderedTools := GetOrderedTools(agentOrder)
-	var toolsToUpdate []Tool
-
-	if len(enabledTools) == 0 {
-		toolsToUpdate = orderedTools
-	} else {
-		for _, et := range enabledTools {
-			for _, t := range orderedTools {
-				if strings.EqualFold(et, t.BinaryName) {
-					toolsToUpdate = append(toolsToUpdate, t)
-					break
-				}
-			}
-		}
-	}
+	toolsToUpdate := GetFilteredTools(enabledTools, orderedTools)
 
 	if len(toolsToUpdate) == 0 {
 		fmt.Println("No tools selected for update.")
 		return nil
 	}
 
-	// Run brew update once if any tool might use brew
-	if runtime.GOOS == "darwin" {
+	if runtime.GOOS == "darwin" && anyBrewManaged(toolsToUpdate) {
 		fmt.Println("Updating Homebrew...")
-		exec.Command("brew", "update").Run()
+		if out, err := exec.Command("brew", "update").CombinedOutput(); err != nil {
+			fmt.Fprintf(os.Stderr, "brew update failed: %v\n%s\n", err, out)
+		}
 	}
 
 	total := len(toolsToUpdate)
 	fmt.Printf("Updating %d tools...\n", total)
 
-	g, _ := errgroup.WithContext(context.Background())
+	g, ctx := errgroup.WithContext(context.Background())
 	var mu sync.Mutex
 	count := 0
 
 	for _, t := range toolsToUpdate {
-		t := t // capture range variable
 		g.Go(func() error {
 			manager := DetectManager(t)
 
@@ -61,10 +48,8 @@ func Run() error {
 			count++
 			current := count
 
-			// Match config icon layout: 3 lines, 1:1 aspect ratio.
 			lines := ui.InlineIconLines(t.LobeIcon, 6, 3)
 			if len(lines) >= 3 {
-				// Each tool block takes 3 lines. We lock the print to avoid interleaving.
 				fmt.Printf("      %s\n", lines[0])
 				fmt.Printf("[%d/%d] %s %s: Detecting manager... (using %s)\n", current, total, lines[1], t.Colorize(t.Name), manager)
 				fmt.Printf("      %s\n", lines[2])
@@ -75,7 +60,7 @@ func Run() error {
 
 			versionBefore := manager.GetInstalledVersion(t)
 			start := time.Now()
-			cmd := manager.InstallCommand(t)
+			cmd := manager.InstallCommandCtx(ctx, t)
 
 			output, err := cmd.CombinedOutput()
 			duration := time.Since(start).Round(time.Second)
@@ -109,4 +94,13 @@ func Run() error {
 		fmt.Println("\nAll tools updated successfully!")
 	}
 	return err
+}
+
+func anyBrewManaged(tools []Tool) bool {
+	for _, t := range tools {
+		if DetectManager(t) == Brew {
+			return true
+		}
+	}
+	return false
 }

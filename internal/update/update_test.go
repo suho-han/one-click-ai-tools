@@ -5,23 +5,34 @@ import (
 )
 
 func TestToolFiltering(t *testing.T) {
-	enabledTools := []string{"gemini"}
-	
-	var toolsToUpdate []Tool
-	for _, et := range enabledTools {
-		for _, tool := range Tools {
-			if et == tool.BinaryName {
-				toolsToUpdate = append(toolsToUpdate, tool)
-				break
-			}
-		}
-	}
+	ordered := GetOrderedTools(nil)
 
-	if len(toolsToUpdate) != 1 {
-		t.Errorf("Expected 1 tool to be enabled, got %d", len(toolsToUpdate))
+	result := GetFilteredTools([]string{"gemini"}, ordered)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 tool, got %d", len(result))
 	}
+	if result[0].BinaryName != "gemini" {
+		t.Fatalf("expected gemini, got %s", result[0].BinaryName)
+	}
+}
 
-	if toolsToUpdate[0].BinaryName != "gemini" {
-		t.Errorf("Expected gemini to be enabled, got %s", toolsToUpdate[0].BinaryName)
+func TestToolFilteringCaseInsensitive(t *testing.T) {
+	ordered := GetOrderedTools(nil)
+
+	result := GetFilteredTools([]string{"Gemini"}, ordered)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 tool for 'Gemini', got %d", len(result))
+	}
+	if result[0].BinaryName != "gemini" {
+		t.Fatalf("expected gemini, got %s", result[0].BinaryName)
+	}
+}
+
+func TestToolFilteringEmpty(t *testing.T) {
+	ordered := GetOrderedTools(nil)
+
+	result := GetFilteredTools([]string{}, ordered)
+	if len(result) != len(Tools) {
+		t.Fatalf("expected all %d tools when enabled is empty, got %d", len(Tools), len(result))
 	}
 }
