@@ -27,16 +27,17 @@ type UsageResult struct {
 func GetUsage() ([]UsageResult, error) {
 	order := viper.GetStringSlice("agent_order")
 	if len(order) == 0 {
-		order = []string{"gemini", "claude", "copilot", "codex"}
+		order = []string{"gemini", "claude", "cursor-agent", "copilot", "codex"}
 	}
 
 	orderedTools := update.GetOrderedTools(order)
 
 	fetchers := map[string]func() UsageResult{
-		"gemini":  FetchGeminiUsage,
-		"claude":  FetchClaudeUsage,
-		"copilot": FetchCopilotUsage,
-		"codex":   FetchCodexUsage,
+		"gemini":       FetchGeminiUsage,
+		"claude":       FetchClaudeUsage,
+		"cursor-agent": FetchCursorUsage,
+		"copilot":      FetchCopilotUsage,
+		"codex":        FetchCodexUsage,
 	}
 
 	results := make([]UsageResult, len(orderedTools))

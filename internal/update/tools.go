@@ -52,6 +52,15 @@ var Tools = []Tool{
 		HexColor:    "#D97757",
 	},
 	{
+		Name:        "Cursor",
+		Package:     "cursor-agent",
+		BinaryName:  "cursor-agent",
+		BrewPackage: "cursor-agent",
+		Icon:        "▣",
+		LobeIcon:    "",
+		HexColor:    "#111111",
+	},
+	{
 		Name:        "OpenAI Codex",
 		Package:     "@openai/codex",
 		BinaryName:  "codex",
@@ -98,7 +107,7 @@ func GetOrderedTools(order []string) []Tool {
 	}
 
 	// Optionally append remaining tools that were not in the order list
-	// For now, we only return what was requested to strictly follow the order, 
+	// For now, we only return what was requested to strictly follow the order,
 	// or everything if order is empty.
 	// But to be safe, let's append the rest if some were missing from the order list.
 	for _, t := range Tools {

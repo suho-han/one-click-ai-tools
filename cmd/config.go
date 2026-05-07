@@ -277,6 +277,8 @@ func setupTokens(tools []string) {
 			fmt.Println("✓ Gemini CLI:  Local authentication (OAuth)")
 		case "codex":
 			fmt.Println("✓ OpenAI Codex: Local session logs (~/.codex/sessions)")
+		case "cursor-agent":
+			fmt.Println("✓ Cursor: Remote usage is best-effort; local workspace storage fallback")
 		case "copilot":
 			isUpdate := false
 			existingToken := viper.GetString("github_api_token")

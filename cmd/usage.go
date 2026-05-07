@@ -92,6 +92,7 @@ var usageCmd = &cobra.Command{
 To properly fetch usage, ensure you are authenticated:
   - Gemini:  Run 'gemini' once and complete browser sign-in
   - Claude:  Run 'claude auth login' to log in via browser
+  - Cursor:  Remote usage is best-effort; set OCT_CURSOR_USAGE_URL for endpoint overrides
   - Copilot: Configure your token via 'oct config'
   - Codex:   Automatically reads from local session logs`,
 	Run: func(cmd *cobra.Command, args []string) {
@@ -110,7 +111,7 @@ To properly fetch usage, ensure you are authenticated:
 
 		order := viper.GetStringSlice("agent_order")
 		if len(order) == 0 {
-			order = []string{"gemini", "claude", "copilot", "codex"}
+			order = []string{"gemini", "claude", "cursor-agent", "copilot", "codex"}
 		}
 		orderedTools := update.GetOrderedTools(order)
 

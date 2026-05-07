@@ -8,14 +8,19 @@ import (
 type Manager string
 
 const (
-	Npm   Manager = "npm"
-	Brew  Manager = "brew"
-	Pnpm  Manager = "pnpm"
-	Yarn  Manager = "yarn"
-	Unknown Manager = "unknown"
+	Npm         Manager = "npm"
+	Brew        Manager = "brew"
+	Pnpm        Manager = "pnpm"
+	Yarn        Manager = "yarn"
+	CursorAgent Manager = "cursor-agent"
+	Unknown     Manager = "unknown"
 )
 
 func DetectManager(t Tool) Manager {
+	if t.BinaryName == "cursor-agent" {
+		return CursorAgent
+	}
+
 	// 1. Check brew
 	brewTarget := t.BinaryName
 	if t.BrewPackage != "" {
@@ -46,6 +51,8 @@ func DetectManager(t Tool) Manager {
 
 func (m Manager) InstallCommand(t Tool) *exec.Cmd {
 	switch m {
+	case CursorAgent:
+		return exec.Command(t.BinaryName, "update")
 	case Brew:
 		brewTarget := t.BinaryName
 		if t.BrewPackage != "" {
@@ -63,6 +70,9 @@ func (m Manager) InstallCommand(t Tool) *exec.Cmd {
 
 func (m Manager) GetInstalledVersion(t Tool) string {
 	switch m {
+	case CursorAgent:
+		out, _ := exec.Command(t.BinaryName, "--version").Output()
+		return strings.TrimSpace(string(out))
 	case Brew:
 		brewTarget := t.BinaryName
 		if t.BrewPackage != "" {
@@ -121,6 +131,10 @@ func (m Manager) GetInstalledVersion(t Tool) string {
 func (m Manager) IsNoChangeOutput(output string) bool {
 	out := strings.ToLower(output)
 	switch m {
+	case CursorAgent:
+		return strings.Contains(out, "already up to date") ||
+			strings.Contains(out, "already on the latest version") ||
+			strings.Contains(out, "latest version")
 	case Npm:
 		return strings.Contains(out, "up to date")
 	case Pnpm:
