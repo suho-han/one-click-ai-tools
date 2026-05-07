@@ -5,26 +5,49 @@ import (
 )
 
 func TestToolFiltering(t *testing.T) {
-	enabledTools := []string{"gemini", "cursor-agent"}
+	ordered := GetOrderedTools(nil)
 
-	var toolsToUpdate []Tool
-	for _, et := range enabledTools {
-		for _, tool := range Tools {
-			if et == tool.BinaryName {
-				toolsToUpdate = append(toolsToUpdate, tool)
-				break
-			}
-		}
+	result := GetFilteredTools([]string{"gemini"}, ordered)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 tool, got %d", len(result))
 	}
+	if result[0].BinaryName != "gemini" {
+		t.Fatalf("expected gemini, got %s", result[0].BinaryName)
+	}
+}
 
-	if len(toolsToUpdate) != 2 {
-		t.Errorf("Expected 2 tools to be enabled, got %d", len(toolsToUpdate))
-	}
+func TestToolFilteringCaseInsensitive(t *testing.T) {
+	ordered := GetOrderedTools(nil)
 
-	if toolsToUpdate[0].BinaryName != "gemini" {
-		t.Errorf("Expected gemini to be enabled, got %s", toolsToUpdate[0].BinaryName)
+	result := GetFilteredTools([]string{"Gemini"}, ordered)
+	if len(result) != 1 {
+		t.Fatalf("expected 1 tool for 'Gemini', got %d", len(result))
 	}
-	if toolsToUpdate[1].BinaryName != "cursor-agent" {
-		t.Errorf("Expected cursor-agent to be enabled, got %s", toolsToUpdate[1].BinaryName)
+	if result[0].BinaryName != "gemini" {
+		t.Fatalf("expected gemini, got %s", result[0].BinaryName)
+	}
+}
+
+func TestToolFilteringMultiple(t *testing.T) {
+	ordered := GetOrderedTools(nil)
+
+	result := GetFilteredTools([]string{"gemini", "cursor-agent"}, ordered)
+	if len(result) != 2 {
+		t.Fatalf("expected 2 tools, got %d", len(result))
+	}
+	if result[0].BinaryName != "gemini" {
+		t.Fatalf("expected gemini, got %s", result[0].BinaryName)
+	}
+	if result[1].BinaryName != "cursor-agent" {
+		t.Fatalf("expected cursor-agent, got %s", result[1].BinaryName)
+	}
+}
+
+func TestToolFilteringEmpty(t *testing.T) {
+	ordered := GetOrderedTools(nil)
+
+	result := GetFilteredTools([]string{}, ordered)
+	if len(result) != len(Tools) {
+		t.Fatalf("expected all %d tools when enabled is empty, got %d", len(Tools), len(result))
 	}
 }

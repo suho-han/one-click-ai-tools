@@ -1,6 +1,7 @@
 package update
 
 import (
+	"context"
 	"os/exec"
 	"strings"
 )
@@ -13,58 +14,56 @@ const (
 	Pnpm        Manager = "pnpm"
 	Yarn        Manager = "yarn"
 	CursorAgent Manager = "cursor-agent"
-	Unknown     Manager = "unknown"
 )
+
+var noChangePatterns = map[Manager][]string{
+	Npm:         {"up to date"},
+	Pnpm:        {"already up to date"},
+	Yarn:        {"already up to date"},
+	Brew:        {"already installed", "up-to-date"},
+	CursorAgent: {"already up to date", "already on the latest version", "latest version"},
+}
 
 func DetectManager(t Tool) Manager {
 	if t.BinaryName == "cursor-agent" {
 		return CursorAgent
 	}
 
-	// 1. Check brew
-	brewTarget := t.BinaryName
-	if t.BrewPackage != "" {
-		brewTarget = t.BrewPackage
-	}
-	if out, err := exec.Command("brew", "list", brewTarget).CombinedOutput(); err == nil && len(out) > 0 {
+	if out, err := exec.Command("brew", "list", t.BrewTarget()).CombinedOutput(); err == nil && len(out) > 0 {
 		return Brew
 	}
 
-	// 2. Check pnpm
 	if out, err := exec.Command("pnpm", "list", "-g", t.Package).CombinedOutput(); err == nil && strings.Contains(string(out), t.Package) {
 		return Pnpm
 	}
 
-	// 3. Check yarn
 	if out, err := exec.Command("yarn", "global", "list", t.Package).CombinedOutput(); err == nil && strings.Contains(string(out), t.Package) {
 		return Yarn
 	}
 
-	// 4. Check npm
 	if out, err := exec.Command("npm", "list", "-g", t.Package).CombinedOutput(); err == nil && strings.Contains(string(out), t.Package) {
 		return Npm
 	}
 
-	// 5. Default to npm
 	return Npm
 }
 
 func (m Manager) InstallCommand(t Tool) *exec.Cmd {
+	return m.InstallCommandCtx(context.Background(), t)
+}
+
+func (m Manager) InstallCommandCtx(ctx context.Context, t Tool) *exec.Cmd {
 	switch m {
 	case CursorAgent:
 		return exec.Command(t.BinaryName, "update")
 	case Brew:
-		brewTarget := t.BinaryName
-		if t.BrewPackage != "" {
-			brewTarget = t.BrewPackage
-		}
-		return exec.Command("brew", "upgrade", brewTarget)
+		return exec.CommandContext(ctx, "brew", "upgrade", t.BrewTarget())
 	case Pnpm:
-		return exec.Command("pnpm", "add", "-g", t.Package)
+		return exec.CommandContext(ctx, "pnpm", "add", "-g", t.Package)
 	case Yarn:
-		return exec.Command("yarn", "global", "add", t.Package)
+		return exec.CommandContext(ctx, "yarn", "global", "add", t.Package)
 	default:
-		return exec.Command("npm", "install", "-g", t.Package)
+		return exec.CommandContext(ctx, "npm", "install", "-g", t.Package)
 	}
 }
 
@@ -74,12 +73,8 @@ func (m Manager) GetInstalledVersion(t Tool) string {
 		out, _ := exec.Command(t.BinaryName, "--version").Output()
 		return strings.TrimSpace(string(out))
 	case Brew:
-		brewTarget := t.BinaryName
-		if t.BrewPackage != "" {
-			brewTarget = t.BrewPackage
-		}
 		// Ignore exit code: brew list exits non-zero when package is absent
-		out, _ := exec.Command("brew", "list", "--versions", brewTarget).Output()
+		out, _ := exec.Command("brew", "list", "--versions", t.BrewTarget()).Output()
 		parts := strings.Fields(strings.TrimSpace(string(out)))
 		if len(parts) >= 2 {
 			return parts[1]
@@ -100,28 +95,23 @@ func (m Manager) GetInstalledVersion(t Tool) string {
 	case Yarn:
 		// Ignore exit code: yarn list may exit non-zero for missing packages
 		out, _ := exec.Command("yarn", "global", "list", "--pattern", t.Package).Output()
-		for _, line := range strings.Split(string(out), "\n") {
-			if strings.Contains(line, t.Package+"@") {
-				idx := strings.LastIndex(line, "@")
-				if idx >= 0 {
-					return strings.TrimSpace(line[idx+1:])
-				}
-			}
-		}
-		return ""
+		return parseVersionFromAtSuffix(string(out), t.Package)
 	default: // npm
 		// Ignore exit code: npm list exits non-zero on peer-dep issues even when package is present
 		out, _ := exec.Command("npm", "list", "-g", t.Package, "--depth=0").Output()
-		for _, line := range strings.Split(string(out), "\n") {
-			if strings.Contains(line, t.Package+"@") {
-				idx := strings.LastIndex(line, "@")
-				if idx >= 0 {
-					return strings.TrimSpace(line[idx+1:])
-				}
+		return parseVersionFromAtSuffix(string(out), t.Package)
+	}
+}
+
+func parseVersionFromAtSuffix(output, pkg string) string {
+	for _, line := range strings.Split(output, "\n") {
+		if strings.Contains(line, pkg+"@") {
+			if idx := strings.LastIndex(line, "@"); idx >= 0 {
+				return strings.TrimSpace(line[idx+1:])
 			}
 		}
-		return ""
 	}
+	return ""
 }
 
 // IsNoChangeOutput returns true when the install command's output indicates
@@ -129,20 +119,15 @@ func (m Manager) GetInstalledVersion(t Tool) string {
 // version detection is unavailable, and to handle brew which exits non-zero
 // when nothing to upgrade).
 func (m Manager) IsNoChangeOutput(output string) bool {
+	patterns, ok := noChangePatterns[m]
+	if !ok {
+		return false
+	}
 	out := strings.ToLower(output)
-	switch m {
-	case CursorAgent:
-		return strings.Contains(out, "already up to date") ||
-			strings.Contains(out, "already on the latest version") ||
-			strings.Contains(out, "latest version")
-	case Npm:
-		return strings.Contains(out, "up to date")
-	case Pnpm:
-		return strings.Contains(out, "already up to date")
-	case Yarn:
-		return strings.Contains(out, "already up to date")
-	case Brew:
-		return strings.Contains(out, "already installed") || strings.Contains(out, "up-to-date")
+	for _, p := range patterns {
+		if strings.Contains(out, p) {
+			return true
+		}
 	}
 	return false
 }
