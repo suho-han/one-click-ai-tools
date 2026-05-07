@@ -60,3 +60,75 @@ func (m Manager) InstallCommand(t Tool) *exec.Cmd {
 		return exec.Command("npm", "install", "-g", t.Package)
 	}
 }
+
+func (m Manager) GetInstalledVersion(t Tool) string {
+	switch m {
+	case Brew:
+		brewTarget := t.BinaryName
+		if t.BrewPackage != "" {
+			brewTarget = t.BrewPackage
+		}
+		// Ignore exit code: brew list exits non-zero when package is absent
+		out, _ := exec.Command("brew", "list", "--versions", brewTarget).Output()
+		parts := strings.Fields(strings.TrimSpace(string(out)))
+		if len(parts) >= 2 {
+			return parts[1]
+		}
+		return ""
+	case Pnpm:
+		// Ignore exit code: pnpm list may exit non-zero due to unrelated warnings
+		out, _ := exec.Command("pnpm", "list", "-g", t.Package, "--depth=0").Output()
+		for _, line := range strings.Split(string(out), "\n") {
+			if strings.Contains(line, t.Package) {
+				parts := strings.Fields(line)
+				if len(parts) >= 2 {
+					return parts[len(parts)-1]
+				}
+			}
+		}
+		return ""
+	case Yarn:
+		// Ignore exit code: yarn list may exit non-zero for missing packages
+		out, _ := exec.Command("yarn", "global", "list", "--pattern", t.Package).Output()
+		for _, line := range strings.Split(string(out), "\n") {
+			if strings.Contains(line, t.Package+"@") {
+				idx := strings.LastIndex(line, "@")
+				if idx >= 0 {
+					return strings.TrimSpace(line[idx+1:])
+				}
+			}
+		}
+		return ""
+	default: // npm
+		// Ignore exit code: npm list exits non-zero on peer-dep issues even when package is present
+		out, _ := exec.Command("npm", "list", "-g", t.Package, "--depth=0").Output()
+		for _, line := range strings.Split(string(out), "\n") {
+			if strings.Contains(line, t.Package+"@") {
+				idx := strings.LastIndex(line, "@")
+				if idx >= 0 {
+					return strings.TrimSpace(line[idx+1:])
+				}
+			}
+		}
+		return ""
+	}
+}
+
+// IsNoChangeOutput returns true when the install command's output indicates
+// the package was already at the latest version (used as a fallback when
+// version detection is unavailable, and to handle brew which exits non-zero
+// when nothing to upgrade).
+func (m Manager) IsNoChangeOutput(output string) bool {
+	out := strings.ToLower(output)
+	switch m {
+	case Npm:
+		return strings.Contains(out, "up to date")
+	case Pnpm:
+		return strings.Contains(out, "already up to date")
+	case Yarn:
+		return strings.Contains(out, "already up to date")
+	case Brew:
+		return strings.Contains(out, "already installed") || strings.Contains(out, "up-to-date")
+	}
+	return false
+}

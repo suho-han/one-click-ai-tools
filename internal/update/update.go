@@ -73,20 +73,33 @@ func Run() error {
 			}
 			mu.Unlock()
 
+			versionBefore := manager.GetInstalledVersion(t)
 			start := time.Now()
 			cmd := manager.InstallCommand(t)
 
 			output, err := cmd.CombinedOutput()
 			duration := time.Since(start).Round(time.Second)
+			versionAfter := manager.GetInstalledVersion(t)
 
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
+				// brew upgrade exits non-zero when nothing to upgrade; treat that as up to date.
+				if manager.IsNoChangeOutput(string(output)) {
+					fmt.Printf("[%s] ✓ Already up to date in %v\n", t.Colorize(t.Name), duration)
+					return nil
+				}
 				fmt.Printf("[%s] ✗ Failed after %v: %v\nOutput: %s\n", t.Colorize(t.Name), duration, err, string(output))
 				return err
 			}
 
-			fmt.Printf("[%s] ✓ Updated successfully in %v\n", t.Colorize(t.Name), duration)
+			alreadyUpToDate := (versionBefore != "" && versionBefore == versionAfter) ||
+				manager.IsNoChangeOutput(string(output))
+			if alreadyUpToDate {
+				fmt.Printf("[%s] ✓ Already up to date in %v\n", t.Colorize(t.Name), duration)
+			} else {
+				fmt.Printf("[%s] ✓ Updated successfully in %v\n", t.Colorize(t.Name), duration)
+			}
 			return nil
 		})
 	}
