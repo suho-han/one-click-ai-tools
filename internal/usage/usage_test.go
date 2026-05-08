@@ -1,31 +1,89 @@
 package usage
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 )
 
-func TestPrintJSON(t *testing.T) {
+func TestPrintJSON_SummarySchemaAndCounts(t *testing.T) {
 	results := []UsageResult{
-		{Provider: "test", Used: "10"},
+		{Provider: "alpha", Status: "ok", Used: "10"},
+		{Provider: "beta", Status: "ok", Used: "n/a"},                          // warn: no numeric usage
+		{Provider: "cursor", Status: "ok", Used: "0", Message: "No local logs found"}, // warn: zero with not-found signal
+		{Provider: "delta", Status: "warn", Used: "0", Message: "Partial data"},
+		{Provider: "gamma", Status: "error", Used: "n/a"},
 	}
-	// Just ensure it doesn't panic
-	PrintJSON(results)
+
+	output := captureStdout(t, func() {
+		if err := PrintJSON(results); err != nil {
+			t.Fatalf("PrintJSON returned error: %v", err)
+		}
+	})
+
+	var payload struct {
+		Summary struct {
+			Total int `json:"total"`
+			OK    int `json:"ok"`
+			Warn  int `json:"warn"`
+			Error int `json:"error"`
+		} `json:"summary"`
+		Results []UsageResult `json:"results"`
+	}
+
+	if err := json.Unmarshal([]byte(output), &payload); err != nil {
+		t.Fatalf("failed to parse PrintJSON output: %v\noutput=%s", err, output)
+	}
+
+	if payload.Summary.Total != 5 || payload.Summary.OK != 1 || payload.Summary.Warn != 3 || payload.Summary.Error != 1 {
+		t.Fatalf("unexpected summary counts: %+v", payload.Summary)
+	}
+	if len(payload.Results) != 5 {
+		t.Fatalf("expected 5 results, got %d", len(payload.Results))
+	}
+	if payload.Results[0].Provider != "alpha" || payload.Results[1].Provider != "beta" || payload.Results[2].Provider != "cursor" || payload.Results[3].Provider != "delta" || payload.Results[4].Provider != "gamma" {
+		t.Fatalf("result order changed unexpectedly: %+v", payload.Results)
+	}
+}
+
+func TestClassifySummaryStatus(t *testing.T) {
+	tests := []struct {
+		name string
+		in   UsageResult
+		want string
+	}{
+		{name: "ok numeric usage", in: UsageResult{Status: "ok", Used: "12"}, want: "ok"},
+		{name: "ok but na usage", in: UsageResult{Status: "ok", Used: "n/a"}, want: "warn"},
+		{name: "ok but zero with no-data message", in: UsageResult{Status: "ok", Used: "0", Message: "No local logs found"}, want: "warn"},
+		{name: "ok zero real value", in: UsageResult{Status: "ok", Used: "0", Message: "usage successfully fetched"}, want: "ok"},
+		{name: "explicit warn", in: UsageResult{Status: "warn", Used: "0"}, want: "warn"},
+		{name: "error", in: UsageResult{Status: "error", Used: "0"}, want: "error"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := classifySummaryStatus(tc.in)
+			if got != tc.want {
+				t.Fatalf("classifySummaryStatus(%+v) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
 }
 
 func TestUsageParsingLogic(t *testing.T) {
-	// Test the JSON structure we expect from APIs
 	jsonData := `{"five_hour": {"utilization": 42.5}}`
-	
+
 	var data struct {
 		FiveHour struct {
 			Utilization float64 `json:"utilization"`
 		} `json:"five_hour"`
 	}
-	
+
 	err := json.Unmarshal([]byte(jsonData), &data)
 	if err != nil {
 		t.Fatalf("Unmarshal failed: %v", err)
@@ -61,4 +119,26 @@ func TestMockServer(t *testing.T) {
 	if data.FiveHour.Utilization != 42.5 {
 		t.Errorf("Expected 42.5, got %f", data.FiveHour.Utilization)
 	}
+}
+
+func captureStdout(t *testing.T, fn func()) string {
+	t.Helper()
+	old := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("pipe failed: %v", err)
+	}
+	os.Stdout = w
+
+	fn()
+
+	_ = w.Close()
+	os.Stdout = old
+
+	var buf bytes.Buffer
+	if _, err := buf.ReadFrom(r); err != nil {
+		t.Fatalf("read pipe failed: %v", err)
+	}
+	_ = r.Close()
+	return strings.TrimSpace(buf.String())
 }

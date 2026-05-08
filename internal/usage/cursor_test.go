@@ -40,6 +40,9 @@ func TestFetchCursorUsageRemote(t *testing.T) {
 	if result.Buckets["5h"] != "42.5" {
 		t.Fatalf("expected 5h bucket, got %#v", result.Buckets)
 	}
+	if result.Buckets["model:gpt-4.1"] != "12.0" {
+		t.Fatalf("expected normalized model bucket, got %#v", result.Buckets)
+	}
 	if !strings.Contains(result.SourceDetail, "gpt-4.1=12.0") {
 		t.Fatalf("expected model detail, got %q", result.SourceDetail)
 	}
@@ -66,10 +69,36 @@ func TestFetchCursorUsageLocalFallback(t *testing.T) {
 	if result.Source != "local" {
 		t.Fatalf("expected local source, got %q", result.Source)
 	}
+	if result.Status != "warn" {
+		t.Fatalf("expected warn status when remote endpoint is missing, got %q", result.Status)
+	}
 	if result.Used != "1" {
 		t.Fatalf("expected local session estimate of 1, got %q", result.Used)
 	}
+	if !strings.Contains(result.Message, "reason=remote_unconfigured") {
+		t.Fatalf("expected standardized reason, got %q", result.Message)
+	}
 	if !strings.Contains(result.Message, "workspace storage") {
 		t.Fatalf("expected workspace storage message, got %q", result.Message)
+	}
+}
+
+func TestFetchCursorUsageRemoteFailureFallsBackWithReason(t *testing.T) {
+	prevEndpoint := os.Getenv("OCT_CURSOR_USAGE_URL")
+	t.Cleanup(func() {
+		_ = os.Setenv("OCT_CURSOR_USAGE_URL", prevEndpoint)
+	})
+
+	_ = os.Setenv("OCT_CURSOR_USAGE_URL", "http://127.0.0.1:1/unreachable")
+	result := FetchCursorUsage()
+
+	if result.Source != "local" {
+		t.Fatalf("expected local fallback source, got %q", result.Source)
+	}
+	if result.Status != "warn" {
+		t.Fatalf("expected warn on remote failure, got %q", result.Status)
+	}
+	if !strings.Contains(result.Message, "reason=remote_request_failed") {
+		t.Fatalf("expected standardized failure reason, got %q", result.Message)
 	}
 }

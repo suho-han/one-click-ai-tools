@@ -2,11 +2,13 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"github.com/suho-han/one-click-tools/internal/notify"
 	"github.com/suho-han/one-click-tools/internal/update"
 	"github.com/suho-han/one-click-tools/internal/usage"
 )
@@ -68,6 +70,24 @@ func (m usageModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 type spinnerMsg struct{}
 type switchProviderMsg struct{}
 
+func shouldAutoJSONFallback(jsonMode bool, isTTY bool) bool {
+	return !jsonMode && !isTTY
+}
+
+func maybeSendUsageAlerts(results []usage.UsageResult, force bool) {
+	enabled := force || viper.GetBool("usage_alert_enabled")
+	if !enabled {
+		return
+	}
+	cfg := notify.UsageAlertConfig{
+		Enabled:         true,
+		ThresholdPct:    viper.GetFloat64("usage_alert_threshold_percent"),
+		CooldownMinutes: viper.GetInt("usage_alert_cooldown_minutes"),
+		StatePath:       viper.GetString("usage_alert_state_path"),
+	}
+	_ = notify.MaybeSendUsageAlerts(results, cfg, time.Now())
+}
+
 func (m usageModel) View() string {
 	if m.done {
 		return ""
@@ -94,24 +114,37 @@ To properly fetch usage, ensure you are authenticated:
   - Claude:  Run 'claude auth login' to log in via browser
   - Cursor:  Remote usage is best-effort; set OCT_CURSOR_USAGE_URL for endpoint overrides
   - Copilot: Configure your token via 'oct config'
+  - OpenCode: Reads usage from local session logs first (no API token)
   - Codex:   Automatically reads from local session logs`,
 	Run: func(cmd *cobra.Command, args []string) {
 		jsonMode, _ := cmd.Flags().GetBool("json")
+		notifyMode, _ := cmd.Flags().GetBool("notify")
+
+		isTTY := false
+		if fi, err := os.Stdout.Stat(); err == nil {
+			isTTY = (fi.Mode() & os.ModeCharDevice) != 0
+		}
+
+		// Auto-fallback for non-TTY environments (CI, pipes, cron, tool runners)
+		if shouldAutoJSONFallback(jsonMode, isTTY) {
+			jsonMode = true
+			fmt.Fprintln(os.Stderr, "[oct] non-TTY detected -> switching to --json (pretty output)")
+		}
 
 		if jsonMode {
-			// For JSON, we might not want a spinner if it goes to stdout/pipe
 			results, err := usage.GetUsage()
 			if err != nil {
 				fmt.Printf("Error fetching usage: %v\n", err)
 				return
 			}
-			usage.PrintJSON(results)
+			maybeSendUsageAlerts(results, notifyMode)
+			_ = usage.PrintJSON(results)
 			return
 		}
 
 		order := viper.GetStringSlice("agent_order")
 		if len(order) == 0 {
-			order = []string{"gemini", "claude", "cursor-agent", "copilot", "codex"}
+			order = []string{"gemini", "claude", "cursor-agent", "copilot", "opencode", "codex"}
 		}
 		orderedTools := update.GetOrderedTools(order)
 
@@ -139,6 +172,7 @@ To properly fetch usage, ensure you are authenticated:
 		}
 
 		if len(fm.results) > 0 {
+			maybeSendUsageAlerts(fm.results, notifyMode)
 			usage.PrintTable(fm.results)
 			fmt.Println("\nTip: Run 'oct usage --help' for authentication instructions.")
 		}
@@ -148,4 +182,5 @@ To properly fetch usage, ensure you are authenticated:
 func init() {
 	rootCmd.AddCommand(usageCmd)
 	usageCmd.Flags().Bool("json", false, "Output in JSON format")
+	usageCmd.Flags().Bool("notify", false, "Send usage alerts based on threshold/cooldown rules")
 }

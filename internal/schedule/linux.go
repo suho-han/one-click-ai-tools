@@ -19,12 +19,7 @@ func (l *Linux) Enable(interval string, hour int) error {
 	logPath := filepathJoin(home, ".oct", "logs", "schedule.log")
 	os.MkdirAll(filepathJoin(home, ".oct", "logs"), 0755)
 
-	var cronExpr string
-	if interval == "weekly" {
-		cronExpr = fmt.Sprintf("0 %d * * 1", hour)
-	} else {
-		cronExpr = fmt.Sprintf("0 %d * * *", hour)
-	}
+	cronExpr := cronExpression(interval, hour)
 
 	cronEntry := fmt.Sprintf("%s %s agent-update >> %s 2>&1", cronExpr, binPath, logPath)
 
@@ -98,4 +93,11 @@ func (l *Linux) Status() (string, error) {
 
 func filepathJoin(elem ...string) string {
 	return strings.Join(elem, string(os.PathSeparator))
+}
+
+func cronExpression(interval string, hour int) string {
+	if interval == "weekly" {
+		return fmt.Sprintf("0 %d * * 1", hour)
+	}
+	return fmt.Sprintf("0 %d * * *", hour)
 }

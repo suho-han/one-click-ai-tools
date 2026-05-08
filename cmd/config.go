@@ -275,6 +275,8 @@ func setupTokens(tools []string) {
 		case "gemini":
 			needsGeminiAuth = true
 			fmt.Println("✓ Gemini CLI:  Local authentication (OAuth)")
+		case "opencode":
+			fmt.Println("✓ OpenCode: Local session logs (~/.opencode/sessions or ~/.config/opencode/sessions)")
 		case "codex":
 			fmt.Println("✓ OpenAI Codex: Local session logs (~/.codex/sessions)")
 		case "cursor-agent":
