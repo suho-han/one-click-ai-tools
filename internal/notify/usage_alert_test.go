@@ -62,7 +62,7 @@ func TestQuietHours(t *testing.T) {
 
 func TestCooldownStatePersistence(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "state.json")
-	st := alertState{LastSent: map[string]time.Time{"claude:current": time.Now()}, LastThreshold: map[string]float64{"claude:current": 80}}
+	st := alertState{LastSent: map[string]time.Time{"claude:current": time.Now()}, LastThreshold: map[string]float64{"claude:current": 80}, SnoozedUntil: map[string]time.Time{"global": time.Now().Add(1 * time.Hour)}}
 	if err := saveState(statePath, st); err != nil {
 		t.Fatalf("saveState failed: %v", err)
 	}
@@ -136,5 +136,44 @@ func TestMaybeSendUsageAlertsWithQuietHoursAndEscalation(t *testing.T) {
 	}
 	if notifyCount != baseCount+1 {
 		t.Fatalf("expected escalation notification within cooldown")
+	}
+}
+
+func TestSnoozeSuppressionAndCriticalOverride(t *testing.T) {
+	origNotify := notifyFn
+	defer func() { notifyFn = origNotify }()
+	notifyCount := 0
+	notifyFn = func(title, message string) error {
+		notifyCount++
+		return nil
+	}
+
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	cfg := UsageAlertConfig{
+		Enabled:         true,
+		ThresholdPct:    80,
+		CooldownMinutes: 120,
+		StatePath:       statePath,
+		CriticalPct:     98,
+	}
+	now := time.Now()
+	if err := SetSnooze(statePath, "", "", now.Add(1*time.Hour)); err != nil {
+		t.Fatalf("SetSnooze failed: %v", err)
+	}
+
+	belowCrit := []usage.UsageResult{{Provider: "codex", Unit: "percent", Used: "96", Buckets: map[string]string{"5h": "96"}}}
+	if err := MaybeSendUsageAlerts(belowCrit, cfg, now); err != nil {
+		t.Fatalf("MaybeSendUsageAlerts failed: %v", err)
+	}
+	if notifyCount != 0 {
+		t.Fatalf("expected snooze suppression below critical")
+	}
+
+	critical := []usage.UsageResult{{Provider: "codex", Unit: "percent", Used: "99", Buckets: map[string]string{"5h": "99"}}}
+	if err := MaybeSendUsageAlerts(critical, cfg, now.Add(1*time.Minute)); err != nil {
+		t.Fatalf("MaybeSendUsageAlerts failed: %v", err)
+	}
+	if notifyCount == 0 {
+		t.Fatalf("expected critical override notification")
 	}
 }

@@ -13,13 +13,22 @@ oct monitor --interval 5s
 
 # 1회만 실행
 oct monitor --once
+
+# 사용량 높은 순 상위 5개만 간소 출력
+oct monitor --once --sort-by used --desc --top 5 --compact
 ```
 
 ## 출력 내용
 
-- provider별 5h / 7d / used / status
+- provider별 5h / 7d / used / severity(OK/WARN/CRIT) / status
 - 갱신 시각
 - 메시지 요약
+
+정렬 옵션:
+- `--sort-by provider|used|5h|7d`
+- `--desc`
+- `--top N`
+- `--compact`
 
 ## 상태 스냅샷
 

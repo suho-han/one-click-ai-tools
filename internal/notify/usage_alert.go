@@ -25,11 +25,13 @@ type UsageAlertConfig struct {
 	QuietHours        string // HH:MM-HH:MM
 	GlobalThresholds  map[string]float64
 	ProviderThreshold map[string]map[string]float64 // provider -> window -> threshold
+	CriticalPct       float64
 }
 
 type alertState struct {
 	LastSent      map[string]time.Time `json:"last_sent"`
 	LastThreshold map[string]float64   `json:"last_threshold,omitempty"`
+	SnoozedUntil  map[string]time.Time `json:"snoozed_until,omitempty"`
 }
 
 type alertHit struct {
@@ -61,12 +63,18 @@ func MaybeSendUsageAlerts(results []usage.UsageResult, cfg UsageAlertConfig, now
 	if st.LastThreshold == nil {
 		st.LastThreshold = map[string]float64{}
 	}
+	if st.SnoozedUntil == nil {
+		st.SnoozedUntil = map[string]time.Time{}
+	}
 
 	cooldown := time.Duration(cfg.CooldownMinutes) * time.Minute
 	var sentAny bool
 	for _, r := range results {
 		hits := overThresholdKeys(r, cfg)
 		for _, h := range hits {
+			if isSnoozed(st, r.Provider, h.Window, now) && h.Value < cfg.CriticalPct {
+				continue
+			}
 			key := strings.ToLower(r.Provider) + ":" + h.Window
 			lastSent, hasSent := st.LastSent[key]
 			lastThreshold := st.LastThreshold[key]
@@ -115,6 +123,9 @@ func normalizeConfig(cfg UsageAlertConfig) UsageAlertConfig {
 	}
 	if cfg.ProviderThreshold == nil {
 		cfg.ProviderThreshold = map[string]map[string]float64{}
+	}
+	if cfg.CriticalPct <= 0 {
+		cfg.CriticalPct = 98
 	}
 	return cfg
 }
@@ -169,6 +180,60 @@ func thresholdFor(cfg UsageAlertConfig, provider, window string) float64 {
 	return cfg.ThresholdPct
 }
 
+func snoozeKey(provider, window string) string {
+	provider = strings.ToLower(strings.TrimSpace(provider))
+	window = strings.ToLower(strings.TrimSpace(window))
+	if provider == "" && window == "" {
+		return "global"
+	}
+	if provider != "" && window == "" {
+		return "provider:" + provider
+	}
+	if provider == "" {
+		return "window:" + window
+	}
+	return "provider:" + provider + ":window:" + window
+}
+
+func isSnoozed(st alertState, provider, window string, now time.Time) bool {
+	keys := []string{snoozeKey(provider, window), snoozeKey(provider, ""), snoozeKey("", window), snoozeKey("", "")}
+	for _, k := range keys {
+		if until, ok := st.SnoozedUntil[k]; ok && now.Before(until) {
+			return true
+		}
+	}
+	return false
+}
+
+func SetSnooze(path, provider, window string, until time.Time) error {
+	st, _ := loadState(path)
+	if st.SnoozedUntil == nil {
+		st.SnoozedUntil = map[string]time.Time{}
+	}
+	st.SnoozedUntil[snoozeKey(provider, window)] = until
+	return saveState(path, st)
+}
+
+func ClearSnooze(path, provider, window string) error {
+	st, _ := loadState(path)
+	if st.SnoozedUntil == nil {
+		return nil
+	}
+	delete(st.SnoozedUntil, snoozeKey(provider, window))
+	return saveState(path, st)
+}
+
+func GetSnooze(path string) (map[string]time.Time, error) {
+	st, err := loadState(path)
+	if err != nil {
+		return map[string]time.Time{}, nil
+	}
+	if st.SnoozedUntil == nil {
+		return map[string]time.Time{}, nil
+	}
+	return st.SnoozedUntil, nil
+}
+
 func inQuietHours(now time.Time, quiet string) bool {
 	quiet = strings.TrimSpace(quiet)
 	if quiet == "" {
@@ -218,17 +283,20 @@ func parsePercent(s string) (float64, bool) {
 func loadState(path string) (alertState, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return alertState{LastSent: map[string]time.Time{}, LastThreshold: map[string]float64{}}, err
+		return alertState{LastSent: map[string]time.Time{}, LastThreshold: map[string]float64{}, SnoozedUntil: map[string]time.Time{}}, err
 	}
 	var st alertState
 	if err := json.Unmarshal(b, &st); err != nil {
-		return alertState{LastSent: map[string]time.Time{}, LastThreshold: map[string]float64{}}, err
+		return alertState{LastSent: map[string]time.Time{}, LastThreshold: map[string]float64{}, SnoozedUntil: map[string]time.Time{}}, err
 	}
 	if st.LastSent == nil {
 		st.LastSent = map[string]time.Time{}
 	}
 	if st.LastThreshold == nil {
 		st.LastThreshold = map[string]float64{}
+	}
+	if st.SnoozedUntil == nil {
+		st.SnoozedUntil = map[string]time.Time{}
 	}
 	return st, nil
 }
