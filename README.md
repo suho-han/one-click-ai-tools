@@ -55,7 +55,7 @@ For detailed guides, please refer to the `CONTEXT/` directory:
   - **Ubuntu/Linux**: Node.js/npm
   - **Windows**: Node.js/npm (Experimental)
 - **Developers (build/test from source)**
-  - **Go >= 1.22**
+  - **Go >= 1.25**
 
 ## License
 
