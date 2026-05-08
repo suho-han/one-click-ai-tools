@@ -43,36 +43,8 @@ var alertConfigSetCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		key := strings.TrimSpace(args[0])
 		val := strings.TrimSpace(args[1])
-		switch key {
-		case "enabled":
-			viper.Set("usage_alert_enabled", val == "1" || strings.EqualFold(val, "true") || strings.EqualFold(val, "yes"))
-		case "cooldown_minutes":
-			n, err := strconv.Atoi(val)
-			if err != nil {
-				fmt.Printf("invalid cooldown_minutes: %v\n", err)
-				return
-			}
-			viper.Set("usage_alert_cooldown_minutes", n)
-		case "threshold_percent":
-			f, err := strconv.ParseFloat(val, 64)
-			if err != nil {
-				fmt.Printf("invalid threshold_percent: %v\n", err)
-				return
-			}
-			viper.Set("usage_alert_threshold_percent", f)
-		case "critical_percent":
-			f, err := strconv.ParseFloat(val, 64)
-			if err != nil {
-				fmt.Printf("invalid critical_percent: %v\n", err)
-				return
-			}
-			viper.Set("usage_alert_critical_percent", f)
-		case "quiet_hours":
-			viper.Set("usage_alert_quiet_hours", val)
-		case "timezone":
-			viper.Set("usage_alert_timezone", val)
-		default:
-			fmt.Println("supported keys: enabled, cooldown_minutes, threshold_percent, critical_percent, quiet_hours, timezone")
+		if err := setAlertConfigValue(key, val); err != nil {
+			fmt.Println(err.Error())
 			return
 		}
 		if err := persistViperConfig(); err != nil {
@@ -201,6 +173,79 @@ var alertSnoozeClearCmd = &cobra.Command{
 		}
 		fmt.Printf("snooze cleared key=%s\n", snoozeDisplayKey(provider, window))
 	},
+}
+
+func setAlertConfigValue(key, val string) error {
+	key = strings.TrimSpace(strings.ToLower(key))
+	val = strings.TrimSpace(val)
+	switch key {
+	case "enabled":
+		viper.Set("usage_alert_enabled", val == "1" || strings.EqualFold(val, "true") || strings.EqualFold(val, "yes"))
+		return nil
+	case "cooldown_minutes":
+		n, err := strconv.Atoi(val)
+		if err != nil {
+			return fmt.Errorf("invalid cooldown_minutes: %v", err)
+		}
+		viper.Set("usage_alert_cooldown_minutes", n)
+		return nil
+	case "threshold_percent":
+		f, err := strconv.ParseFloat(val, 64)
+		if err != nil {
+			return fmt.Errorf("invalid threshold_percent: %v", err)
+		}
+		viper.Set("usage_alert_threshold_percent", f)
+		return nil
+	case "critical_percent":
+		f, err := strconv.ParseFloat(val, 64)
+		if err != nil {
+			return fmt.Errorf("invalid critical_percent: %v", err)
+		}
+		viper.Set("usage_alert_critical_percent", f)
+		return nil
+	case "quiet_hours":
+		viper.Set("usage_alert_quiet_hours", val)
+		return nil
+	case "timezone":
+		viper.Set("usage_alert_timezone", val)
+		return nil
+	}
+
+	if strings.HasPrefix(key, "threshold.") {
+		window := strings.TrimSpace(strings.TrimPrefix(key, "threshold."))
+		if window == "" {
+			return fmt.Errorf("invalid key: threshold.<window> expected")
+		}
+		f, err := strconv.ParseFloat(val, 64)
+		if err != nil {
+			return fmt.Errorf("invalid threshold value: %v", err)
+		}
+		viper.Set("usage_alert_thresholds."+strings.ToLower(window), f)
+		return nil
+	}
+
+	if strings.HasPrefix(key, "provider.") {
+		rest := strings.TrimPrefix(key, "provider.")
+		parts := strings.Split(rest, ".")
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid key: provider.<name>.<window|default> expected")
+		}
+		provider := strings.TrimSpace(parts[0])
+		window := strings.TrimSpace(parts[1])
+		if provider == "" || window == "" {
+			return fmt.Errorf("invalid key: provider.<name>.<window|default> expected")
+		}
+		f, err := strconv.ParseFloat(val, 64)
+		if err != nil {
+			return fmt.Errorf("invalid provider threshold value: %v", err)
+		}
+		provider = strings.ToLower(provider)
+		window = strings.ToLower(window)
+		viper.Set("usage_alert_provider_thresholds."+provider+"."+window, f)
+		return nil
+	}
+
+	return fmt.Errorf("supported keys: enabled, cooldown_minutes, threshold_percent, critical_percent, quiet_hours, timezone, threshold.<window>, provider.<name>.<window|default>")
 }
 
 func getAlertStatePath() string {
