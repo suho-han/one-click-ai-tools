@@ -80,10 +80,14 @@ func maybeSendUsageAlerts(results []usage.UsageResult, force bool) {
 		return
 	}
 	cfg := notify.UsageAlertConfig{
-		Enabled:         true,
-		ThresholdPct:    viper.GetFloat64("usage_alert_threshold_percent"),
-		CooldownMinutes: viper.GetInt("usage_alert_cooldown_minutes"),
-		StatePath:       viper.GetString("usage_alert_state_path"),
+		Enabled:           true,
+		ThresholdPct:      viper.GetFloat64("usage_alert_threshold_percent"),
+		CooldownMinutes:   viper.GetInt("usage_alert_cooldown_minutes"),
+		StatePath:         viper.GetString("usage_alert_state_path"),
+		QuietHours:        viper.GetString("usage_alert_quiet_hours"),
+		Timezone:          viper.GetString("usage_alert_timezone"),
+		GlobalThresholds:  parseThresholdMap(viper.GetStringMap("usage_alert_thresholds")),
+		ProviderThreshold: parseProviderThresholdMap(viper.GetStringMap("usage_alert_provider_thresholds")),
 	}
 	_ = notify.MaybeSendUsageAlerts(results, cfg, time.Now())
 }

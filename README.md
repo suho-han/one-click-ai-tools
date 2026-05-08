@@ -47,6 +47,8 @@ For detailed guides, please refer to the `CONTEXT/` directory:
 - [Project Plan & Status](CONTEXT/PLAN.md)
 - [Roadmap & TODO](CONTEXT/TODO.md)
 - [Icon Integration](CONTEXT/ICONS.md)
+- [Usage Alerts](CONTEXT/USAGE_ALERTS.md)
+- [Always-on Monitoring](CONTEXT/MONITORING.md)
 
 ## Requirements
 

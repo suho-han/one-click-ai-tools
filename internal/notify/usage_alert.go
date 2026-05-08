@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -16,47 +17,75 @@ import (
 
 type UsageAlertConfig struct {
 	Enabled         bool
-	ThresholdPct    float64
+	ThresholdPct    float64 // legacy global threshold fallback
 	CooldownMinutes int
 	StatePath       string
+
+	Timezone          string
+	QuietHours        string // HH:MM-HH:MM
+	GlobalThresholds  map[string]float64
+	ProviderThreshold map[string]map[string]float64 // provider -> window -> threshold
 }
 
 type alertState struct {
-	LastSent map[string]time.Time `json:"last_sent"`
+	LastSent      map[string]time.Time `json:"last_sent"`
+	LastThreshold map[string]float64   `json:"last_threshold,omitempty"`
 }
+
+type alertHit struct {
+	Window    string
+	Value     float64
+	Threshold float64
+}
+
+var notifyFn = sendOSNotification
 
 func MaybeSendUsageAlerts(results []usage.UsageResult, cfg UsageAlertConfig, now time.Time) error {
 	if !cfg.Enabled {
 		return nil
 	}
-	if cfg.ThresholdPct <= 0 {
-		cfg.ThresholdPct = 80
+	cfg = normalizeConfig(cfg)
+
+	loc := time.Local
+	if strings.TrimSpace(cfg.Timezone) != "" {
+		if l, err := time.LoadLocation(cfg.Timezone); err == nil {
+			loc = l
+		}
 	}
-	if cfg.CooldownMinutes <= 0 {
-		cfg.CooldownMinutes = 360
-	}
-	if cfg.StatePath == "" {
-		home, _ := os.UserHomeDir()
-		cfg.StatePath = filepath.Join(home, ".oct", "state", "usage-alert-state.json")
-	}
+	localNow := now.In(loc)
 
 	st, _ := loadState(cfg.StatePath)
 	if st.LastSent == nil {
 		st.LastSent = map[string]time.Time{}
 	}
+	if st.LastThreshold == nil {
+		st.LastThreshold = map[string]float64{}
+	}
 
 	cooldown := time.Duration(cfg.CooldownMinutes) * time.Minute
 	var sentAny bool
 	for _, r := range results {
-		alerts := overThresholdKeys(r, cfg.ThresholdPct)
-		for _, a := range alerts {
-			key := r.Provider + ":" + a.Window
-			if ts, ok := st.LastSent[key]; ok && now.Sub(ts) < cooldown {
+		hits := overThresholdKeys(r, cfg)
+		for _, h := range hits {
+			key := strings.ToLower(r.Provider) + ":" + h.Window
+			lastSent, hasSent := st.LastSent[key]
+			lastThreshold := st.LastThreshold[key]
+
+			if hasSent && now.Sub(lastSent) < cooldown {
+				// Allow immediate notification if higher threshold crossed.
+				if h.Threshold <= lastThreshold {
+					continue
+				}
+			}
+
+			if inQuietHours(localNow, cfg.QuietHours) && h.Threshold < 95 {
 				continue
 			}
-			msg := fmt.Sprintf("%s %s usage %.1f%% (threshold %.1f%%)", r.Provider, a.Window, a.Value, cfg.ThresholdPct)
-			if err := sendOSNotification("oct usage alert", msg); err == nil {
+
+			msg := fmt.Sprintf("%s %s usage %.1f%% (threshold %.1f%%)", r.Provider, h.Window, h.Value, h.Threshold)
+			if err := notifyFn("oct usage alert", msg); err == nil {
 				st.LastSent[key] = now
+				st.LastThreshold[key] = h.Threshold
 				sentAny = true
 			}
 		}
@@ -67,25 +96,115 @@ func MaybeSendUsageAlerts(results []usage.UsageResult, cfg UsageAlertConfig, now
 	return nil
 }
 
-type alertHit struct {
-	Window string
-	Value  float64
+func normalizeConfig(cfg UsageAlertConfig) UsageAlertConfig {
+	if cfg.ThresholdPct <= 0 {
+		cfg.ThresholdPct = 80
+	}
+	if cfg.CooldownMinutes <= 0 {
+		cfg.CooldownMinutes = 360
+	}
+	if cfg.StatePath == "" {
+		home, _ := os.UserHomeDir()
+		cfg.StatePath = filepath.Join(home, ".oct", "state", "usage-alert-state.json")
+	}
+	if cfg.GlobalThresholds == nil {
+		cfg.GlobalThresholds = map[string]float64{}
+	}
+	if _, ok := cfg.GlobalThresholds["default"]; !ok {
+		cfg.GlobalThresholds["default"] = cfg.ThresholdPct
+	}
+	if cfg.ProviderThreshold == nil {
+		cfg.ProviderThreshold = map[string]map[string]float64{}
+	}
+	return cfg
 }
 
-func overThresholdKeys(r usage.UsageResult, threshold float64) []alertHit {
+func overThresholdKeys(r usage.UsageResult, cfg UsageAlertConfig) []alertHit {
 	var hits []alertHit
 	if strings.ToLower(strings.TrimSpace(r.Unit)) != "percent" {
 		return hits
 	}
-	if v, ok := parsePercent(r.Used); ok && v >= threshold {
-		hits = append(hits, alertHit{Window: "current", Value: v})
-	}
-	for k, raw := range r.Buckets {
-		if v, ok := parsePercent(raw); ok && v >= threshold {
-			hits = append(hits, alertHit{Window: k, Value: v})
+
+	collect := func(window, raw string) {
+		v, ok := parsePercent(raw)
+		if !ok {
+			return
+		}
+		thr := thresholdFor(cfg, r.Provider, window)
+		if v >= thr {
+			hits = append(hits, alertHit{Window: window, Value: v, Threshold: thr})
 		}
 	}
+
+	collect("current", r.Used)
+	keys := make([]string, 0, len(r.Buckets))
+	for k := range r.Buckets {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		collect(k, r.Buckets[k])
+	}
 	return hits
+}
+
+func thresholdFor(cfg UsageAlertConfig, provider, window string) float64 {
+	p := strings.ToLower(strings.TrimSpace(provider))
+	w := strings.ToLower(strings.TrimSpace(window))
+
+	if pm, ok := cfg.ProviderThreshold[p]; ok {
+		if v, ok := pm[w]; ok && v > 0 {
+			return v
+		}
+		if v, ok := pm["default"]; ok && v > 0 {
+			return v
+		}
+	}
+	if v, ok := cfg.GlobalThresholds[w]; ok && v > 0 {
+		return v
+	}
+	if v, ok := cfg.GlobalThresholds["default"]; ok && v > 0 {
+		return v
+	}
+	return cfg.ThresholdPct
+}
+
+func inQuietHours(now time.Time, quiet string) bool {
+	quiet = strings.TrimSpace(quiet)
+	if quiet == "" {
+		return false
+	}
+	parts := strings.Split(quiet, "-")
+	if len(parts) != 2 {
+		return false
+	}
+	start, ok1 := parseHHMM(parts[0])
+	end, ok2 := parseHHMM(parts[1])
+	if !ok1 || !ok2 {
+		return false
+	}
+	cur := now.Hour()*60 + now.Minute()
+	if start == end {
+		return true
+	}
+	if start < end {
+		return cur >= start && cur < end
+	}
+	return cur >= start || cur < end
+}
+
+func parseHHMM(s string) (int, bool) {
+	s = strings.TrimSpace(s)
+	parts := strings.Split(s, ":")
+	if len(parts) != 2 {
+		return 0, false
+	}
+	h, errH := strconv.Atoi(parts[0])
+	m, errM := strconv.Atoi(parts[1])
+	if errH != nil || errM != nil || h < 0 || h > 23 || m < 0 || m > 59 {
+		return 0, false
+	}
+	return h*60 + m, true
 }
 
 func parsePercent(s string) (float64, bool) {
@@ -99,14 +218,17 @@ func parsePercent(s string) (float64, bool) {
 func loadState(path string) (alertState, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
-		return alertState{LastSent: map[string]time.Time{}}, err
+		return alertState{LastSent: map[string]time.Time{}, LastThreshold: map[string]float64{}}, err
 	}
 	var st alertState
 	if err := json.Unmarshal(b, &st); err != nil {
-		return alertState{LastSent: map[string]time.Time{}}, err
+		return alertState{LastSent: map[string]time.Time{}, LastThreshold: map[string]float64{}}, err
 	}
 	if st.LastSent == nil {
 		st.LastSent = map[string]time.Time{}
+	}
+	if st.LastThreshold == nil {
+		st.LastThreshold = map[string]float64{}
 	}
 	return st, nil
 }

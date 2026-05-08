@@ -51,6 +51,9 @@ func initConfig() {
 	viper.SetDefault("usage_alert_enabled", false)
 	viper.SetDefault("usage_alert_threshold_percent", 80.0)
 	viper.SetDefault("usage_alert_cooldown_minutes", 360)
+	viper.SetDefault("usage_alert_quiet_hours", "")
+	viper.SetDefault("usage_alert_timezone", "")
+	viper.SetDefault("usage_alert_thresholds", map[string]float64{"default": 80})
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err == nil {
