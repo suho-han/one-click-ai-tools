@@ -50,9 +50,12 @@ For detailed guides, please refer to the `CONTEXT/` directory:
 
 ## Requirements
 
-- **macOS**: Homebrew and Node.js/npm
-- **Ubuntu/Linux**: Node.js/npm
-- **Windows**: Node.js/npm (Experimental)
+- **Runtime users**
+  - **macOS**: Homebrew and Node.js/npm
+  - **Ubuntu/Linux**: Node.js/npm
+  - **Windows**: Node.js/npm (Experimental)
+- **Developers (build/test from source)**
+  - **Go >= 1.22**
 
 ## License
 

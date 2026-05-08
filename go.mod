@@ -1,8 +1,6 @@
 module github.com/suho-han/one-click-tools
 
-go 1.26
-
-toolchain go1.26.3
+go 1.22
 
 require (
 	github.com/charmbracelet/bubbletea v1.3.10
