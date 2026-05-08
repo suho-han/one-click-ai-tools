@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -50,20 +51,32 @@ func TestFetchCursorUsageRemote(t *testing.T) {
 
 func TestFetchCursorUsageLocalFallback(t *testing.T) {
 	tempHome := t.TempDir()
-	workspaceDir := filepath.Join(tempHome, ".config", "Cursor", "User", "workspaceStorage", "session-1")
+	workspaceRoot := filepath.Join(tempHome, ".config", "Cursor", "User", "workspaceStorage")
+	if runtime.GOOS == "windows" {
+		workspaceRoot = filepath.Join(tempHome, "AppData", "Roaming", "Cursor", "User", "workspaceStorage")
+	}
+	workspaceDir := filepath.Join(workspaceRoot, "session-1")
 	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
 		t.Fatalf("mkdir failed: %v", err)
 	}
 
 	prevEndpoint := os.Getenv("OCT_CURSOR_USAGE_URL")
 	prevHome := os.Getenv("HOME")
+	prevUserProfile := os.Getenv("USERPROFILE")
+	prevAppData := os.Getenv("APPDATA")
 	t.Cleanup(func() {
 		_ = os.Setenv("OCT_CURSOR_USAGE_URL", prevEndpoint)
 		_ = os.Setenv("HOME", prevHome)
+		_ = os.Setenv("USERPROFILE", prevUserProfile)
+		_ = os.Setenv("APPDATA", prevAppData)
 	})
 
 	_ = os.Setenv("OCT_CURSOR_USAGE_URL", "")
 	_ = os.Setenv("HOME", tempHome)
+	_ = os.Setenv("USERPROFILE", tempHome)
+	if runtime.GOOS == "windows" {
+		_ = os.Setenv("APPDATA", filepath.Join(tempHome, "AppData", "Roaming"))
+	}
 
 	result := FetchCursorUsage()
 	if result.Source != "local" {

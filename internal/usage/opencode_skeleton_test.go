@@ -55,6 +55,7 @@ func TestParseOpenCodeUsageFromJSONL_FlatShape(t *testing.T) {
 func TestFetchOpenCodeUsage_NoLogs(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp)
 
 	result := FetchOpenCodeUsage()
 	if result.Provider != "opencode" {
@@ -71,6 +72,7 @@ func TestFetchOpenCodeUsage_NoLogs(t *testing.T) {
 func TestFetchOpenCodeUsage_FromLocalLogs(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp)
 
 	logDir := filepath.Join(tmp, ".opencode", "sessions", "2026", "05", "09")
 	if err := os.MkdirAll(logDir, 0o755); err != nil {

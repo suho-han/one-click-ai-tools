@@ -10,6 +10,7 @@ import (
 func TestFetchCodexUsageMaps5hBucket(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp)
 
 	logDir := filepath.Join(tmp, ".codex", "sessions", "2026", "05", "03")
 	if err := os.MkdirAll(logDir, 0o755); err != nil {
