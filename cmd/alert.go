@@ -135,7 +135,8 @@ var alertTestCmd = &cobra.Command{
 			}
 		}
 
-		fmt.Printf("provider=%s window=%s value=%.1f threshold=%.1f quiet_hours=%s critical=%.1f\n", provider, window, value, threshold, cfg.QuietHours, cfg.CriticalPct)
+		priority := alertPriorityLabel(value, threshold, cfg.CriticalPct)
+		fmt.Printf("provider=%s window=%s value=%.1f threshold=%.1f priority=%s quiet_hours=%s critical=%.1f\n", provider, window, value, threshold, priority, cfg.QuietHours, cfg.CriticalPct)
 		fmt.Println("test executed (notification may be suppressed by cooldown/quiet hours/snooze).")
 	},
 }
@@ -372,6 +373,16 @@ func snoozeDisplayKey(provider, window string) string {
 		return "window:" + window
 	}
 	return "provider:" + provider + ":window:" + window
+}
+
+func alertPriorityLabel(value, threshold, critical float64) string {
+	if value >= critical {
+		return "CRITICAL"
+	}
+	if value >= threshold {
+		return "HIGH"
+	}
+	return "NORMAL"
 }
 
 func parseThresholdMap(raw map[string]any) map[string]float64 {

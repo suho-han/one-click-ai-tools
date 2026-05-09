@@ -74,6 +74,7 @@ func MaybeSendUsageAlerts(results []usage.UsageResult, cfg UsageAlertConfig, now
 	if st.SnoozedUntil == nil {
 		st.SnoozedUntil = map[string]time.Time{}
 	}
+	stateChanged := cleanupExpiredSnooze(&st, now)
 
 	cooldown := time.Duration(cfg.CooldownMinutes) * time.Minute
 	var sentAny bool
@@ -107,7 +108,7 @@ func MaybeSendUsageAlerts(results []usage.UsageResult, cfg UsageAlertConfig, now
 			}
 		}
 	}
-	if sentAny {
+	if sentAny || stateChanged {
 		return saveState(cfg.StatePath, st)
 	}
 	return nil
@@ -212,6 +213,20 @@ func isSnoozed(st alertState, provider, window string, now time.Time) bool {
 		}
 	}
 	return false
+}
+
+func cleanupExpiredSnooze(st *alertState, now time.Time) bool {
+	if st == nil || st.SnoozedUntil == nil {
+		return false
+	}
+	changed := false
+	for k, until := range st.SnoozedUntil {
+		if !now.Before(until) {
+			delete(st.SnoozedUntil, k)
+			changed = true
+		}
+	}
+	return changed
 }
 
 func SetSnooze(path, provider, window string, until time.Time) error {
