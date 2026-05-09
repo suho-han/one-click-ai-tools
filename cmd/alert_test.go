@@ -38,3 +38,19 @@ func TestSetAlertConfigValueInvalidProviderKey(t *testing.T) {
 		t.Fatalf("expected error for invalid provider key")
 	}
 }
+
+func TestProviderOptionsIncludesCursor(t *testing.T) {
+	viper.Reset()
+	viper.Set("enabled_tools", []string{"cursor-agent", "opencode"})
+	opts := providerOptions()
+	hasCursor := false
+	for _, o := range opts {
+		if o == "cursor" {
+			hasCursor = true
+			break
+		}
+	}
+	if !hasCursor {
+		t.Fatalf("expected cursor in provider options")
+	}
+}

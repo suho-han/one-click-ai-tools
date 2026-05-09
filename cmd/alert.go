@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/manifoldco/promptui"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/suho-han/one-click-tools/internal/notify"
@@ -52,6 +53,39 @@ var alertConfigSetCmd = &cobra.Command{
 			return
 		}
 		fmt.Println("alert config updated.")
+	},
+}
+
+var alertConfigSetProviderThresholdCmd = &cobra.Command{
+	Use:   "set-provider-threshold <window> <value>",
+	Short: "Set provider threshold with interactive provider selection",
+	Args:  cobra.ExactArgs(2),
+	Run: func(cmd *cobra.Command, args []string) {
+		window := strings.TrimSpace(args[0])
+		value := strings.TrimSpace(args[1])
+		provider, _ := cmd.Flags().GetString("provider")
+		provider = strings.TrimSpace(strings.ToLower(provider))
+		if provider == "" {
+			picked, err := pickProviderInteractive(providerOptions())
+			if err != nil {
+				fmt.Printf("provider selection failed: %v\n", err)
+				return
+			}
+			provider = picked
+		}
+		if provider == "" {
+			fmt.Println("provider is required")
+			return
+		}
+		if err := setAlertConfigValue(fmt.Sprintf("provider.%s.%s", provider, strings.ToLower(window)), value); err != nil {
+			fmt.Println(err.Error())
+			return
+		}
+		if err := persistViperConfig(); err != nil {
+			fmt.Printf("failed to write config: %v\n", err)
+			return
+		}
+		fmt.Printf("alert provider threshold updated: provider=%s window=%s value=%s\n", provider, strings.ToLower(window), value)
 	},
 }
 
@@ -248,6 +282,53 @@ func setAlertConfigValue(key, val string) error {
 	return fmt.Errorf("supported keys: enabled, cooldown_minutes, threshold_percent, critical_percent, quiet_hours, timezone, threshold.<window>, provider.<name>.<window|default>")
 }
 
+func providerOptions() []string {
+	base := []string{"codex", "claude-code", "gemini", "copilot", "cursor", "opencode"}
+	seen := map[string]bool{}
+	out := make([]string, 0, len(base)+4)
+	for _, p := range base {
+		seen[p] = true
+		out = append(out, p)
+	}
+	for _, et := range viper.GetStringSlice("enabled_tools") {
+		p := strings.ToLower(strings.TrimSpace(et))
+		switch p {
+		case "cursor-agent":
+			p = "cursor"
+		case "claude":
+			p = "claude-code"
+		}
+		if p == "" || seen[p] {
+			continue
+		}
+		seen[p] = true
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func pickProviderInteractive(options []string) (string, error) {
+	if len(options) == 0 {
+		return "", fmt.Errorf("no providers available")
+	}
+
+	selector := promptui.Select{
+		Label: "Select provider",
+		Items: options,
+		Size:  len(options),
+	}
+
+	idx, value, err := selector.Run()
+	if err != nil {
+		return "", err
+	}
+	if idx < 0 || idx >= len(options) {
+		return "", fmt.Errorf("invalid selection")
+	}
+	return value, nil
+}
+
 func getAlertStatePath() string {
 	p := strings.TrimSpace(viper.GetString("usage_alert_state_path"))
 	if p != "" {
@@ -352,6 +433,7 @@ func init() {
 	alertCmd.AddCommand(alertSnoozeCmd)
 	alertConfigCmd.AddCommand(alertConfigShowCmd)
 	alertConfigCmd.AddCommand(alertConfigSetCmd)
+	alertConfigCmd.AddCommand(alertConfigSetProviderThresholdCmd)
 	alertSnoozeCmd.AddCommand(alertSnoozeSetCmd)
 	alertSnoozeCmd.AddCommand(alertSnoozeShowCmd)
 	alertSnoozeCmd.AddCommand(alertSnoozeClearCmd)
@@ -360,6 +442,7 @@ func init() {
 	alertTestCmd.Flags().String("window", "5h", "window key (e.g. 5h, 7d, current)")
 	alertTestCmd.Flags().Float64("value", 90, "synthetic usage value percent")
 	alertTestCmd.Flags().Bool("quiet-now", false, "force quiet-hours simulation")
+	alertConfigSetProviderThresholdCmd.Flags().String("provider", "", "provider name (empty = interactive select)")
 
 	alertSnoozeSetCmd.Flags().Duration("duration", 2*time.Hour, "snooze duration")
 	alertSnoozeSetCmd.Flags().String("provider", "", "provider scope")
