@@ -9,7 +9,8 @@
 
 ### 2. 지원 도구 및 사용량 추적 확장
 
-- [ ] **Cursor API/CLI**: Cursor 에디터의 모델별 사용량 조회 및 설정 동기화 탐색
+- [ ] **Cursor 사용량 고도화**: 모델별 limit이 `null`인 경우 플랜 정보 표시 개선; 토큰 만료 시 graceful 처리
+- [ ] **사용 기간별 시간 제공**: 언제 리셋되는지 추가
 - [ ] **기타 AI 에이전트 확장**: 다양한 자율형 에이전트 CLI의 업데이트 및 사용량 지원 확대
 
 ### 3. 플랫폼 확장 (UI/UX)
@@ -17,6 +18,17 @@
 - [ ] **macOS Menu Bar (상단바)**: `systray` 등을 활용하여 상단바에서 실시간 AI 사용량(Quota) 확인 기능
 - [ ] **macOS Widgets**: 데스크탑 위젯을 통한 주요 모델 잔여 쿼타 시각화
 - [ ] **알림 서비스**: 사용량이 특정 임계치(예: 90%)에 도달했을 때 OS 알림 발송
+
+---
+
+## ✅ v0.4.2에서 완료된 사항 (Completed in v0.4.2)
+
+### Cursor 지원 추가
+
+- [x] **Cursor 에이전트 업데이트**: `cursor-agent` 전용 Manager 추가 (`CursorAgent`), `cursor-agent update` / `cursor-agent --version` 자동 실행 (`internal/update/manager.go`)
+- [x] **Cursor 사용량 조회**: 원격 endpoint(`OCT_CURSOR_USAGE_URL` + `CURSOR_API_KEY`) best-effort 조회, 실패 시 로컬 workspaceStorage 디렉터리 수 fallback (`internal/usage/cursor.go`)
+- [x] **Cursor 실제 사용량**: `~/.config/cursor/auth.json` 토큰 자동 읽기 → `api2.cursor.sh/auth/usage` 호출, 모델별 `numRequestsTotal` 집계 (`parseCursorAPIResponse`)
+- [x] **기본 agent order 업데이트**: `cursor-agent`를 기본 순서에 포함 (`gemini`, `claude`, `cursor-agent`, `copilot`, `codex`)
 
 ---
 

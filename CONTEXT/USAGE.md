@@ -37,6 +37,7 @@ Collects and displays usage statistics for AI tools.
 - **OpenAI Codex** (`codex`)
 - **Gemini CLI** (`gemini`)
 - **GitHub Copilot** (`copilot`)
+- **Cursor** (`cursor-agent`)
 
 ### Machine-Readable Output
 ```bash
@@ -51,6 +52,8 @@ You can override the default API endpoints using the following environment varia
 - `OCT_GEMINI_USAGE_ENDPOINT`
 - `OCT_COPILOT_USAGE_ENDPOINT`
 - `OCT_GEMINI_API_ENDPOINT` (Experimental Gemini path)
+- `OCT_CURSOR_USAGE_URL` — Cursor remote usage endpoint (optional; falls back to local workspaceStorage count)
+- `CURSOR_API_KEY` — Bearer token sent to `OCT_CURSOR_USAGE_URL` if set
 
 ### GitHub Copilot Endpoint Resolution
 If `OCT_COPILOT_USAGE_ENDPOINT` is not set, `oct` resolves it based on:
@@ -67,6 +70,25 @@ When `GITHUB_API_TOKEN`/`GITHUB_TOKEN` is not configured, `oct` also attempts `g
 - `OCT_COPILOT_USAGE_DAY`
 - `OCT_COPILOT_USAGE_MODEL`
 - `OCT_COPILOT_USAGE_PRODUCT`
+
+---
+
+### Cursor Usage Notes
+
+Fetch priority order:
+1. **Custom endpoint** (`OCT_CURSOR_USAGE_URL`): any JSON endpoint, optionally authenticated via `CURSOR_API_KEY`
+2. **Local auth token** (`~/.config/cursor/auth.json`): automatically reads `accessToken` and calls `https://api2.cursor.sh/auth/usage`; returns per-model monthly `numRequestsTotal` with `source: local-auth`
+3. **Workspace storage count** (fallback): counts workspace directories as a proxy for session count, `source: local`
+
+Override the known API URL for testing:
+- `OCT_CURSOR_API_USAGE_URL` — replaces `https://api2.cursor.sh/auth/usage`
+
+Auth token paths:
+- Linux: `~/.config/cursor/auth.json`
+- macOS: `~/.config/cursor/auth.json` or `~/Library/Application Support/cursor/auth.json`
+- Windows: `%APPDATA%\cursor\auth.json`
+
+Set `OCT_USAGE_DEBUG=1` to expose per-model breakdown in `source_detail`.
 
 ---
 

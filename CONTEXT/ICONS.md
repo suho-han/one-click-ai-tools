@@ -10,6 +10,7 @@ This project uses icon metadata from [@lobehub/icons](https://icons.lobehub.com)
 | **OpenAI Codex** | <img src="https://registry.npmmirror.com/@lobehub/icons-static-svg/latest/files/icons/codex.svg" height="32" /> | `Codex` |
 | **Gemini CLI** | <img src="https://registry.npmmirror.com/@lobehub/icons-static-svg/latest/files/icons/gemini-cli.svg" height="32" /> | `GeminiCLI` |
 | **GitHub Copilot** | <img src="https://registry.npmmirror.com/@lobehub/icons-static-svg/latest/files/icons/github-copilot.svg" height="32" /> | `GithubCopilot` |
+| **Cursor** | ▣ (text fallback) | _(미지원, Lobe Icons에 없음)_ |
 
 ## Integration
 
