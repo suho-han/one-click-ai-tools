@@ -19,12 +19,7 @@ func (w *Windows) Enable(interval string, hour int) error {
 	// Delete existing task if any
 	exec.Command("schtasks", "/Delete", "/TN", taskName, "/F").Run()
 
-	var scheduleType string
-	if interval == "weekly" {
-		scheduleType = "WEEKLY"
-	} else {
-		scheduleType = "DAILY"
-	}
+	scheduleType := windowsScheduleType(interval)
 
 	startTime := fmt.Sprintf("%02d:00", hour)
 	
@@ -52,4 +47,11 @@ func (w *Windows) Status() (string, error) {
 		return "enabled", nil
 	}
 	return "disabled", nil
+}
+
+func windowsScheduleType(interval string) string {
+	if interval == "weekly" {
+		return "WEEKLY"
+	}
+	return "DAILY"
 }

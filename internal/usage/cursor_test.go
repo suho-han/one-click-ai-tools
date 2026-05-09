@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -40,6 +41,9 @@ func TestFetchCursorUsageRemote(t *testing.T) {
 	if result.Buckets["5h"] != "42.5" {
 		t.Fatalf("expected 5h bucket, got %#v", result.Buckets)
 	}
+	if result.Buckets["model:gpt-4.1"] != "12.0" {
+		t.Fatalf("expected normalized model bucket, got %#v", result.Buckets)
+	}
 	if !strings.Contains(result.SourceDetail, "gpt-4.1=12.0") {
 		t.Fatalf("expected model detail, got %q", result.SourceDetail)
 	}
@@ -47,27 +51,45 @@ func TestFetchCursorUsageRemote(t *testing.T) {
 
 func TestFetchCursorUsageLocalFallback(t *testing.T) {
 	tempHome := t.TempDir()
-	workspaceDir := filepath.Join(tempHome, ".config", "Cursor", "User", "workspaceStorage", "session-1")
+	workspaceRoot := filepath.Join(tempHome, ".config", "Cursor", "User", "workspaceStorage")
+	if runtime.GOOS == "windows" {
+		workspaceRoot = filepath.Join(tempHome, "AppData", "Roaming", "Cursor", "User", "workspaceStorage")
+	}
+	workspaceDir := filepath.Join(workspaceRoot, "session-1")
 	if err := os.MkdirAll(workspaceDir, 0755); err != nil {
 		t.Fatalf("mkdir failed: %v", err)
 	}
 
 	prevEndpoint := os.Getenv("OCT_CURSOR_USAGE_URL")
 	prevHome := os.Getenv("HOME")
+	prevUserProfile := os.Getenv("USERPROFILE")
+	prevAppData := os.Getenv("APPDATA")
 	t.Cleanup(func() {
 		_ = os.Setenv("OCT_CURSOR_USAGE_URL", prevEndpoint)
 		_ = os.Setenv("HOME", prevHome)
+		_ = os.Setenv("USERPROFILE", prevUserProfile)
+		_ = os.Setenv("APPDATA", prevAppData)
 	})
 
 	_ = os.Setenv("OCT_CURSOR_USAGE_URL", "")
 	_ = os.Setenv("HOME", tempHome)
+	_ = os.Setenv("USERPROFILE", tempHome)
+	if runtime.GOOS == "windows" {
+		_ = os.Setenv("APPDATA", filepath.Join(tempHome, "AppData", "Roaming"))
+	}
 
 	result := FetchCursorUsage()
 	if result.Source != "local" {
 		t.Fatalf("expected local source, got %q", result.Source)
 	}
+	if result.Status != "warn" {
+		t.Fatalf("expected warn status when remote endpoint is missing, got %q", result.Status)
+	}
 	if result.Used != "1" {
 		t.Fatalf("expected local session estimate of 1, got %q", result.Used)
+	}
+	if !strings.Contains(result.Message, "reason=local_auth_missing") {
+		t.Fatalf("expected standardized reason, got %q", result.Message)
 	}
 	if !strings.Contains(result.Message, "workspace storage") {
 		t.Fatalf("expected workspace storage message, got %q", result.Message)
@@ -138,5 +160,25 @@ func TestFetchCursorUsageLocalAuth(t *testing.T) {
 	}
 	if !strings.Contains(result.SourceDetail, "gpt-4=10") {
 		t.Fatalf("expected gpt-4=10 in SourceDetail, got %q", result.SourceDetail)
+	}
+}
+
+func TestFetchCursorUsageRemoteFailureFallsBackWithReason(t *testing.T) {
+	prevEndpoint := os.Getenv("OCT_CURSOR_USAGE_URL")
+	t.Cleanup(func() {
+		_ = os.Setenv("OCT_CURSOR_USAGE_URL", prevEndpoint)
+	})
+
+	_ = os.Setenv("OCT_CURSOR_USAGE_URL", "http://127.0.0.1:1/unreachable")
+	result := FetchCursorUsage()
+
+	if result.Source != "local" {
+		t.Fatalf("expected local fallback source, got %q", result.Source)
+	}
+	if result.Status != "warn" {
+		t.Fatalf("expected warn on remote failure, got %q", result.Status)
+	}
+	if !strings.Contains(result.Message, "reason=remote_request_failed") {
+		t.Fatalf("expected standardized failure reason, got %q", result.Message)
 	}
 }

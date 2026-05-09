@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -36,17 +37,20 @@ func FetchCursorUsage() UsageResult {
 			return result
 		}
 		local := FetchCursorLocalUsage()
-		local.Message = fmt.Sprintf("%s; API call failed: %v", local.Message, err)
+		local.Status = "warn"
+		local.Message = cursorReasonMessage("local_auth_api_failed", fmt.Sprintf("%s; API call failed: %v", local.Message, err))
 		return local
 	}
 
 	// 3. Workspace storage count fallback
 	local := FetchCursorLocalUsage()
-	local.Message = "No Cursor auth token found; " + local.Message
+	local.Status = "warn"
+	local.Message = cursorReasonMessage("local_auth_missing", "No Cursor auth token found; "+local.Message)
 	return local
 }
 
 func fetchCursorCustomEndpoint(endpoint string) UsageResult {
+	local := FetchCursorLocalUsage()
 	req, _ := http.NewRequest("GET", endpoint, nil)
 	if token := strings.TrimSpace(os.Getenv("CURSOR_API_KEY")); token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -54,25 +58,31 @@ func fetchCursorCustomEndpoint(endpoint string) UsageResult {
 
 	resp, err := netclient.DefaultClient.DoWithRetry(req)
 	if err != nil {
-		local := FetchCursorLocalUsage()
-		local.Message = fmt.Sprintf("%s; remote usage failed: %s", local.Message, netclient.FormatError(resp, err))
+		local.Status = "warn"
+		local.Message = cursorReasonMessage("remote_request_failed", fmt.Sprintf("%s; %s", local.Message, netclient.FormatError(resp, err)))
 		return local
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		local := FetchCursorLocalUsage()
-		local.Message = fmt.Sprintf("%s; remote usage failed: %s", local.Message, netclient.FormatError(resp, nil))
+		local.Status = "warn"
+		local.Message = cursorReasonMessage("remote_http_error", fmt.Sprintf("%s; %s", local.Message, netclient.FormatError(resp, nil)))
 		return local
 	}
 
 	body, _ := io.ReadAll(resp.Body)
 	parsed, err := parseCursorUsageResponse(body)
 	if err != nil {
-		local := FetchCursorLocalUsage()
-		local.Message = fmt.Sprintf("%s; remote usage parse failed: %v", local.Message, err)
+		local.Status = "warn"
+		local.Message = cursorReasonMessage("remote_parse_failed", fmt.Sprintf("%s; %v", local.Message, err))
 		return local
 	}
+
+	if local.Used != "0" {
+		parsed.Source = "remote+local"
+		parsed.SourceDetail = appendCursorDetail(parsed.SourceDetail, "local_sessions="+local.Used)
+	}
+
 	return parsed
 }
 
@@ -270,10 +280,18 @@ func parseCursorUsageResponse(body []byte) (UsageResult, error) {
 	}
 
 	if models, ok := raw["models"].(map[string]any); ok {
+		modelNames := make([]string, 0, len(models))
+		for model := range models {
+			modelNames = append(modelNames, model)
+		}
+		sort.Strings(modelNames)
+
 		modelParts := make([]string, 0, len(models))
-		for model, val := range models {
+		for _, model := range modelNames {
+			val := models[model]
 			if modelData, ok := val.(map[string]any); ok {
 				if used, ok := firstFloat(modelData, "used", "usedPercent", "utilization"); ok {
+					result.Buckets["model:"+model] = fmt.Sprintf("%.1f", used)
 					modelParts = append(modelParts, fmt.Sprintf("%s=%.1f", model, used))
 				}
 			}
@@ -369,4 +387,24 @@ func trimFloat(v float64) string {
 		return strconv.FormatInt(int64(v), 10)
 	}
 	return fmt.Sprintf("%.1f", v)
+}
+
+func cursorReasonMessage(reason, detail string) string {
+	detail = strings.TrimSpace(detail)
+	if detail == "" {
+		return "reason=" + reason
+	}
+	return "reason=" + reason + "; " + detail
+}
+
+func appendCursorDetail(existing, item string) string {
+	existing = strings.TrimSpace(existing)
+	item = strings.TrimSpace(item)
+	if existing == "" {
+		return item
+	}
+	if item == "" {
+		return existing
+	}
+	return existing + ";" + item
 }

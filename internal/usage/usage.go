@@ -27,7 +27,7 @@ type UsageResult struct {
 func GetUsage() ([]UsageResult, error) {
 	order := viper.GetStringSlice("agent_order")
 	if len(order) == 0 {
-		order = []string{"gemini", "claude", "cursor-agent", "copilot", "codex"}
+		order = []string{"gemini", "claude", "cursor-agent", "copilot", "opencode", "codex"}
 	}
 
 	orderedTools := update.GetOrderedTools(order)
@@ -37,6 +37,7 @@ func GetUsage() ([]UsageResult, error) {
 		"claude":       FetchClaudeUsage,
 		"cursor-agent": FetchCursorUsage,
 		"copilot":      FetchCopilotUsage,
+		"opencode":     FetchOpenCodeUsage,
 		"codex":        FetchCodexUsage,
 	}
 
@@ -153,10 +154,61 @@ func remainingFromUsed(used string) (string, bool) {
 }
 
 func PrintJSON(results []UsageResult) error {
-	data, err := json.MarshalIndent(results, "", "  ")
+	type UsageSummary struct {
+		Total int `json:"total"`
+		OK    int `json:"ok"`
+		Warn  int `json:"warn"`
+		Error int `json:"error"`
+	}
+	payload := struct {
+		Summary UsageSummary `json:"summary"`
+		Results []UsageResult `json:"results"`
+	}{
+		Summary: UsageSummary{Total: len(results)},
+		Results: results,
+	}
+
+	for _, r := range results {
+		switch classifySummaryStatus(r) {
+		case "ok":
+			payload.Summary.OK++
+		case "warn":
+			payload.Summary.Warn++
+		default:
+			payload.Summary.Error++
+		}
+	}
+
+	data, err := json.MarshalIndent(payload, "", "  ")
 	if err != nil {
 		return err
 	}
 	fmt.Println(string(data))
 	return nil
+}
+
+func classifySummaryStatus(r UsageResult) string {
+	status := strings.ToLower(strings.TrimSpace(r.Status))
+	if status != "ok" {
+		if status == "warn" {
+			return "warn"
+		}
+		return "error"
+	}
+
+	used := strings.ToLower(strings.TrimSpace(r.Used))
+	if used == "" || used == "n/a" {
+		return "warn"
+	}
+
+	// Many providers report used=0 when local/API usage data is unavailable.
+	// Keep strict "ok" only when 0 is a real measured value, not a "not found" signal.
+	msg := strings.ToLower(strings.TrimSpace(r.Message))
+	if used == "0" {
+		if strings.HasPrefix(msg, "no ") || strings.Contains(msg, "not found") || strings.Contains(msg, "no configured") {
+			return "warn"
+		}
+	}
+
+	return "ok"
 }

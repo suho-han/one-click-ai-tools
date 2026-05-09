@@ -72,6 +72,15 @@ var Tools = []Tool{
 		HexColor:    "#111111",
 	},
 	{
+		Name:        "OpenCode",
+		Package:     "opencode-ai",
+		BinaryName:  "opencode",
+		BrewPackage: "opencode",
+		Icon:        "🧩",
+		LobeIcon:    "",
+		HexColor:    "#4F46E5",
+	},
+	{
 		Name:        "OpenAI Codex",
 		Package:     "@openai/codex",
 		BinaryName:  "codex",

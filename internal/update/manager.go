@@ -13,7 +13,11 @@ const (
 	Brew        Manager = "brew"
 	Pnpm        Manager = "pnpm"
 	Yarn        Manager = "yarn"
+	Cargo       Manager = "cargo"
+	GoInstall   Manager = "go-install"
+	Pip         Manager = "pip"
 	CursorAgent Manager = "cursor-agent"
+	Unknown     Manager = "unknown"
 )
 
 var noChangePatterns = map[Manager][]string{
@@ -22,9 +26,15 @@ var noChangePatterns = map[Manager][]string{
 	Yarn:        {"already up to date"},
 	Brew:        {"already installed", "up-to-date"},
 	CursorAgent: {"already up to date", "already on the latest version", "latest version"},
+	Cargo:       {"is already installed", "use --force to override"},
+	Pip:         {"requirement already satisfied"},
 }
 
 func DetectManager(t Tool) Manager {
+	if m, ok := managerFromPackagePrefix(t.Package); ok {
+		return m
+	}
+
 	if t.BinaryName == "cursor-agent" {
 		return CursorAgent
 	}
@@ -62,6 +72,12 @@ func (m Manager) InstallCommandCtx(ctx context.Context, t Tool) *exec.Cmd {
 		return exec.CommandContext(ctx, "pnpm", "add", "-g", t.Package)
 	case Yarn:
 		return exec.CommandContext(ctx, "yarn", "global", "add", t.Package)
+	case Cargo:
+		return exec.CommandContext(ctx, "cargo", "install", packageWithoutManagerPrefix(t.Package), "--locked")
+	case GoInstall:
+		return exec.CommandContext(ctx, "go", "install", packageWithoutManagerPrefix(t.Package)+"@latest")
+	case Pip:
+		return exec.CommandContext(ctx, "python3", "-m", "pip", "install", "--upgrade", packageWithoutManagerPrefix(t.Package))
 	default:
 		return exec.CommandContext(ctx, "npm", "install", "-g", t.Package)
 	}
@@ -96,6 +112,28 @@ func (m Manager) GetInstalledVersion(t Tool) string {
 		// Ignore exit code: yarn list may exit non-zero for missing packages
 		out, _ := exec.Command("yarn", "global", "list", "--pattern", t.Package).Output()
 		return parseVersionFromAtSuffix(string(out), t.Package)
+	case Cargo:
+		out, _ := exec.Command("cargo", "install", "--list").Output()
+		for _, line := range strings.Split(string(out), "\n") {
+			if strings.HasPrefix(strings.TrimSpace(line), packageWithoutManagerPrefix(t.Package)+" ") {
+				fields := strings.Fields(strings.TrimSuffix(strings.TrimSpace(line), ":"))
+				if len(fields) >= 2 {
+					return strings.TrimPrefix(fields[1], "v")
+				}
+			}
+		}
+		return ""
+	case GoInstall:
+		out, _ := exec.Command(t.BinaryName, "--version").Output()
+		return strings.TrimSpace(string(out))
+	case Pip:
+		out, _ := exec.Command("python3", "-m", "pip", "show", packageWithoutManagerPrefix(t.Package)).Output()
+		for _, line := range strings.Split(string(out), "\n") {
+			if strings.HasPrefix(strings.ToLower(line), "version:") {
+				return strings.TrimSpace(strings.TrimPrefix(line, "Version:"))
+			}
+		}
+		return ""
 	default: // npm
 		// Ignore exit code: npm list exits non-zero on peer-dep issues even when package is present
 		out, _ := exec.Command("npm", "list", "-g", t.Package, "--depth=0").Output()
@@ -130,4 +168,26 @@ func (m Manager) IsNoChangeOutput(output string) bool {
 		}
 	}
 	return false
+}
+
+func managerFromPackagePrefix(pkg string) (Manager, bool) {
+	pkg = strings.TrimSpace(strings.ToLower(pkg))
+	switch {
+	case strings.HasPrefix(pkg, "cargo:"):
+		return Cargo, true
+	case strings.HasPrefix(pkg, "go:"):
+		return GoInstall, true
+	case strings.HasPrefix(pkg, "pip:"):
+		return Pip, true
+	default:
+		return Unknown, false
+	}
+}
+
+func packageWithoutManagerPrefix(pkg string) string {
+	parts := strings.SplitN(pkg, ":", 2)
+	if len(parts) == 2 {
+		return strings.TrimSpace(parts[1])
+	}
+	return pkg
 }
