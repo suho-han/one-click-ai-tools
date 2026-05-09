@@ -73,8 +73,11 @@ oct alert snooze clear --provider codex --window 5h
 
 ## 동작 규칙
 
+- 알림 우선순위 라벨: `[HIGH]`, `[CRITICAL]`
+  - `value >= critical_percent` => `CRITICAL`
+  - `threshold <= value < critical_percent` => `HIGH`
 - 쿨다운 내 중복 알림 방지
 - 더 높은 임계치로 상승 시(예: 85→95) 쿨다운 내라도 알림
-- Quiet hours 동안은 95% 미만 알림 억제
-- snooze 동안은 알림 억제(단, critical_percent 이상은 override)
+- Quiet hours 동안은 `CRITICAL`만 통과, 그 외 억제
+- snooze 동안은 알림 억제(단, `CRITICAL`은 override)
 - 상태 파일: `~/.oct/state/usage-alert-state.json`
