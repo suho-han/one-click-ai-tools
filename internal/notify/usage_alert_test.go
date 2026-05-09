@@ -219,3 +219,26 @@ func TestMaybeSendUsageAlertsMessageIncludesPriorityLabel(t *testing.T) {
 		t.Fatalf("expected [HIGH] label in message, got %q", captured)
 	}
 }
+
+func TestCleanupExpiredSnooze(t *testing.T) {
+	now := time.Now()
+	st := alertState{SnoozedUntil: map[string]time.Time{
+		"global":           now.Add(-1 * time.Minute),
+		"provider:codex":   now.Add(10 * time.Minute),
+		"window:5h":        now.Add(-2 * time.Minute),
+		"provider:x:window:y": now.Add(5 * time.Minute),
+	}}
+	changed := cleanupExpiredSnooze(&st, now)
+	if !changed {
+		t.Fatalf("expected cleanup to report changes")
+	}
+	if _, ok := st.SnoozedUntil["global"]; ok {
+		t.Fatalf("expected expired global snooze removed")
+	}
+	if _, ok := st.SnoozedUntil["window:5h"]; ok {
+		t.Fatalf("expected expired window snooze removed")
+	}
+	if _, ok := st.SnoozedUntil["provider:codex"]; !ok {
+		t.Fatalf("expected active provider snooze to remain")
+	}
+}

@@ -54,3 +54,15 @@ func TestProviderOptionsIncludesCursor(t *testing.T) {
 		t.Fatalf("expected cursor in provider options")
 	}
 }
+
+func TestAlertPriorityLabel(t *testing.T) {
+	if got := alertPriorityLabel(99, 90, 98); got != "CRITICAL" {
+		t.Fatalf("expected CRITICAL, got %s", got)
+	}
+	if got := alertPriorityLabel(92, 90, 98); got != "HIGH" {
+		t.Fatalf("expected HIGH, got %s", got)
+	}
+	if got := alertPriorityLabel(89, 90, 98); got != "NORMAL" {
+		t.Fatalf("expected NORMAL, got %s", got)
+	}
+}
