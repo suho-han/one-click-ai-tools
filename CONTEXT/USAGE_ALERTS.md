@@ -61,7 +61,7 @@ oct alert config set provider.codex.default 88
 oct alert config set-provider-threshold 5h 93 --provider cursor
 oct alert config set-provider-threshold 7d 95
 
-# 알림 로직 테스트
+# 알림 로직 테스트 (출력에 priority 포함)
 oct alert test --provider codex --window 5h --value 96
 
 # 스누즈
