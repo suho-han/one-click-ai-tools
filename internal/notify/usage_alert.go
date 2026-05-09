@@ -40,6 +40,14 @@ type alertHit struct {
 	Threshold float64
 }
 
+type alertPriority string
+
+const (
+	alertPriorityNormal   alertPriority = "normal"
+	alertPriorityHigh     alertPriority = "high"
+	alertPriorityCritical alertPriority = "critical"
+)
+
 var notifyFn = sendOSNotification
 
 func MaybeSendUsageAlerts(results []usage.UsageResult, cfg UsageAlertConfig, now time.Time) error {
@@ -72,7 +80,8 @@ func MaybeSendUsageAlerts(results []usage.UsageResult, cfg UsageAlertConfig, now
 	for _, r := range results {
 		hits := overThresholdKeys(r, cfg)
 		for _, h := range hits {
-			if isSnoozed(st, r.Provider, h.Window, now) && h.Value < cfg.CriticalPct {
+			priority := computeAlertPriority(h.Value, h.Threshold, cfg.CriticalPct)
+			if isSnoozed(st, r.Provider, h.Window, now) && priority != alertPriorityCritical {
 				continue
 			}
 			key := strings.ToLower(r.Provider) + ":" + h.Window
@@ -86,11 +95,11 @@ func MaybeSendUsageAlerts(results []usage.UsageResult, cfg UsageAlertConfig, now
 				}
 			}
 
-			if inQuietHours(localNow, cfg.QuietHours) && h.Threshold < 95 {
+			if inQuietHours(localNow, cfg.QuietHours) && priority != alertPriorityCritical {
 				continue
 			}
 
-			msg := fmt.Sprintf("%s %s usage %.1f%% (threshold %.1f%%)", r.Provider, h.Window, h.Value, h.Threshold)
+			msg := fmt.Sprintf("[%s] %s %s usage %.1f%% (threshold %.1f%%)", strings.ToUpper(string(priority)), r.Provider, h.Window, h.Value, h.Threshold)
 			if err := notifyFn("oct usage alert", msg); err == nil {
 				st.LastSent[key] = now
 				st.LastThreshold[key] = h.Threshold
@@ -278,6 +287,16 @@ func parsePercent(s string) (float64, bool) {
 		return 0, false
 	}
 	return v, true
+}
+
+func computeAlertPriority(value, threshold, criticalPct float64) alertPriority {
+	if value >= criticalPct {
+		return alertPriorityCritical
+	}
+	if value >= threshold {
+		return alertPriorityHigh
+	}
+	return alertPriorityNormal
 }
 
 func loadState(path string) (alertState, error) {
