@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file.
 
+## 0.4.2 (2026-05-09)
+
+### Bug Fixes
+- recover from npm install conflicts during `oct update`
+
+### Documentation
+- reorganize localized README and `CONTEXT/` docs
+
 ## 0.4.0 (2026-05-03)
 
 ### Features
