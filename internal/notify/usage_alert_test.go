@@ -2,6 +2,7 @@ package notify
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -175,5 +176,46 @@ func TestSnoozeSuppressionAndCriticalOverride(t *testing.T) {
 	}
 	if notifyCount == 0 {
 		t.Fatalf("expected critical override notification")
+	}
+}
+
+func TestAlertPriority(t *testing.T) {
+	if p := computeAlertPriority(99, 90, 98); p != alertPriorityCritical {
+		t.Fatalf("expected critical, got %s", p)
+	}
+	if p := computeAlertPriority(92, 90, 98); p != alertPriorityHigh {
+		t.Fatalf("expected high, got %s", p)
+	}
+	if p := computeAlertPriority(89, 90, 98); p != alertPriorityNormal {
+		t.Fatalf("expected normal, got %s", p)
+	}
+}
+
+func TestMaybeSendUsageAlertsMessageIncludesPriorityLabel(t *testing.T) {
+	origNotify := notifyFn
+	defer func() { notifyFn = origNotify }()
+	captured := ""
+	notifyFn = func(title, message string) error {
+		captured = message
+		return nil
+	}
+
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	cfg := UsageAlertConfig{
+		Enabled:         true,
+		ThresholdPct:    80,
+		CooldownMinutes: 120,
+		StatePath:       statePath,
+		CriticalPct:     98,
+		ProviderThreshold: map[string]map[string]float64{
+			"codex": {"5h": 90},
+		},
+	}
+	results := []usage.UsageResult{{Provider: "codex", Unit: "percent", Used: "92", Buckets: map[string]string{"5h": "92"}}}
+	if err := MaybeSendUsageAlerts(results, cfg, time.Now()); err != nil {
+		t.Fatalf("MaybeSendUsageAlerts failed: %v", err)
+	}
+	if !strings.Contains(captured, "[HIGH]") {
+		t.Fatalf("expected [HIGH] label in message, got %q", captured)
 	}
 }
