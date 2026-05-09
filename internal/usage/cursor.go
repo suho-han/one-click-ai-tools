@@ -14,14 +14,39 @@ import (
 	"github.com/suho-han/one-click-tools/internal/netclient"
 )
 
+const cursorDefaultAPIURL = "https://api2.cursor.sh/auth/usage"
+
+func cursorAPIUsageURL() string {
+	if override := strings.TrimSpace(os.Getenv("OCT_CURSOR_API_USAGE_URL")); override != "" {
+		return override
+	}
+	return cursorDefaultAPIURL
+}
+
 func FetchCursorUsage() UsageResult {
-	endpoint := strings.TrimSpace(os.Getenv("OCT_CURSOR_USAGE_URL"))
-	if endpoint == "" {
+	// 1. User-supplied custom endpoint takes priority
+	if endpoint := strings.TrimSpace(os.Getenv("OCT_CURSOR_USAGE_URL")); endpoint != "" {
+		return fetchCursorCustomEndpoint(endpoint)
+	}
+
+	// 2. Local auth token → known Cursor API
+	if token := readCursorAuthToken(); token != "" {
+		result, err := fetchCursorAPIUsage(token)
+		if err == nil {
+			return result
+		}
 		local := FetchCursorLocalUsage()
-		local.Message = "No configured Cursor remote usage endpoint; " + local.Message
+		local.Message = fmt.Sprintf("%s; API call failed: %v", local.Message, err)
 		return local
 	}
 
+	// 3. Workspace storage count fallback
+	local := FetchCursorLocalUsage()
+	local.Message = "No Cursor auth token found; " + local.Message
+	return local
+}
+
+func fetchCursorCustomEndpoint(endpoint string) UsageResult {
 	req, _ := http.NewRequest("GET", endpoint, nil)
 	if token := strings.TrimSpace(os.Getenv("CURSOR_API_KEY")); token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
@@ -48,8 +73,123 @@ func FetchCursorUsage() UsageResult {
 		local.Message = fmt.Sprintf("%s; remote usage parse failed: %v", local.Message, err)
 		return local
 	}
-
 	return parsed
+}
+
+func readCursorAuthToken() string {
+	home, _ := os.UserHomeDir()
+	for _, path := range cursorAuthPaths(home) {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		var auth struct {
+			AccessToken string `json:"accessToken"`
+		}
+		if json.Unmarshal(data, &auth) == nil && strings.TrimSpace(auth.AccessToken) != "" {
+			return strings.TrimSpace(auth.AccessToken)
+		}
+	}
+	return ""
+}
+
+func cursorAuthPaths(home string) []string {
+	switch runtime.GOOS {
+	case "darwin":
+		return []string{
+			filepath.Join(home, ".config", "cursor", "auth.json"),
+			filepath.Join(home, "Library", "Application Support", "cursor", "auth.json"),
+		}
+	case "windows":
+		if appData := os.Getenv("APPDATA"); appData != "" {
+			return []string{filepath.Join(appData, "cursor", "auth.json")}
+		}
+		return nil
+	default:
+		return []string{filepath.Join(home, ".config", "cursor", "auth.json")}
+	}
+}
+
+func fetchCursorAPIUsage(token string) (UsageResult, error) {
+	req, err := http.NewRequest("GET", cursorAPIUsageURL(), nil)
+	if err != nil {
+		return UsageResult{}, err
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+
+	resp, err := netclient.DefaultClient.DoWithRetry(req)
+	if err != nil {
+		return UsageResult{}, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return UsageResult{}, fmt.Errorf("HTTP %d", resp.StatusCode)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	return parseCursorAPIResponse(body)
+}
+
+func parseCursorAPIResponse(body []byte) (UsageResult, error) {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err != nil {
+		return UsageResult{}, fmt.Errorf("parse failed")
+	}
+
+	result := UsageResult{
+		Provider: "cursor",
+		Period:   "monthly",
+		Unit:     "requests",
+		Source:   "local-auth",
+		Status:   "ok",
+		Message:  "Usage fetched from Cursor API",
+		Buckets:  map[string]string{},
+	}
+
+	if rawSOM, ok := raw["startOfMonth"]; ok {
+		var som string
+		if json.Unmarshal(rawSOM, &som) == nil && len(som) >= 7 {
+			result.Period = "monthly:" + som[:7]
+		}
+	}
+
+	totalUsed := 0
+	totalLimit := 0
+	hasLimit := false
+	var modelParts []string
+
+	for key, val := range raw {
+		if key == "startOfMonth" {
+			continue
+		}
+		var m struct {
+			NumRequestsTotal int  `json:"numRequestsTotal"`
+			MaxRequestUsage  *int `json:"maxRequestUsage"`
+		}
+		if json.Unmarshal(val, &m) != nil {
+			continue
+		}
+		totalUsed += m.NumRequestsTotal
+		if m.MaxRequestUsage != nil {
+			totalLimit += *m.MaxRequestUsage
+			hasLimit = true
+		}
+		result.Buckets[key] = strconv.Itoa(m.NumRequestsTotal)
+		modelParts = append(modelParts, fmt.Sprintf("%s=%d", key, m.NumRequestsTotal))
+	}
+
+	result.Used = strconv.Itoa(totalUsed)
+	if hasLimit {
+		result.Limit = strconv.Itoa(totalLimit)
+	} else {
+		result.Limit = "n/a"
+	}
+	if os.Getenv("OCT_USAGE_DEBUG") == "1" {
+		result.SourceDetail = strings.Join(modelParts, ";")
+	}
+
+	return result, nil
 }
 
 func FetchCursorLocalUsage() UsageResult {
