@@ -52,8 +52,14 @@ oct alert config set timezone Asia/Seoul
 # 세부 임계치 직접 설정
 oct alert config set threshold.5h 90
 oct alert config set threshold.7d 92
+
+# provider별
 oct alert config set provider.codex.5h 94
 oct alert config set provider.codex.default 88
+
+# provider 선택형(미입력 시 번호 선택)
+oct alert config set-provider-threshold 5h 93 --provider cursor
+oct alert config set-provider-threshold 7d 95
 
 # 알림 로직 테스트
 oct alert test --provider codex --window 5h --value 96

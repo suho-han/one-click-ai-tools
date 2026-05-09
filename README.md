@@ -109,6 +109,8 @@ oct alert snooze clear --provider codex --window 5h
 - **OpenAI Codex** (`@openai/codex`)
 - **Gemini CLI** (`@google/gemini-cli`)
 - **GitHub Copilot** (`@github/copilot`)
+- **Cursor**
+- **OpenCode**
 
 ## 📖 Documentation
 
