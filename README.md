@@ -4,30 +4,32 @@
 [![pnpm](https://img.shields.io/badge/maintained%20with-pnpm-cc00ff.svg?style=flat-square&logo=pnpm)](https://pnpm.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 
-**one-click-tools (oct)** is a high-performance, OS-aware CLI utility to bootstrap and update popular AI developer tools with a single command.
+[English](README.en.md)
 
-## 🚀 Quick Start
+**one-click-tools (oct)** 는 주요 AI 개발 도구를 한 번에 설치/업데이트할 수 있는 고성능 CLI입니다.
 
-### Installation
+## 🚀 빠른 시작
+
+### 설치
 
 ```bash
-# Via npm
+# npm 설치
 npm install -g one-click-tools
 
-# Via pnpm
+# pnpm 설치
 pnpm add -g one-click-tools
 ```
 
-### Basic Usage
+### 기본 사용
 
 ```bash
-# Update all AI agents (Claude, Codex, Gemini, Copilot)
+# 모든 AI 에이전트 업데이트 (Claude, Codex, Gemini, Copilot, Cursor, OpenCode)
 oct agent-update
 
-# Check AI tool usage/quota
+# AI 도구 사용량/쿼터 확인
 oct usage
 
-# Show help
+# 도움말
 oct help
 ```
 
@@ -38,7 +40,7 @@ oct help
 ### 1) 에이전트 업데이트
 
 ```bash
-# Claude/Codex/Gemini/Copilot 업데이트
+# Claude/Codex/Gemini/Copilot/Cursor/OpenCode 업데이트
 oct agent-update
 ```
 
@@ -77,6 +79,15 @@ oct alert config set quiet_hours 00:00-08:00
 oct alert config set timezone Asia/Seoul
 ```
 
+설정값 설명:
+
+- `enabled`: 사용량 알림 기능 on/off
+- `cooldown_minutes`: 같은 provider/window 알림 재전송 최소 간격(분)
+- `threshold_percent`: 기본 경고 임계치(%)
+- `critical_percent`: CRITICAL 등급 임계치(%), quiet hours/snooze보다 우선
+- `quiet_hours`: 일반 알림 무음 시간대 (`HH:MM-HH:MM`)
+- `timezone`: quiet hours 계산 기준 타임존 (예: `Asia/Seoul`)
+
 #### 세부 임계치(윈도우/프로바이더별)
 
 ```bash
@@ -87,6 +98,8 @@ oct alert config set threshold.7d 92
 # provider별
 oct alert config set provider.codex.5h 94
 oct alert config set provider.codex.default 88
+oct alert config set provider.cursor.5h 93
+oct alert config set provider.opencode.default 87
 ```
 
 #### 일시 정지(snooze)
@@ -97,42 +110,42 @@ oct alert snooze set --duration 2h
 
 # 특정 provider/window만 일시정지
 oct alert snooze set --duration 1h --provider codex --window 5h
+oct alert snooze set --duration 1h --provider cursor --window 5h
+oct alert snooze set --duration 1h --provider opencode --window 7d
 
 # 확인/해제
 oct alert snooze show
 oct alert snooze clear --provider codex --window 5h
 ```
 
-## 🛠 Supported Agents
+## 🛠 지원 에이전트
 
 - **Claude Code** (`@anthropic-ai/claude-code`)
 - **OpenAI Codex** (`@openai/codex`)
 - **Gemini CLI** (`@google/gemini-cli`)
 - **GitHub Copilot** (`@github/copilot`)
-- **Cursor**
-- **OpenCode**
+- **Cursor** (`cursor-agent`)
+- **OpenCode** (`opencode-ai`)
 
-## 📖 Documentation
+## 📖 문서
 
-For detailed guides, please refer to the `CONTEXT/` directory:
+한국어 문서는 아래 링크를 참고하세요:
 
-- [Detailed Usage Guide](CONTEXT/USAGE.md)
-- [Local Development & Testing](CONTEXT/LOCAL_TEST.md)
-- [Project Plan & Status](CONTEXT/PLAN.md)
-- [Roadmap & TODO](CONTEXT/TODO.md)
-- [Icon Integration](CONTEXT/ICONS.md)
-- [Usage Alerts](CONTEXT/USAGE_ALERTS.md)
-- [Always-on Monitoring](CONTEXT/MONITORING.md)
+- [CONTEXT 문서 인덱스](CONTEXT/README.md)
+- [상세 사용 가이드](CONTEXT/ko/USAGE.md)
+- [사용량 알림](CONTEXT/ko/USAGE_ALERTS.md)
+- [상시 모니터링](CONTEXT/ko/MONITORING.md)
+- [로컬 개발 및 테스트](CONTEXT/ko/LOCAL_TEST.md)
 
-## Requirements
+## 요구사항
 
-- **Runtime users**
-  - **macOS**: Homebrew and Node.js/npm
+- **런타임 사용자**
+  - **macOS**: Homebrew 및 Node.js/npm
   - **Ubuntu/Linux**: Node.js/npm
-  - **Windows**: Node.js/npm (Experimental)
-- **Developers (build/test from source)**
+  - **Windows**: Node.js/npm (실험적)
+- **개발자 (소스 빌드/테스트)**
   - **Go >= 1.25**
 
-## License
+## 라이선스
 
 MIT © Suho Han
