@@ -6,6 +6,7 @@ const { Resvg } = require('@resvg/resvg-js');
 
 const projectRoot = path.resolve(__dirname, '..');
 const sourceDir = path.join(projectRoot, 'node_modules', 'simple-icons', 'icons');
+const customSourceDir = path.join(projectRoot, 'scripts', 'icon-sources');
 const targetDir = path.join(projectRoot, 'internal', 'ui', 'assets', 'icons');
 
 const icons = {
@@ -13,6 +14,8 @@ const icons = {
   codex: 'openai.svg',
   geminicli: 'googlegemini.svg',
   githubcopilot: 'githubcopilot.svg',
+  cursor: 'cursor.svg',
+  opencode: 'opencode.svg',
 };
 
 if (!fs.existsSync(sourceDir)) {
@@ -30,7 +33,10 @@ for (const stale of ['lobehub.svg', 'lobehub.png']) {
 }
 
 for (const [targetName, sourceFile] of Object.entries(icons)) {
-  const from = path.join(sourceDir, sourceFile);
+  let from = path.join(sourceDir, sourceFile);
+  if (!fs.existsSync(from)) {
+    from = path.join(customSourceDir, sourceFile);
+  }
   const toSVG = path.join(targetDir, `${targetName}.svg`);
   const toPNG = path.join(targetDir, `${targetName}.png`);
 
@@ -43,7 +49,7 @@ for (const [targetName, sourceFile] of Object.entries(icons)) {
   fs.writeFileSync(toSVG, svg);
 
   const normalized = svg
-    .replaceAll('currentColor', '#D6DEE8')
+    .split('currentColor').join('#D6DEE8')
     .replace(/fill="[^"]*"/g, 'fill="#D6DEE8"');
   const resvg = new Resvg(normalized, {
     fitTo: { mode: 'width', value: 128 },

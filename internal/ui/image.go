@@ -245,7 +245,9 @@ func detectRendererChoice() iconRenderer {
 		return rendererNativeImage
 	}
 
-	return rendererAnsiAsset
+	// Conservative default: on unknown/limited terminals, hide icons
+	// instead of printing low-fidelity ANSI glyphs.
+	return rendererText
 }
 
 func getEmbeddedIconPath(name string) string {

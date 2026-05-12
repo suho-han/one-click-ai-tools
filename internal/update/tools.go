@@ -68,8 +68,8 @@ var Tools = []Tool{
 		BinaryName:  "cursor-agent",
 		BrewPackage: "cursor-agent",
 		Icon:        "▣",
-		LobeIcon:    "",
-		HexColor:    "#111111",
+		LobeIcon:    "Cursor",
+		HexColor:    "#E6EDF3",
 	},
 	{
 		Name:        "OpenCode",
@@ -77,7 +77,7 @@ var Tools = []Tool{
 		BinaryName:  "opencode",
 		BrewPackage: "opencode",
 		Icon:        "🧩",
-		LobeIcon:    "",
+		LobeIcon:    "OpenCode",
 		HexColor:    "#4F46E5",
 	},
 	{

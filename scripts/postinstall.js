@@ -81,7 +81,7 @@ function detectImageIconSupport() {
         process.env.XTERM_SIXEL === '1';
 
     const imageIconsSupported = isKnownImageTerminal && !hasMultiplexer;
-    const bestRenderer = imageIconsSupported ? 'native_image' : 'ansi_asset';
+    const bestRenderer = imageIconsSupported ? 'native_image' : 'text';
 
     return {
         image_icons_supported: imageIconsSupported,
