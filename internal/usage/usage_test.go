@@ -9,6 +9,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/spf13/viper"
 )
 
 func TestPrintJSON_SummarySchemaAndCounts(t *testing.T) {
@@ -118,6 +120,26 @@ func TestMockServer(t *testing.T) {
 
 	if data.FiveHour.Utilization != 42.5 {
 		t.Errorf("Expected 42.5, got %f", data.FiveHour.Utilization)
+	}
+}
+
+func TestGetSelectedTools_RespectsEnabledTools(t *testing.T) {
+	oldOrder := viper.GetStringSlice("agent_order")
+	oldEnabled := viper.GetStringSlice("enabled_tools")
+	t.Cleanup(func() {
+		viper.Set("agent_order", oldOrder)
+		viper.Set("enabled_tools", oldEnabled)
+	})
+
+	viper.Set("agent_order", []string{"gemini", "claude", "cursor-agent", "copilot", "opencode", "codex"})
+	viper.Set("enabled_tools", []string{"codex", "opencode"})
+
+	selected := getSelectedTools()
+	if len(selected) != 2 {
+		t.Fatalf("expected 2 selected tools, got %d", len(selected))
+	}
+	if selected[0].BinaryName != "codex" || selected[1].BinaryName != "opencode" {
+		t.Fatalf("unexpected selected order: %s, %s", selected[0].BinaryName, selected[1].BinaryName)
 	}
 }
 

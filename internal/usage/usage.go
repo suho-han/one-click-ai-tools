@@ -24,13 +24,18 @@ type UsageResult struct {
 	Buckets      map[string]string `json:"buckets"` // e.g. {"5h": "10", "7d": "20"}
 }
 
-func GetUsage() ([]UsageResult, error) {
+func getSelectedTools() []update.Tool {
 	order := viper.GetStringSlice("agent_order")
 	if len(order) == 0 {
 		order = []string{"gemini", "claude", "cursor-agent", "copilot", "opencode", "codex"}
 	}
-
+	enabledTools := viper.GetStringSlice("enabled_tools")
 	orderedTools := update.GetOrderedTools(order)
+	return update.GetFilteredTools(enabledTools, orderedTools)
+}
+
+func GetUsage() ([]UsageResult, error) {
+	selectedTools := getSelectedTools()
 
 	fetchers := map[string]func() UsageResult{
 		"gemini":       FetchGeminiUsage,
@@ -41,10 +46,10 @@ func GetUsage() ([]UsageResult, error) {
 		"codex":        FetchCodexUsage,
 	}
 
-	results := make([]UsageResult, len(orderedTools))
+	results := make([]UsageResult, len(selectedTools))
 	g := new(errgroup.Group)
 
-	for i, t := range orderedTools {
+	for i, t := range selectedTools {
 		i, t := i, t // Capture for goroutine
 		if fetcher, ok := fetchers[strings.ToLower(t.BinaryName)]; ok {
 			g.Go(func() error {

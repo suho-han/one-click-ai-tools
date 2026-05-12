@@ -150,10 +150,12 @@ To properly fetch usage, ensure you are authenticated:
 		if len(order) == 0 {
 			order = []string{"gemini", "claude", "cursor-agent", "copilot", "opencode", "codex"}
 		}
+		enabledTools := viper.GetStringSlice("enabled_tools")
 		orderedTools := update.GetOrderedTools(order)
+		selectedTools := update.GetFilteredTools(enabledTools, orderedTools)
 
 		m := usageModel{
-			orderedTools: orderedTools,
+			orderedTools: selectedTools,
 		}
 		p := tea.NewProgram(m)
 
