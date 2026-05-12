@@ -123,7 +123,7 @@ func TestMockServer(t *testing.T) {
 	}
 }
 
-func TestGetSelectedTools_RespectsEnabledTools(t *testing.T) {
+func TestSelectedTools_RespectsEnabledTools(t *testing.T) {
 	oldOrder := viper.GetStringSlice("agent_order")
 	oldEnabled := viper.GetStringSlice("enabled_tools")
 	t.Cleanup(func() {
@@ -134,7 +134,7 @@ func TestGetSelectedTools_RespectsEnabledTools(t *testing.T) {
 	viper.Set("agent_order", []string{"gemini", "claude", "cursor-agent", "copilot", "opencode", "codex"})
 	viper.Set("enabled_tools", []string{"codex", "opencode"})
 
-	selected := getSelectedTools()
+	selected := SelectedTools()
 	if len(selected) != 2 {
 		t.Fatalf("expected 2 selected tools, got %d", len(selected))
 	}
