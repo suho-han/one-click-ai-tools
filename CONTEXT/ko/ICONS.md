@@ -7,8 +7,8 @@
 - OpenAI Codex -> `Codex`
 - Gemini CLI -> `GeminiCLI`
 - GitHub Copilot -> `GithubCopilot`
-- Cursor -> 텍스트 fallback (Lobe 아이콘 미지원)
-- OpenCode -> 텍스트 fallback (Lobe 아이콘 미지원)
+- Cursor -> `Cursor` (내장 아이콘)
+- OpenCode -> `OpenCode` (내장 아이콘)
 
 코드 위치:
 - 아이콘 매핑 정의: `internal/update/tools.go`
