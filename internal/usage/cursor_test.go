@@ -109,6 +109,9 @@ func TestFetchCursorUsageLocalAuth(t *testing.T) {
 
 	tempHome := t.TempDir()
 	authDir := filepath.Join(tempHome, ".config", "cursor")
+	if runtime.GOOS == "windows" {
+		authDir = filepath.Join(tempHome, "AppData", "Roaming", "cursor")
+	}
 	if err := os.MkdirAll(authDir, 0755); err != nil {
 		t.Fatalf("mkdir failed: %v", err)
 	}
