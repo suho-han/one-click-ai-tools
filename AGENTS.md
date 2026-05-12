@@ -18,8 +18,8 @@ Use `internal/ui/assets/` for icon/image assets and keep generated artifacts in 
 - `go run main.go help`: run CLI quickly without building.
 - `go build -o oct main.go`: build local binary.
 - `./oct usage --json`: smoke-test built binary behavior.
-- `go test ./...`: run all tests.
-- `go test -cover ./...`: run tests with coverage summary.
+- `GOTOOLCHAIN=auto go test ./...`: run all tests.
+- `GOTOOLCHAIN=auto go test -cover ./...`: run tests with coverage summary.
 - `npm run build`: npm-facing build command (wraps `go build`).
 - `npm run generate:icons`: regenerate bundled icon assets.
 - `npm run release`: bump version and generate CHANGELOG using `standard-version`.
