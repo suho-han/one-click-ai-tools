@@ -43,6 +43,7 @@ oct usage --notify
 참고:
 - 비 TTY 환경(CI/파이프)에서는 자동으로 JSON 출력으로 전환됩니다.
 - `--notify` 또는 `usage_alert_enabled=true`일 때 알림 규칙이 적용됩니다.
+- 조회 대상 provider는 `enabled_tools` 기준이며, 출력 순서는 `agent_order`를 따릅니다.
 
 ### 주요 환경 변수
 

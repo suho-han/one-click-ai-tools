@@ -43,6 +43,7 @@ oct usage --notify
 Notes:
 - In non-TTY environments (CI/pipes), output auto-switches to JSON.
 - Alert logic applies when `--notify` is set or `usage_alert_enabled=true`.
+- Selected providers are filtered by `enabled_tools`, and output order follows `agent_order`.
 
 ### Key environment variables
 

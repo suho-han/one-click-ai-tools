@@ -51,6 +51,10 @@ oct agent-update
 oct usage
 ```
 
+동작 기준:
+- `enabled_tools`에 포함된 provider만 `usage`/`monitor`에서 조회합니다.
+- 출력 순서는 `agent_order`를 따릅니다.
+
 ### 3) 상시 모니터링 화면
 
 ```bash
