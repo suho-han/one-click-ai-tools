@@ -52,3 +52,11 @@ func TestMonitorWidthHelpers(t *testing.T) {
 		t.Fatalf("unexpected truncateMonitorText result: %q", got)
 	}
 }
+
+func TestPadANSI_VisibleWidth(t *testing.T) {
+	colored := colorizeMonitorProvider("codex")
+	padded := padANSI(colored, 14)
+	if got := visibleLenANSI(padded); got != 14 {
+		t.Fatalf("expected visible width 14, got %d (%q)", got, padded)
+	}
+}

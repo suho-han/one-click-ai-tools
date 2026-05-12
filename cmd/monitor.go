@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,7 +17,7 @@ import (
 var monitorCmd = &cobra.Command{
 	Use:     "monitor",
 	GroupID: "core",
-	Short: "Always-on usage monitoring screen",
+	Short:   "Always-on usage monitoring screen",
 	Run: func(cmd *cobra.Command, args []string) {
 		interval, _ := cmd.Flags().GetDuration("interval")
 		statePath, _ := cmd.Flags().GetString("state-path")
@@ -95,9 +96,24 @@ func printMonitorScreen(results []usage.UsageResult, now time.Time, compact bool
 		statusLabel := colorizeMonitorStatus(r.Status)
 		providerLabel := colorizeMonitorProvider(r.Provider)
 		if compact {
-			fmt.Printf("%-14s %-8s %-8s %-8s %-10s\n", providerLabel, five, seven, sev, statusLabel)
+			fmt.Printf("%s %s %s %s %s\n",
+				padANSI(providerLabel, 14),
+				padANSI(five, 8),
+				padANSI(seven, 8),
+				padANSI(sev, 8),
+				padANSI(statusLabel, 10),
+			)
 		} else {
-			fmt.Printf("%-14s %-8s %-8s %-8s %-10s %-10s %-8s %s\n", providerLabel, five, seven, sev, u, r.Limit, statusLabel, msg)
+			fmt.Printf("%s %s %s %s %s %s %s %s\n",
+				padANSI(providerLabel, 14),
+				padANSI(five, 8),
+				padANSI(seven, 8),
+				padANSI(sev, 8),
+				padANSI(u, 10),
+				padANSI(r.Limit, 10),
+				padANSI(statusLabel, 8),
+				msg,
+			)
 		}
 	}
 
@@ -105,6 +121,8 @@ func printMonitorScreen(results []usage.UsageResult, now time.Time, compact bool
 	fmt.Printf("snapshot: %s\n", usage.DefaultSnapshotPath())
 	fmt.Println("Ctrl+C to stop")
 }
+
+var ansiEscapePattern = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
 func monitorTerminalWidth() int {
 	if raw := strings.TrimSpace(os.Getenv("COLUMNS")); raw != "" {
@@ -135,6 +153,19 @@ func truncateMonitorText(s string, max int) string {
 		return s[:max]
 	}
 	return s[:max-3] + "..."
+}
+
+func padANSI(s string, width int) string {
+	visible := visibleLenANSI(s)
+	if visible >= width {
+		return s
+	}
+	return s + strings.Repeat(" ", width-visible)
+}
+
+func visibleLenANSI(s string) int {
+	plain := ansiEscapePattern.ReplaceAllString(s, "")
+	return len([]rune(plain))
 }
 
 func colorizeMonitorProvider(provider string) string {
