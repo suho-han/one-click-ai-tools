@@ -7,7 +7,8 @@ import (
 )
 
 var agentUpdateCmd = &cobra.Command{
-	Use:   "agent-update",
+	Use:     "agent-update",
+	GroupID: "maintenance",
 	Short: "Update AI tools",
 	Long:  `Update all or selected AI tools (Claude Code, OpenAI Codex, etc.) parallelly.`,
 	Run: func(cmd *cobra.Command, args []string) {

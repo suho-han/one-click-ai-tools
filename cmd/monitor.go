@@ -14,7 +14,8 @@ import (
 )
 
 var monitorCmd = &cobra.Command{
-	Use:   "monitor",
+	Use:     "monitor",
+	GroupID: "core",
 	Short: "Always-on usage monitoring screen",
 	Run: func(cmd *cobra.Command, args []string) {
 		interval, _ := cmd.Flags().GetDuration("interval")

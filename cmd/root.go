@@ -19,6 +19,7 @@ var rootCmd = &cobra.Command{
 }
 
 func Execute() {
+	reorderRootCommands()
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Println(err)
 		os.Exit(1)
@@ -26,9 +27,47 @@ func Execute() {
 }
 
 func init() {
+	cobra.EnableCommandSorting = false
 	cobra.OnInitialize(initConfig)
 
+	rootCmd.AddGroup(
+		&cobra.Group{ID: "core", Title: "Core Commands (frequently used)"},
+		&cobra.Group{ID: "manage", Title: "Configuration & Scheduling"},
+		&cobra.Group{ID: "maintenance", Title: "Update & Maintenance"},
+	)
+
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.oct/config.yaml)")
+}
+
+func reorderRootCommands() {
+	preferred := []string{"usage", "monitor", "alert", "config", "schedule", "agent-update", "update", "help", "completion"}
+	current := rootCmd.Commands()
+	if len(current) == 0 {
+		return
+	}
+
+	byName := make(map[string]*cobra.Command, len(current))
+	for _, c := range current {
+		byName[c.Name()] = c
+	}
+
+	for _, c := range current {
+		rootCmd.RemoveCommand(c)
+	}
+
+	added := make(map[string]bool, len(current))
+	for _, name := range preferred {
+		if c, ok := byName[name]; ok {
+			rootCmd.AddCommand(c)
+			added[name] = true
+		}
+	}
+
+	for _, c := range current {
+		if !added[c.Name()] {
+			rootCmd.AddCommand(c)
+		}
+	}
 }
 
 func initConfig() {

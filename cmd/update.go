@@ -10,7 +10,8 @@ import (
 )
 
 var updateCmd = &cobra.Command{
-	Use:   "update",
+	Use:     "update",
+	GroupID: "maintenance",
 	Short: "Update oct package",
 	Long:  `Update oct (one-click-tools) itself to the latest version.`,
 	Run: func(cmd *cobra.Command, args []string) {

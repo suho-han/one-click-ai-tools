@@ -9,7 +9,8 @@ import (
 )
 
 var scheduleCmd = &cobra.Command{
-	Use:   "schedule",
+	Use:     "schedule",
+	GroupID: "manage",
 	Short: "Manage update schedule",
 	Run: func(cmd *cobra.Command, args []string) {
 		s, err := schedule.GetScheduler()

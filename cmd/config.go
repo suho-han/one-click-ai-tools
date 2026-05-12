@@ -369,7 +369,8 @@ func visibleLen(s string) int {
 }
 
 var configCmd = &cobra.Command{
-	Use:   "config",
+	Use:     "config",
+	GroupID: "manage",
 	Short: "Manage configuration (interactive selection if no sub-command)",
 	Run: func(cmd *cobra.Command, args []string) {
 		newEnabledTools, newOrder, usageMode, cancelled, err := runInteractiveConfig()
