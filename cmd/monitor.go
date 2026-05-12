@@ -94,7 +94,7 @@ func printMonitorScreen(results []usage.UsageResult, now time.Time, compact bool
 		}
 		msg := truncateMonitorText(r.Message, msgWidth)
 		statusLabel := colorizeMonitorStatus(r.Status)
-		providerLabel := colorizeMonitorProvider(r.Provider)
+		providerLabel := colorizeMonitorProvider(monitorProviderDisplayLabel(r.Provider))
 		if compact {
 			fmt.Printf("%s %s %s %s %s\n",
 				padANSI(providerLabel, 14),
@@ -181,7 +181,7 @@ func colorizeMonitorProvider(provider string) string {
 	case strings.Contains(p, "copilot"), strings.Contains(p, "github"):
 		code = "95"
 	case strings.Contains(p, "cursor"):
-		code = "92"
+		code = "94"
 	case strings.Contains(p, "opencode"):
 		code = "97"
 	}
@@ -213,6 +213,50 @@ func colorizeMonitorStatus(status string) string {
 		return "\x1b[1;93mwarn\x1b[0m"
 	default:
 		return "\x1b[1;91m" + status + "\x1b[0m"
+	}
+}
+
+func monitorProviderDisplayLabel(provider string) string {
+	if !monitorSupportsProviderIcons() {
+		return provider
+	}
+	p := strings.ToLower(strings.TrimSpace(provider))
+	switch {
+	case strings.Contains(p, "cursor"):
+		return "▣ " + provider
+	case strings.Contains(p, "opencode"):
+		return "🧩 " + provider
+	default:
+		return provider
+	}
+}
+
+func monitorSupportsProviderIcons() bool {
+	if isTruthyEnv(os.Getenv("OCT_NO_ICONS")) {
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("TERM")), "dumb") {
+		return false
+	}
+	if os.Getenv("WT_SESSION") != "" {
+		return true
+	}
+	locale := strings.ToUpper(strings.TrimSpace(os.Getenv("LC_ALL")))
+	if locale == "" {
+		locale = strings.ToUpper(strings.TrimSpace(os.Getenv("LC_CTYPE")))
+	}
+	if locale == "" {
+		locale = strings.ToUpper(strings.TrimSpace(os.Getenv("LANG")))
+	}
+	return strings.Contains(locale, "UTF-8") || strings.Contains(locale, "UTF8")
+}
+
+func isTruthyEnv(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
 	}
 }
 

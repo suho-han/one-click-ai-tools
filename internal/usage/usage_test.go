@@ -148,7 +148,7 @@ func TestSelectedTools_RespectsEnabledTools(t *testing.T) {
 
 func TestColorizeHelpers_DarkTerminalFriendly(t *testing.T) {
 	provider := colorizeProvider("cursor", "cursor")
-	if !strings.Contains(provider, "\x1b[1;92m") {
+	if !strings.Contains(provider, "\x1b[1;94m") {
 		t.Fatalf("expected bright ANSI code for provider, got %q", provider)
 	}
 
@@ -172,6 +172,24 @@ func TestTableWidthHelpers(t *testing.T) {
 	}
 	if got := truncateText("abcdefghijklmnopqrstuvwxyz", 10); got != "abcdefg..." {
 		t.Fatalf("unexpected truncateText result: %q", got)
+	}
+}
+
+func TestProviderDisplayLabel_IconCapability(t *testing.T) {
+	t.Setenv("OCT_NO_ICONS", "")
+	t.Setenv("TERM", "xterm-256color")
+	t.Setenv("LC_ALL", "en_US.UTF-8")
+
+	if got := providerDisplayLabel("Cursor"); got != "▣ Cursor" {
+		t.Fatalf("expected cursor icon label, got %q", got)
+	}
+	if got := providerDisplayLabel("OpenCode"); got != "🧩 OpenCode" {
+		t.Fatalf("expected opencode icon label, got %q", got)
+	}
+
+	t.Setenv("TERM", "dumb")
+	if got := providerDisplayLabel("Cursor"); got != "Cursor" {
+		t.Fatalf("expected plain provider for dumb term, got %q", got)
 	}
 }
 

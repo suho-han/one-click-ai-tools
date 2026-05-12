@@ -36,6 +36,9 @@ func TestMonitorColorHelpers_DarkTerminalFriendly(t *testing.T) {
 	if got := colorizeMonitorStatus("warn"); got != "\x1b[1;93mwarn\x1b[0m" {
 		t.Fatalf("unexpected warn status label: %q", got)
 	}
+	if got := colorizeMonitorProvider("cursor"); got != "\x1b[1;94mcursor\x1b[0m" {
+		t.Fatalf("expected updated cursor color label, got %q", got)
+	}
 	if got := colorizeMonitorProvider("claude"); got == "claude" {
 		t.Fatalf("expected colored provider label, got %q", got)
 	}
@@ -58,5 +61,19 @@ func TestPadANSI_VisibleWidth(t *testing.T) {
 	padded := padANSI(colored, 14)
 	if got := visibleLenANSI(padded); got != 14 {
 		t.Fatalf("expected visible width 14, got %d (%q)", got, padded)
+	}
+}
+
+func TestMonitorProviderDisplayLabel_IconCapability(t *testing.T) {
+	t.Setenv("OCT_NO_ICONS", "")
+	t.Setenv("TERM", "xterm-256color")
+	t.Setenv("LC_ALL", "en_US.UTF-8")
+	if got := monitorProviderDisplayLabel("Cursor"); got != "▣ Cursor" {
+		t.Fatalf("expected cursor icon label, got %q", got)
+	}
+
+	t.Setenv("TERM", "dumb")
+	if got := monitorProviderDisplayLabel("OpenCode"); got != "OpenCode" {
+		t.Fatalf("expected plain provider for dumb term, got %q", got)
 	}
 }

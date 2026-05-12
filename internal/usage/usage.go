@@ -6,6 +6,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/spf13/viper"
 	"github.com/suho-han/one-click-tools/internal/update"
@@ -87,7 +88,8 @@ func PrintTable(results []UsageResult) {
 	fmt.Printf("%-16s %-12s %-8s %-8s %-12s %-12s %-10s %-8s %-8s %s\n",
 		"provider", "period", "5h", "1w", "used", "limit", "unit", "source", "status", "message")
 	for _, r := range results {
-		paddedProvider := colorizeProvider(fmt.Sprintf("%-16s", r.Provider), r.Provider)
+		providerLabel := providerDisplayLabel(r.Provider)
+		paddedProvider := colorizeProvider(padRightRunes(providerLabel, 16), r.Provider)
 
 		fiveHour := "-"
 		oneWeek := "-"
@@ -133,7 +135,7 @@ func colorizeProvider(label string, provider string) string {
 	case strings.Contains(p, "copilot"), strings.Contains(p, "github"):
 		code = "95"
 	case strings.Contains(p, "cursor"):
-		code = "92"
+		code = "94"
 	case strings.Contains(p, "opencode"):
 		code = "97"
 	}
@@ -165,6 +167,57 @@ func colorizeMessage(message string, status string) string {
 	default:
 		return message
 	}
+}
+
+func providerDisplayLabel(provider string) string {
+	if !supportsProviderIcons() {
+		return provider
+	}
+	p := strings.ToLower(strings.TrimSpace(provider))
+	switch {
+	case strings.Contains(p, "cursor"):
+		return "▣ " + provider
+	case strings.Contains(p, "opencode"):
+		return "🧩 " + provider
+	default:
+		return provider
+	}
+}
+
+func supportsProviderIcons() bool {
+	if isTruthy(os.Getenv("OCT_NO_ICONS")) {
+		return false
+	}
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("TERM")), "dumb") {
+		return false
+	}
+	if os.Getenv("WT_SESSION") != "" {
+		return true
+	}
+	locale := strings.ToUpper(strings.TrimSpace(os.Getenv("LC_ALL")))
+	if locale == "" {
+		locale = strings.ToUpper(strings.TrimSpace(os.Getenv("LC_CTYPE")))
+	}
+	if locale == "" {
+		locale = strings.ToUpper(strings.TrimSpace(os.Getenv("LANG")))
+	}
+	return strings.Contains(locale, "UTF-8") || strings.Contains(locale, "UTF8")
+}
+
+func isTruthy(v string) bool {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
+func padRightRunes(s string, width int) string {
+	if utf8.RuneCountInString(s) >= width {
+		return s
+	}
+	return s + strings.Repeat(" ", width-utf8.RuneCountInString(s))
 }
 
 func terminalWidth() int {
