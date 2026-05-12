@@ -83,22 +83,7 @@ func PrintTable(results []UsageResult) {
 	fmt.Printf("%-16s %-12s %-8s %-8s %-12s %-12s %-10s %-8s %-8s %s\n",
 		"provider", "period", "5h", "1w", "used", "limit", "unit", "source", "status", "message")
 	for _, r := range results {
-		colorPrefix := ""
-		p := strings.ToLower(r.Provider)
-		if strings.Contains(p, "gemini") {
-			colorPrefix = "\x1b[38;2;66;133;244m" // #4285F4
-		} else if strings.Contains(p, "claude") {
-			colorPrefix = "\x1b[38;2;217;119;87m" // #D97757
-		} else if strings.Contains(p, "codex") || strings.Contains(p, "openai") {
-			colorPrefix = "\x1b[38;2;0;166;126m" // #00A67E
-		} else if strings.Contains(p, "copilot") || strings.Contains(p, "github") {
-			colorPrefix = "\x1b[38;2;188;140;242m" // #BC8CF2
-		}
-
-		paddedProvider := fmt.Sprintf("%-16s", r.Provider)
-		if colorPrefix != "" {
-			paddedProvider = fmt.Sprintf("%s%s\x1b[0m", colorPrefix, paddedProvider)
-		}
+		paddedProvider := colorizeProvider(fmt.Sprintf("%-16s", r.Provider), r.Provider)
 
 		fiveHour := "-"
 		oneWeek := "-"
@@ -123,8 +108,58 @@ func PrintTable(results []UsageResult) {
 			}
 		}
 
-		fmt.Printf("%s %-12s %-8s %-8s %-12s %-12s %-10s %-8s %-8s %s\n",
-			paddedProvider, r.Period, fiveHour, oneWeek, displayUsed, r.Limit, r.Unit, r.Source, r.Status, r.Message)
+		statusLabel := colorizeStatus(fmt.Sprintf("%-8s", r.Status), r.Status)
+		message := colorizeMessage(r.Message, r.Status)
+
+		fmt.Printf("%s %-12s %-8s %-8s %-12s %-12s %-10s %-8s %s %s\n",
+			paddedProvider, r.Period, fiveHour, oneWeek, displayUsed, r.Limit, r.Unit, r.Source, statusLabel, message)
+	}
+}
+
+func colorizeProvider(label string, provider string) string {
+	p := strings.ToLower(provider)
+	code := ""
+	switch {
+	case strings.Contains(p, "gemini"):
+		code = "94"
+	case strings.Contains(p, "claude"):
+		code = "93"
+	case strings.Contains(p, "codex"), strings.Contains(p, "openai"):
+		code = "96"
+	case strings.Contains(p, "copilot"), strings.Contains(p, "github"):
+		code = "95"
+	case strings.Contains(p, "cursor"):
+		code = "92"
+	case strings.Contains(p, "opencode"):
+		code = "97"
+	}
+	if code == "" {
+		return label
+	}
+	return "\x1b[1;" + code + "m" + label + "\x1b[0m"
+}
+
+func colorizeStatus(label string, status string) string {
+	s := strings.ToLower(strings.TrimSpace(status))
+	switch s {
+	case "ok":
+		return "\x1b[1;92m" + label + "\x1b[0m"
+	case "warn":
+		return "\x1b[1;93m" + label + "\x1b[0m"
+	default:
+		return "\x1b[1;91m" + label + "\x1b[0m"
+	}
+}
+
+func colorizeMessage(message string, status string) string {
+	s := strings.ToLower(strings.TrimSpace(status))
+	switch s {
+	case "warn":
+		return "\x1b[93m" + message + "\x1b[0m"
+	case "error":
+		return "\x1b[91m" + message + "\x1b[0m"
+	default:
+		return message
 	}
 }
 

@@ -76,7 +76,7 @@ func printMonitorScreen(results []usage.UsageResult, now time.Time, compact bool
 	for _, r := range results {
 		five := bucketVal(r, "5h", mode)
 		seven := bucketVal(r, "7d", mode)
-		sev := usageSeverity(r)
+		sev := colorizeSeverityLabel(usageSeverity(r))
 		u := r.Used
 		if mode == "remaining" {
 			if rem, ok := usageRemaining(r.Used, r.Unit); ok {
@@ -87,16 +87,66 @@ func printMonitorScreen(results []usage.UsageResult, now time.Time, compact bool
 		if len(msg) > 32 {
 			msg = msg[:32] + "..."
 		}
+		statusLabel := colorizeMonitorStatus(r.Status)
+		providerLabel := colorizeMonitorProvider(r.Provider)
 		if compact {
-			fmt.Printf("%-14s %-8s %-8s %-8s %-10s\n", r.Provider, five, seven, sev, r.Status)
+			fmt.Printf("%-14s %-8s %-8s %-8s %-10s\n", providerLabel, five, seven, sev, statusLabel)
 		} else {
-			fmt.Printf("%-14s %-8s %-8s %-8s %-10s %-10s %-8s %s\n", r.Provider, five, seven, sev, u, r.Limit, r.Status, msg)
+			fmt.Printf("%-14s %-8s %-8s %-8s %-10s %-10s %-8s %s\n", providerLabel, five, seven, sev, u, r.Limit, statusLabel, msg)
 		}
 	}
 
 	fmt.Println()
 	fmt.Printf("snapshot: %s\n", usage.DefaultSnapshotPath())
 	fmt.Println("Ctrl+C to stop")
+}
+
+func colorizeMonitorProvider(provider string) string {
+	p := strings.ToLower(provider)
+	code := ""
+	switch {
+	case strings.Contains(p, "gemini"):
+		code = "94"
+	case strings.Contains(p, "claude"):
+		code = "93"
+	case strings.Contains(p, "codex"), strings.Contains(p, "openai"):
+		code = "96"
+	case strings.Contains(p, "copilot"), strings.Contains(p, "github"):
+		code = "95"
+	case strings.Contains(p, "cursor"):
+		code = "92"
+	case strings.Contains(p, "opencode"):
+		code = "97"
+	}
+	if code == "" {
+		return provider
+	}
+	return "\x1b[1;" + code + "m" + provider + "\x1b[0m"
+}
+
+func colorizeSeverityLabel(sev string) string {
+	switch strings.ToUpper(strings.TrimSpace(sev)) {
+	case "CRIT":
+		return "\x1b[1;91mCRIT\x1b[0m"
+	case "WARN":
+		return "\x1b[1;93mWARN\x1b[0m"
+	case "OK":
+		return "\x1b[1;92mOK\x1b[0m"
+	default:
+		return "\x1b[1;90m" + sev + "\x1b[0m"
+	}
+}
+
+func colorizeMonitorStatus(status string) string {
+	s := strings.ToLower(strings.TrimSpace(status))
+	switch s {
+	case "ok":
+		return "\x1b[1;92mok\x1b[0m"
+	case "warn":
+		return "\x1b[1;93mwarn\x1b[0m"
+	default:
+		return "\x1b[1;91m" + status + "\x1b[0m"
+	}
 }
 
 func usageSeverity(r usage.UsageResult) string {

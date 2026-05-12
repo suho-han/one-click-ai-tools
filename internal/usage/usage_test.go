@@ -143,6 +143,23 @@ func TestSelectedTools_RespectsEnabledTools(t *testing.T) {
 	}
 }
 
+func TestColorizeHelpers_DarkTerminalFriendly(t *testing.T) {
+	provider := colorizeProvider("cursor", "cursor")
+	if !strings.Contains(provider, "\x1b[1;92m") {
+		t.Fatalf("expected bright ANSI code for provider, got %q", provider)
+	}
+
+	status := colorizeStatus("warn", "warn")
+	if !strings.Contains(status, "\x1b[1;93m") {
+		t.Fatalf("expected bright yellow for warn status, got %q", status)
+	}
+
+	msg := colorizeMessage("something happened", "error")
+	if !strings.Contains(msg, "\x1b[91m") {
+		t.Fatalf("expected red message tint for error, got %q", msg)
+	}
+}
+
 func captureStdout(t *testing.T, fn func()) string {
 	t.Helper()
 	old := os.Stdout

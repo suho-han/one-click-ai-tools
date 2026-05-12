@@ -28,3 +28,15 @@ func TestUsageSeverity(t *testing.T) {
 		t.Fatalf("expected CRIT, got %s", got)
 	}
 }
+
+func TestMonitorColorHelpers_DarkTerminalFriendly(t *testing.T) {
+	if got := colorizeSeverityLabel("CRIT"); got != "\x1b[1;91mCRIT\x1b[0m" {
+		t.Fatalf("unexpected CRIT color label: %q", got)
+	}
+	if got := colorizeMonitorStatus("warn"); got != "\x1b[1;93mwarn\x1b[0m" {
+		t.Fatalf("unexpected warn status label: %q", got)
+	}
+	if got := colorizeMonitorProvider("claude"); got == "claude" {
+		t.Fatalf("expected colored provider label, got %q", got)
+	}
+}
