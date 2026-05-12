@@ -120,17 +120,25 @@ func TestFetchCursorUsageLocalAuth(t *testing.T) {
 	prevEndpoint := os.Getenv("OCT_CURSOR_USAGE_URL")
 	prevAPIURL := os.Getenv("OCT_CURSOR_API_USAGE_URL")
 	prevHome := os.Getenv("HOME")
+	prevUserProfile := os.Getenv("USERPROFILE")
+	prevAppData := os.Getenv("APPDATA")
 	prevDebug := os.Getenv("OCT_USAGE_DEBUG")
 	t.Cleanup(func() {
 		_ = os.Setenv("OCT_CURSOR_USAGE_URL", prevEndpoint)
 		_ = os.Setenv("OCT_CURSOR_API_USAGE_URL", prevAPIURL)
 		_ = os.Setenv("HOME", prevHome)
+		_ = os.Setenv("USERPROFILE", prevUserProfile)
+		_ = os.Setenv("APPDATA", prevAppData)
 		_ = os.Setenv("OCT_USAGE_DEBUG", prevDebug)
 	})
 
 	_ = os.Setenv("OCT_CURSOR_USAGE_URL", "")
 	_ = os.Setenv("OCT_CURSOR_API_USAGE_URL", server.URL)
 	_ = os.Setenv("HOME", tempHome)
+	_ = os.Setenv("USERPROFILE", tempHome)
+	if runtime.GOOS == "windows" {
+		_ = os.Setenv("APPDATA", filepath.Join(tempHome, "AppData", "Roaming"))
+	}
 	_ = os.Setenv("OCT_USAGE_DEBUG", "1")
 
 	result := FetchCursorUsage()
