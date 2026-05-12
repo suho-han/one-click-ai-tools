@@ -19,5 +19,4 @@ var agentUpdateCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(agentUpdateCmd)
-	agentUpdateCmd.Aliases = []string{"update"}
 }

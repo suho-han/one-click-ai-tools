@@ -20,6 +20,12 @@ func TestRootCommand(t *testing.T) {
 	if !contains(out, "A high-performance CLI tool") {
 		t.Errorf("expected help message to contain description, got: %s", out)
 	}
+	if !contains(out, "agent-update") {
+		t.Errorf("expected help to include agent-update command, got: %s", out)
+	}
+	if !contains(out, "update") {
+		t.Errorf("expected help to include update command, got: %s", out)
+	}
 }
 
 func contains(s, substr string) bool {
