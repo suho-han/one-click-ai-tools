@@ -19,7 +19,7 @@ import (
 
 var alertCmd = &cobra.Command{
 	Use:     "alert",
-	GroupID: "core",
+	GroupID: "manage",
 	Short: "Usage alert configuration and testing",
 }
 
