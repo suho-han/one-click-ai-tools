@@ -74,6 +74,10 @@ func shouldAutoJSONFallback(jsonMode bool, isTTY bool) bool {
 	return !jsonMode && !isTTY
 }
 
+func usageOrderedTools() []update.Tool {
+	return usage.SelectedTools()
+}
+
 func maybeSendUsageAlerts(results []usage.UsageResult, force bool) {
 	enabled := force || viper.GetBool("usage_alert_enabled")
 	if !enabled {
@@ -146,13 +150,7 @@ To properly fetch usage, ensure you are authenticated:
 			return
 		}
 
-		order := viper.GetStringSlice("agent_order")
-		if len(order) == 0 {
-			order = []string{"gemini", "claude", "cursor-agent", "copilot", "opencode", "codex"}
-		}
-		enabledTools := viper.GetStringSlice("enabled_tools")
-		orderedTools := update.GetOrderedTools(order)
-		selectedTools := update.GetFilteredTools(enabledTools, orderedTools)
+		selectedTools := usageOrderedTools()
 
 		m := usageModel{
 			orderedTools: selectedTools,

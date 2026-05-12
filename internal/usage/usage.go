@@ -24,7 +24,7 @@ type UsageResult struct {
 	Buckets      map[string]string `json:"buckets"` // e.g. {"5h": "10", "7d": "20"}
 }
 
-func getSelectedTools() []update.Tool {
+func SelectedTools() []update.Tool {
 	order := viper.GetStringSlice("agent_order")
 	if len(order) == 0 {
 		order = []string{"gemini", "claude", "cursor-agent", "copilot", "opencode", "codex"}
@@ -35,7 +35,7 @@ func getSelectedTools() []update.Tool {
 }
 
 func GetUsage() ([]UsageResult, error) {
-	selectedTools := getSelectedTools()
+	selectedTools := SelectedTools()
 
 	fetchers := map[string]func() UsageResult{
 		"gemini":       FetchGeminiUsage,
