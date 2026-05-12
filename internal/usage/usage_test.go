@@ -35,7 +35,7 @@ func TestPrintJSON_SummarySchemaAndCounts(t *testing.T) {
 			Warn  int `json:"warn"`
 			Error int `json:"error"`
 		} `json:"summary"`
-		Results []UsageResult `json:"results"`
+		Results []map[string]any `json:"results"`
 	}
 
 	if err := json.Unmarshal([]byte(output), &payload); err != nil {
@@ -48,8 +48,11 @@ func TestPrintJSON_SummarySchemaAndCounts(t *testing.T) {
 	if len(payload.Results) != 5 {
 		t.Fatalf("expected 5 results, got %d", len(payload.Results))
 	}
-	if payload.Results[0].Provider != "alpha" || payload.Results[1].Provider != "beta" || payload.Results[2].Provider != "cursor" || payload.Results[3].Provider != "delta" || payload.Results[4].Provider != "gamma" {
+	if payload.Results[0]["provider"] != "alpha" || payload.Results[1]["provider"] != "beta" || payload.Results[2]["provider"] != "cursor" || payload.Results[3]["provider"] != "delta" || payload.Results[4]["provider"] != "gamma" {
 		t.Fatalf("result order changed unexpectedly: %+v", payload.Results)
+	}
+	if _, ok := payload.Results[0]["period"]; ok {
+		t.Fatalf("compact JSON should omit verbose fields like period: %+v", payload.Results[0])
 	}
 }
 
@@ -157,6 +160,18 @@ func TestColorizeHelpers_DarkTerminalFriendly(t *testing.T) {
 	msg := colorizeMessage("something happened", "error")
 	if !strings.Contains(msg, "\x1b[91m") {
 		t.Fatalf("expected red message tint for error, got %q", msg)
+	}
+}
+
+func TestTableWidthHelpers(t *testing.T) {
+	if got := tableMessageWidth(80); got != 10 {
+		t.Fatalf("expected width 10 at 80 cols, got %d", got)
+	}
+	if got := tableMessageWidth(100); got != 20 {
+		t.Fatalf("expected width 20 at 100 cols, got %d", got)
+	}
+	if got := truncateText("abcdefghijklmnopqrstuvwxyz", 10); got != "abcdefg..." {
+		t.Fatalf("unexpected truncateText result: %q", got)
 	}
 }
 

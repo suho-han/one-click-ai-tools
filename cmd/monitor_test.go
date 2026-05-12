@@ -40,3 +40,15 @@ func TestMonitorColorHelpers_DarkTerminalFriendly(t *testing.T) {
 		t.Fatalf("expected colored provider label, got %q", got)
 	}
 }
+
+func TestMonitorWidthHelpers(t *testing.T) {
+	if got := monitorMessageWidth(90); got != 0 {
+		t.Fatalf("expected compact mode msg width 0 for narrow terminal, got %d", got)
+	}
+	if got := monitorMessageWidth(110); got != 20 {
+		t.Fatalf("expected medium msg width 20, got %d", got)
+	}
+	if got := truncateMonitorText("abcdefghijklmnopqrstuvwxyz", 10); got != "abcdefg..." {
+		t.Fatalf("unexpected truncateMonitorText result: %q", got)
+	}
+}

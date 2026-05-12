@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -59,9 +60,15 @@ var monitorCmd = &cobra.Command{
 }
 
 func printMonitorScreen(results []usage.UsageResult, now time.Time, compact bool) {
+	width := monitorTerminalWidth()
+	if width <= 100 {
+		compact = true
+	}
+	msgWidth := monitorMessageWidth(width)
+
 	fmt.Print("\033[H\033[2J") // clear screen
 	fmt.Printf("oct monitor  |  %s\n", now.Format("2006-01-02 15:04:05"))
-	fmt.Println(strings.Repeat("-", 100))
+	fmt.Println(strings.Repeat("-", width))
 	if compact {
 		fmt.Printf("%-14s %-8s %-8s %-8s %-10s\n", "provider", "5h", "7d", "sev", "status")
 	} else {
@@ -83,10 +90,7 @@ func printMonitorScreen(results []usage.UsageResult, now time.Time, compact bool
 				u = rem
 			}
 		}
-		msg := r.Message
-		if len(msg) > 32 {
-			msg = msg[:32] + "..."
-		}
+		msg := truncateMonitorText(r.Message, msgWidth)
 		statusLabel := colorizeMonitorStatus(r.Status)
 		providerLabel := colorizeMonitorProvider(r.Provider)
 		if compact {
@@ -99,6 +103,37 @@ func printMonitorScreen(results []usage.UsageResult, now time.Time, compact bool
 	fmt.Println()
 	fmt.Printf("snapshot: %s\n", usage.DefaultSnapshotPath())
 	fmt.Println("Ctrl+C to stop")
+}
+
+func monitorTerminalWidth() int {
+	if raw := strings.TrimSpace(os.Getenv("COLUMNS")); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n >= 40 {
+			return n
+		}
+	}
+	return 100
+}
+
+func monitorMessageWidth(width int) int {
+	switch {
+	case width <= 100:
+		return 0
+	case width <= 120:
+		return 20
+	default:
+		return 32
+	}
+}
+
+func truncateMonitorText(s string, max int) string {
+	s = strings.TrimSpace(s)
+	if max <= 0 || len(s) <= max {
+		return s
+	}
+	if max <= 3 {
+		return s[:max]
+	}
+	return s[:max-3] + "..."
 }
 
 func colorizeMonitorProvider(provider string) string {

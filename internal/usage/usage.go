@@ -3,6 +3,7 @@ package usage
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 
@@ -75,6 +76,9 @@ func GetUsage() ([]UsageResult, error) {
 }
 
 func PrintTable(results []UsageResult) {
+	width := terminalWidth()
+	messageWidth := tableMessageWidth(width)
+
 	displayMode := strings.ToLower(strings.TrimSpace(viper.GetString("usage_display_mode")))
 	if displayMode != "used" && displayMode != "remaining" {
 		displayMode = "used"
@@ -109,7 +113,7 @@ func PrintTable(results []UsageResult) {
 		}
 
 		statusLabel := colorizeStatus(fmt.Sprintf("%-8s", r.Status), r.Status)
-		message := colorizeMessage(r.Message, r.Status)
+		message := colorizeMessage(truncateText(r.Message, messageWidth), r.Status)
 
 		fmt.Printf("%s %-12s %-8s %-8s %-12s %-12s %-10s %-8s %s %s\n",
 			paddedProvider, r.Period, fiveHour, oneWeek, displayUsed, r.Limit, r.Unit, r.Source, statusLabel, message)
@@ -163,6 +167,39 @@ func colorizeMessage(message string, status string) string {
 	}
 }
 
+func terminalWidth() int {
+	if raw := strings.TrimSpace(os.Getenv("COLUMNS")); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n >= 40 {
+			return n
+		}
+	}
+	return 100
+}
+
+func tableMessageWidth(width int) int {
+	switch {
+	case width <= 80:
+		return 10
+	case width <= 100:
+		return 20
+	case width <= 120:
+		return 28
+	default:
+		return 40
+	}
+}
+
+func truncateText(s string, max int) string {
+	s = strings.TrimSpace(s)
+	if max <= 0 || len(s) <= max {
+		return s
+	}
+	if max <= 3 {
+		return s[:max]
+	}
+	return s[:max-3] + "..."
+}
+
 func formatBucketDisplay(r UsageResult, rawValue, mode string) string {
 	value := rawValue
 	if mode == "remaining" && strings.EqualFold(r.Unit, "percent") {
@@ -194,6 +231,14 @@ func remainingFromUsed(used string) (string, bool) {
 }
 
 func PrintJSON(results []UsageResult) error {
+	type UsageResultCompact struct {
+		Provider string            `json:"provider"`
+		Status   string            `json:"status"`
+		Used     string            `json:"used"`
+		Unit     string            `json:"unit"`
+		Buckets  map[string]string `json:"buckets,omitempty"`
+		Message  string            `json:"message,omitempty"`
+	}
 	type UsageSummary struct {
 		Total int `json:"total"`
 		OK    int `json:"ok"`
@@ -201,14 +246,23 @@ func PrintJSON(results []UsageResult) error {
 		Error int `json:"error"`
 	}
 	payload := struct {
-		Summary UsageSummary `json:"summary"`
-		Results []UsageResult `json:"results"`
+		Summary UsageSummary       `json:"summary"`
+		Results []UsageResultCompact `json:"results"`
 	}{
 		Summary: UsageSummary{Total: len(results)},
-		Results: results,
+		Results: make([]UsageResultCompact, 0, len(results)),
 	}
 
 	for _, r := range results {
+		payload.Results = append(payload.Results, UsageResultCompact{
+			Provider: r.Provider,
+			Status:   r.Status,
+			Used:     r.Used,
+			Unit:     r.Unit,
+			Buckets:  r.Buckets,
+			Message:  truncateText(r.Message, 48),
+		})
+
 		switch classifySummaryStatus(r) {
 		case "ok":
 			payload.Summary.OK++
