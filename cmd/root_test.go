@@ -30,6 +30,9 @@ func TestRootCommand(t *testing.T) {
 	if !contains(out, "update") {
 		t.Errorf("expected help to include update command, got: %s", out)
 	}
+	if !contains(out, "menubar") {
+		t.Errorf("expected help to include menubar command, got: %s", out)
+	}
 }
 
 func contains(s, substr string) bool {
