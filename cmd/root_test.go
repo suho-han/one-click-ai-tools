@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -37,6 +38,27 @@ func TestRootCommand(t *testing.T) {
 
 func contains(s, substr string) bool {
 	return bytes.Contains([]byte(s), []byte(substr))
+}
+
+func TestRootVersionMatchesPackageJSON(t *testing.T) {
+	type pkg struct {
+		Version string `json:"version"`
+	}
+
+	data, err := os.ReadFile("../package.json")
+	if err != nil {
+		t.Fatalf("read package.json failed: %v", err)
+	}
+	var p pkg
+	if err := json.Unmarshal(data, &p); err != nil {
+		t.Fatalf("parse package.json failed: %v", err)
+	}
+	if p.Version == "" {
+		t.Fatal("package.json version is empty")
+	}
+	if rootCmd.Version != p.Version {
+		t.Fatalf("version mismatch: rootCmd=%q package.json=%q", rootCmd.Version, p.Version)
+	}
 }
 
 func TestInitConfig_IgnoresNonPrefixedEnabledToolsEnv(t *testing.T) {
