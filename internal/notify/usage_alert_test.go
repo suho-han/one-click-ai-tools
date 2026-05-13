@@ -223,10 +223,10 @@ func TestMaybeSendUsageAlertsMessageIncludesPriorityLabel(t *testing.T) {
 func TestCleanupExpiredSnooze(t *testing.T) {
 	now := time.Now()
 	st := alertState{SnoozedUntil: map[string]time.Time{
-		"global":           now.Add(-1 * time.Minute),
-		"provider:codex":   now.Add(10 * time.Minute),
-		"window:5h":        now.Add(-2 * time.Minute),
-		"provider:x:window:y": now.Add(5 * time.Minute),
+		"global":               now.Add(-1 * time.Minute),
+		"provider:codex":       now.Add(10 * time.Minute),
+		"window:5h":            now.Add(-2 * time.Minute),
+		"provider:x:window:y":  now.Add(5 * time.Minute),
 	}}
 	changed := cleanupExpiredSnooze(&st, now)
 	if !changed {
@@ -240,5 +240,123 @@ func TestCleanupExpiredSnooze(t *testing.T) {
 	}
 	if _, ok := st.SnoozedUntil["provider:codex"]; !ok {
 		t.Fatalf("expected active provider snooze to remain")
+	}
+}
+
+func TestThresholdPriority_WindowFallbackToGlobalDefault(t *testing.T) {
+	cfg := normalizeConfig(UsageAlertConfig{
+		ThresholdPct:     80,
+		GlobalThresholds: map[string]float64{"default": 81},
+		ProviderThreshold: map[string]map[string]float64{
+			"codex": {"7d": 93},
+		},
+	})
+
+	if got := thresholdFor(cfg, "codex", "5h"); got != 81 {
+		t.Fatalf("expected fallback to global default 81 for missing codex/5h, got %.1f", got)
+	}
+}
+
+func TestSnoozeScopeSpecificity(t *testing.T) {
+	now := time.Now()
+	st := alertState{SnoozedUntil: map[string]time.Time{
+		snoozeKey("codex", "5h"): now.Add(1 * time.Hour),
+	}}
+
+	if !isSnoozed(st, "codex", "5h", now) {
+		t.Fatalf("expected codex/5h to be snoozed")
+	}
+	if isSnoozed(st, "codex", "7d", now) {
+		t.Fatalf("expected codex/7d not to be snoozed by codex/5h key")
+	}
+	if isSnoozed(st, "claude", "5h", now) {
+		t.Fatalf("expected claude/5h not to be snoozed by codex/5h key")
+	}
+}
+
+func TestSnoozeWindowScopeAppliesAcrossProviders(t *testing.T) {
+	now := time.Now()
+	st := alertState{SnoozedUntil: map[string]time.Time{
+		snoozeKey("", "5h"): now.Add(1 * time.Hour),
+	}}
+	if !isSnoozed(st, "codex", "5h", now) {
+		t.Fatalf("expected window snooze to apply for codex/5h")
+	}
+	if !isSnoozed(st, "claude", "5h", now) {
+		t.Fatalf("expected window snooze to apply for claude/5h")
+	}
+	if isSnoozed(st, "codex", "7d", now) {
+		t.Fatalf("expected window snooze not to apply to 7d")
+	}
+}
+
+func TestCriticalBoundaryBypassesQuietAndSnooze(t *testing.T) {
+	origNotify := notifyFn
+	defer func() { notifyFn = origNotify }()
+	notifyCount := 0
+	notifyFn = func(title, message string) error {
+		notifyCount++
+		return nil
+	}
+
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	cfg := UsageAlertConfig{
+		Enabled:         true,
+		ThresholdPct:    80,
+		CooldownMinutes: 120,
+		StatePath:       statePath,
+		CriticalPct:     98,
+		QuietHours:      "00:00-23:59",
+		Timezone:        "Asia/Seoul",
+	}
+
+	now := time.Now()
+	if err := SetSnooze(statePath, "", "", now.Add(1*time.Hour)); err != nil {
+		t.Fatalf("SetSnooze failed: %v", err)
+	}
+	results := []usage.UsageResult{{Provider: "codex", Unit: "percent", Used: "98", Buckets: map[string]string{"5h": "98"}}}
+	if err := MaybeSendUsageAlerts(results, cfg, now); err != nil {
+		t.Fatalf("MaybeSendUsageAlerts failed: %v", err)
+	}
+	if notifyCount == 0 {
+		t.Fatalf("expected critical boundary(98%%) to bypass quiet+snooze")
+	}
+}
+
+func TestCooldownAndSnooze_NoDuplicateSendsBelowCritical(t *testing.T) {
+	origNotify := notifyFn
+	defer func() { notifyFn = origNotify }()
+	notifyCount := 0
+	notifyFn = func(title, message string) error {
+		notifyCount++
+		return nil
+	}
+
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	cfg := UsageAlertConfig{
+		Enabled:         true,
+		ThresholdPct:    80,
+		CooldownMinutes: 120,
+		StatePath:       statePath,
+		CriticalPct:     98,
+	}
+
+	now := time.Now()
+	results := []usage.UsageResult{{Provider: "codex", Unit: "percent", Used: "90", Buckets: map[string]string{"5h": "90"}}}
+	if err := MaybeSendUsageAlerts(results, cfg, now); err != nil {
+		t.Fatalf("first send failed: %v", err)
+	}
+	if notifyCount != 2 {
+		t.Fatalf("expected 2 alerts for current+5h hit, got %d", notifyCount)
+	}
+
+	if err := SetSnooze(statePath, "codex", "5h", now.Add(1*time.Hour)); err != nil {
+		t.Fatalf("SetSnooze failed: %v", err)
+	}
+	if err := MaybeSendUsageAlerts(results, cfg, now.Add(10*time.Minute)); err != nil {
+		t.Fatalf("second send failed: %v", err)
+	}
+	if notifyCount != 2 {
+		t.Fatalf("expected no duplicate sends within cooldown with snooze, got %d", notifyCount)
 	}
 }
