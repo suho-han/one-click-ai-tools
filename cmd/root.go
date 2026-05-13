@@ -41,7 +41,7 @@ func init() {
 }
 
 func reorderRootCommands() {
-	preferred := []string{"usage", "monitor", "config", "alert", "schedule", "agent-update", "update", "help", "completion"}
+	preferred := []string{"usage", "monitor", "menubar", "config", "alert", "schedule", "agent-update", "update", "help", "completion"}
 	current := rootCmd.Commands()
 	if len(current) == 0 {
 		return
