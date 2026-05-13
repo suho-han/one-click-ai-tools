@@ -80,5 +80,8 @@
     },
     "devDependencies": {
         "standard-version": "^9.5.0"
+    },
+    "overrides": {
+        "handlebars": "4.7.9"
     }
 }
