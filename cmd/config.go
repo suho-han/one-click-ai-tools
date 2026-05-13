@@ -20,6 +20,10 @@ type toolItem struct {
 	icon3  [3]string
 	check  bool
 	cursor bool
+	// choose all/none control row (not a real tool)
+	isToggleControl bool
+	// confirm control row (not a real tool)
+	isConfirmControl bool
 }
 
 type configModel struct {
@@ -58,6 +62,31 @@ func newConfigModel(enabledTools []string, agentOrder []string) configModel {
 			cursor: i == 0,
 		})
 	}
+
+	items = append(items, toolItem{
+		tool: update.Tool{
+			Name:       "Choose all / Choose none",
+			BinaryName: "__toggle_all_none__",
+			Icon:       "⇄",
+			HexColor:   "#9CA3AF",
+		},
+		icon3:           [3]string{"", "⇄", ""},
+		check:           false,
+		cursor:          false,
+		isToggleControl: true,
+	})
+	items = append(items, toolItem{
+		tool: update.Tool{
+			Name:       "Confirm",
+			BinaryName: "__confirm__",
+			Icon:       "✓",
+			HexColor:   "#10B981",
+		},
+		icon3:            [3]string{"", "✓", ""},
+		check:            false,
+		cursor:           false,
+		isConfirmControl: true,
+	})
 	return configModel{items: items}
 }
 
@@ -66,35 +95,46 @@ func (m configModel) Init() tea.Cmd { return nil }
 func (m configModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
+		if msg.Type == tea.KeyEnter {
+			i := m.index()
+			if i >= 0 {
+				if m.items[i].isConfirmControl {
+					m.done = true
+					return m, tea.Quit
+				}
+				if m.items[i].isToggleControl {
+					allChecked := true
+					for j := range m.items {
+						if m.items[j].isToggleControl || m.items[j].isConfirmControl {
+							continue
+						}
+						if !m.items[j].check {
+							allChecked = false
+							break
+						}
+					}
+					for j := range m.items {
+						if m.items[j].isToggleControl || m.items[j].isConfirmControl {
+							continue
+						}
+						m.items[j].check = !allChecked
+					}
+				} else {
+					m.items[i].check = !m.items[i].check
+				}
+			}
+			return m, nil
+		}
 		switch msg.String() {
 		case "ctrl+c", "ctrl+q", "q":
 			m.cancelled = true
 			m.done = true
 			return m, tea.Quit
-		case "up", "k":
+		case "up":
 			m.move(-1)
-		case "down", "j":
+		case "down":
 			m.move(1)
-		case "shift+up", "K":
-			m.swap(-1)
-		case "shift+down", "J":
-			m.swap(1)
-		case "space", " ":
-			i := m.index()
-			if i >= 0 {
-				m.items[i].check = !m.items[i].check
-			}
-		case "right":
-			for i := range m.items {
-				m.items[i].check = true
-			}
-		case "left":
-			for i := range m.items {
-				m.items[i].check = false
-			}
-		case "enter":
-			m.done = true
-			return m, tea.Quit
+
 		}
 	}
 	return m, nil
@@ -114,18 +154,6 @@ func (m *configModel) move(delta int) {
 		n = 0
 	}
 	m.items[n].cursor = true
-}
-
-func (m *configModel) swap(delta int) {
-	i := m.index()
-	if i < 0 {
-		return
-	}
-	n := i + delta
-	if n < 0 || n >= len(m.items) {
-		return
-	}
-	m.items[i], m.items[n] = m.items[n], m.items[i]
 }
 
 func (m configModel) index() int {
@@ -156,16 +184,36 @@ func (m configModel) View() string {
 		indent := "     "
 
 		b.WriteString(fmt.Sprintf("%s%s\n", indent, it.icon3[0]))
-		name := it.tool.Colorize(it.tool.Name)
+		nameText := it.tool.Name
+		if it.isToggleControl {
+			allChecked := true
+			for _, x := range m.items {
+				if x.isToggleControl || x.isConfirmControl {
+					continue
+				}
+				if !x.check {
+					allChecked = false
+					break
+				}
+			}
+			if allChecked {
+				nameText = "Choose none"
+			} else {
+				nameText = "Choose all"
+			}
+		}
+
+		name := it.tool.Colorize(nameText)
 		if it.cursor {
-			name = it.tool.ColorizeWithBackgroundBlackText(it.tool.Name)
+			name = it.tool.ColorizeWithBackgroundBlackText(nameText)
 		}
 		b.WriteString(fmt.Sprintf("%s%s %s %s\n", cursor, mark, it.icon3[1], name))
 		b.WriteString(fmt.Sprintf("%s%s\n", indent, it.icon3[2]))
 	}
-	b.WriteString("\n[Use arrows to move, space to select, <right> to all, <left> to none]\n")
-	b.WriteString("[K/J or Shift+Arrows to reorder items]\n")
-	b.WriteString("[Enter to Confirm, Ctrl+C/Ctrl+Q to exit]\n")
+	b.WriteString("\n[Use ↑/↓ to move]\n")
+	b.WriteString("[Use Enter to toggle current item]\n")
+	b.WriteString("[Choose all/none row toggles all tools]\n")
+	b.WriteString("[Move to last 'Confirm' row and press Enter to save, Ctrl+C/Ctrl+Q to exit]\n")
 	return b.String()
 }
 
@@ -206,6 +254,9 @@ func runInteractiveConfig() ([]string, []string, string, bool, error) {
 	var selected []string
 	var order []string
 	for _, it := range m.items {
+		if it.isToggleControl || it.isConfirmControl {
+			continue
+		}
 		if it.check {
 			selected = append(selected, it.tool.BinaryName)
 		}
