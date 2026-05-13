@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -94,6 +95,10 @@ func initConfig() {
 	viper.SetDefault("usage_alert_quiet_hours", "")
 	viper.SetDefault("usage_alert_timezone", "")
 	viper.SetDefault("usage_alert_thresholds", map[string]float64{"default": 80})
+	// Avoid accidental overrides from generic env vars like ENABLED_TOOLS.
+	// Require explicit OCT_* variables (e.g., OCT_ENABLED_TOOLS) for env-based overrides.
+	viper.SetEnvPrefix("OCT")
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err == nil {
