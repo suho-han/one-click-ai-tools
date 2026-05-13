@@ -156,6 +156,7 @@ oct alert snooze clear --provider codex --window 5h
 - [사용량 알림](CONTEXT/ko/USAGE_ALERTS.md)
 - [상시 모니터링](CONTEXT/ko/MONITORING.md)
 - [로컬 개발 및 테스트](CONTEXT/ko/LOCAL_TEST.md)
+- [릴리즈 체크리스트 (npm)](docs/release-checklist.md)
 
 ## 요구사항
 
