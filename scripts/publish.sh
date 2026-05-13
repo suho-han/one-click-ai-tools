@@ -1,7 +1,6 @@
 #!/bin/bash
 
-# Exit on error
-set -e
+set -euo pipefail
 
 # 1. Load environment variables from .env if it exists
 if [ -f .env ]; then
@@ -14,7 +13,7 @@ echo "--- Step 1: Bumping version and tagging ---"
 if npx standard-version; then
   echo "Version bump and tagging successful!"
 else
-  echo "Standard-version failed. Make sure your working directory is clean."
+  echo "standard-version failed. Make sure your working directory is clean."
   exit 1
 fi
 
@@ -23,48 +22,21 @@ echo ""
 echo "--- Step 2: Pushing to GitHub with tags ---"
 git push --follow-tags origin main
 
-# 4. Publishing
-SUCCESS=true
+# 4. Preflight checks
+echo ""
+echo "--- Step 3: Release integrity checks ---"
+RELEASE_TAG="$(git describe --tags --abbrev=0)" bash scripts/verify-release-integrity.sh
 
-# Attempt pnpm publish
-if command -v pnpm &> /dev/null; then
-  echo ""
-  echo "--- Step 3 (A): Starting pnpm publish ---"
-  if pnpm publish --no-git-checks; then
-    echo "pnpm publish successful!"
-  else
-    echo "pnpm publish failed!"
-    SUCCESS=false
-  fi
-else
-  echo "pnpm not found, skipping..."
-fi
+# 5. npm publish only
+echo ""
+echo "--- Step 4: Starting npm publish ---"
+npm publish
 
-# Attempt npm publish
-if command -v npm &> /dev/null; then
-  echo ""
-  echo "--- Step 3 (B): Starting npm publish ---"
-  if npm publish; then
-    echo "npm publish successful!"
-  else
-    echo "npm publish failed!"
-    SUCCESS=false
-  fi
-else
-  echo "npm not found, skipping..."
-fi
-
-# Final status
-if [ "$SUCCESS" = true ]; then
-  echo ""
-  echo "=========================================="
-  echo "✅ All steps completed successfully!"
-  echo "1. Git Commit & Tag created"
-  echo "2. Pushed to GitHub"
-  echo "3. Published to Package Registries"
-  echo "=========================================="
-else
-  echo ""
-  echo "❌ One or more publish attempts failed. Please check the logs above."
-  exit 1
-fi
+echo ""
+echo "=========================================="
+echo "✅ Release completed successfully"
+echo "1. Git Commit & Tag created"
+echo "2. Pushed to GitHub"
+echo "3. Verified release integrity"
+echo "4. Published to npm"
+echo "=========================================="

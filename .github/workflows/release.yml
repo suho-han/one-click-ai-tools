@@ -78,6 +78,14 @@ jobs:
       - name: Build smoke
         run: go build -o oct main.go
 
+      - name: Verify release integrity
+        run: bash scripts/verify-release-integrity.sh
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+
+      - name: npm publish dry-run
+        run: npm publish --dry-run --access public
+
       - name: Publish to npm
         run: npm publish --access public
         env:
