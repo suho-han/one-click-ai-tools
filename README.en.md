@@ -51,6 +51,22 @@ oct agent-update
 oct usage
 ```
 
+### 2-1) Interactive keys for `oct config`
+
+```bash
+oct config
+```
+
+- `↑/↓`: move cursor
+- `Enter`: toggle current row
+- `Enter` on `Choose all / Choose none`: toggle all rows
+- `Enter` on final `Confirm` row: save and exit
+- `Ctrl+C` / `Ctrl+Q` / `q`: cancel
+
+Environment-variable overrides now require the `OCT_` prefix.
+- Example: `OCT_ENABLED_TOOLS=codex,gemini`
+- Non-prefixed vars like `ENABLED_TOOLS` are ignored.
+
 ### 3) Always-on monitoring
 
 ```bash

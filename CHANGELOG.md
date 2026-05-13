@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## Unreleased
+
+### Features
+- **config:** use `Enter` to toggle selections and add a final `Confirm` row to save
+
+### Chore
+- **config:** require `OCT_` prefix for environment-variable overrides (ignore generic vars like `ENABLED_TOOLS`)
+
+
 ### [0.4.3](https://github.com/suho-han/one-click-tools/compare/v0.4.1...v0.4.3) (2026-05-12)
 
 

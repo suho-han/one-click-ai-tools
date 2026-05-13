@@ -55,6 +55,22 @@ oct usage
 - `enabled_tools`에 포함된 provider만 `usage`/`monitor`에서 조회합니다.
 - 출력 순서는 `agent_order`를 따릅니다.
 
+### 2-1) `oct config` 인터랙티브 선택 키
+
+```bash
+oct config
+```
+
+- `↑/↓`: 항목 이동
+- `Enter`: 현재 항목 토글
+- `Choose all / Choose none` 행에서 `Enter`: 전체 선택/해제 토글
+- 마지막 `Confirm` 행에서 `Enter`: 저장 후 종료
+- `Ctrl+C` / `Ctrl+Q` / `q`: 취소
+
+환경변수 오버라이드는 `OCT_` 접두사만 사용합니다.
+- 예: `OCT_ENABLED_TOOLS=codex,gemini`
+- `ENABLED_TOOLS` 같은 비접두사 변수는 무시됩니다.
+
 ### 3) 상시 모니터링 화면
 
 ```bash
