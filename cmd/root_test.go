@@ -51,10 +51,8 @@ func TestInitConfig_IgnoresNonPrefixedEnabledToolsEnv(t *testing.T) {
 		t.Fatalf("write config failed: %v", err)
 	}
 
-	oldHome := os.Getenv("HOME")
 	oldEnv := os.Getenv("ENABLED_TOOLS")
 	t.Cleanup(func() {
-		_ = os.Setenv("HOME", oldHome)
 		if oldEnv == "" {
 			_ = os.Unsetenv("ENABLED_TOOLS")
 		} else {
@@ -64,14 +62,11 @@ func TestInitConfig_IgnoresNonPrefixedEnabledToolsEnv(t *testing.T) {
 		viper.Reset()
 	})
 
-	if err := os.Setenv("HOME", tmpHome); err != nil {
-		t.Fatalf("set HOME failed: %v", err)
-	}
 	if err := os.Setenv("ENABLED_TOOLS", "gemini,copilot"); err != nil {
 		t.Fatalf("set ENABLED_TOOLS failed: %v", err)
 	}
 
-	cfgFile = ""
+	cfgFile = cfgPath
 	viper.Reset()
 	initConfig()
 
