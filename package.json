@@ -11,6 +11,12 @@
         "postinstall": "node scripts/postinstall.js",
         "build": "go build -o oct main.go"
     },
+    "files": [
+        "scripts/",
+        "README.md",
+        "README.en.md",
+        "LICENSE"
+    ],
     "standard-version": {
         "skip": {
             "tag": false
