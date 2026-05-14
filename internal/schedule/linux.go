@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+const cronMarker = "# oct-managed"
+
 type Linux struct{}
 
 func (l *Linux) Enable(interval string, hour int) error {
@@ -21,15 +23,18 @@ func (l *Linux) Enable(interval string, hour int) error {
 
 	cronExpr := cronExpression(interval, hour)
 
-	cronEntry := fmt.Sprintf("%s %s agent-update >> %s 2>&1", cronExpr, binPath, logPath)
+	cronEntry := fmt.Sprintf("%s %s agent-update >> %s 2>&1  %s", cronExpr, binPath, logPath, cronMarker)
 
-	// Get current crontab
-	out, _ := exec.Command("crontab", "-l").Output()
+	// Get current crontab; ignore error when no crontab exists yet (treat as empty)
+	out, err := exec.Command("crontab", "-l").Output()
+	if err != nil {
+		out = []byte{}
+	}
 	lines := strings.Split(string(out), "\n")
 
 	var newLines []string
 	for _, line := range lines {
-		if line == "" || strings.Contains(line, "oct agent-update") {
+		if line == "" || strings.Contains(line, cronMarker) {
 			continue
 		}
 		newLines = append(newLines, line)
@@ -57,7 +62,7 @@ func (l *Linux) Disable() error {
 	var newLines []string
 	found := false
 	for _, line := range lines {
-		if strings.Contains(line, "oct agent-update") {
+		if strings.Contains(line, cronMarker) {
 			found = true
 			continue
 		}
@@ -85,7 +90,7 @@ func (l *Linux) Status() (string, error) {
 	if err != nil {
 		return "disabled", nil
 	}
-	if strings.Contains(string(out), "oct agent-update") {
+	if strings.Contains(string(out), cronMarker) {
 		return "enabled", nil
 	}
 	return "disabled", nil
