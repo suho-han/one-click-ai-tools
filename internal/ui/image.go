@@ -47,8 +47,34 @@ const (
 	rendererNativeImage iconRenderer = "native_image"
 	rendererAnsiAsset   iconRenderer = "ansi_asset"
 	rendererText        iconRenderer = "text"
-	ansiFG                           = uint32(0xD6D6)
-	ansiBG                           = uint32(0xE8E8)
+
+	// ansiFG is the 16-bit grayscale foreground color (~214,214) used as a
+	// neutral mid-tone when the true pixel color is not rendered per-pixel.
+	ansiFG = uint32(0xD6D6)
+	// ansiBG is the 16-bit grayscale background color (~232) used as a
+	// slightly lighter neutral tone paired with ansiFG in fallback rendering.
+	ansiBG = uint32(0xE8E8)
+
+	// alphaTransparentThreshold is the 16-bit alpha value below which a pixel
+	// is treated as fully transparent and rendered as empty space.
+	alphaTransparentThreshold = uint32(0x1010)
+	// alphaOpaqueThreshold is the 16-bit alpha value at or above which a pixel
+	// is considered opaque enough to set a braille dot.
+	alphaOpaqueThreshold = uint32(0x6000)
+	// brailleBase is the Unicode code point for the empty braille pattern;
+	// individual dot bits are OR-ed in to select the final character.
+	brailleBase = rune(0x2800)
+
+	// ansiFGSeq is the ANSI SGR escape sequence that sets the foreground to the
+	// ansiFG/ansiBG neutral palette used for all icon fallback rendering.
+	ansiFGSeq = "\x1b[38;2;214;214;232m"
+	// ansiFGBGSeq sets both foreground and background to the neutral palette,
+	// used when both halves of a half-block cell are opaque.
+	ansiFGBGSeq = "\x1b[38;2;214;214;232;48;2;214;214;232m"
+
+	// alpha16Max is the maximum 16-bit alpha/channel value returned by image.Color.RGBA();
+	// used as the divisor when un-premultiplying alpha from sampled pixel components.
+	alpha16Max = uint32(0xffff)
 )
 
 // PrintIcon renders an icon with fallback chain: native image -> ansi asset -> text.
@@ -280,19 +306,19 @@ func printANSIImage(img image.Image, targetWidth int) {
 			if botY < b.Max.Y {
 				botR, botG, botB, botA = sampleRGBA(img, x, botY)
 			}
-			if topA >= 0x1010 {
+			if topA >= alphaTransparentThreshold {
 				topR, topG, topB = ansiFG, ansiFG, ansiBG
 			}
-			if botA >= 0x1010 {
+			if botA >= alphaTransparentThreshold {
 				botR, botG, botB = ansiFG, ansiFG, ansiBG
 			}
 
 			switch {
-			case topA < 0x1010 && botA < 0x1010:
+			case topA < alphaTransparentThreshold && botA < alphaTransparentThreshold:
 				fmt.Print(" ")
-			case topA >= 0x1010 && botA < 0x1010:
+			case topA >= alphaTransparentThreshold && botA < alphaTransparentThreshold:
 				fmt.Printf("\x1b[38;2;%d;%d;%dm▀\x1b[0m", topR>>8, topG>>8, topB>>8)
-			case topA < 0x1010 && botA >= 0x1010:
+			case topA < alphaTransparentThreshold && botA >= alphaTransparentThreshold:
 				fmt.Printf("\x1b[38;2;%d;%d;%dm▄\x1b[0m", botR>>8, botG>>8, botB>>8)
 			default:
 				fmt.Printf("\x1b[38;2;%d;%d;%d;48;2;%d;%d;%dm▀\x1b[0m", topR>>8, topG>>8, topB>>8, botR>>8, botG>>8, botB>>8)
@@ -324,14 +350,14 @@ func buildHalfBlockInlineIcon(img image.Image, targetWidth int) string {
 		_, _, _, topA := sampleRGBA(img, x, yTop)
 		_, _, _, botA := sampleRGBA(img, x, yBot)
 		switch {
-		case topA < 0x1010 && botA < 0x1010:
+		case topA < alphaTransparentThreshold && botA < alphaTransparentThreshold:
 			out.WriteByte(' ')
-		case topA >= 0x1010 && botA < 0x1010:
-			out.WriteString("\x1b[38;2;214;214;232m▀\x1b[0m")
-		case topA < 0x1010 && botA >= 0x1010:
-			out.WriteString("\x1b[38;2;214;214;232m▄\x1b[0m")
+		case topA >= alphaTransparentThreshold && botA < alphaTransparentThreshold:
+			out.WriteString(ansiFGSeq + "▀\x1b[0m")
+		case topA < alphaTransparentThreshold && botA >= alphaTransparentThreshold:
+			out.WriteString(ansiFGSeq + "▄\x1b[0m")
 		default:
-			out.WriteString("\x1b[38;2;214;214;232;48;2;214;214;232m▀\x1b[0m")
+			out.WriteString(ansiFGBGSeq + "▀\x1b[0m")
 		}
 	}
 	return out.String()
@@ -364,14 +390,14 @@ func buildHalfBlockInlineIconLines(img image.Image, targetWidth, lines int) []st
 			_, _, _, topA := sampleRGBA(img, x, yTop)
 			_, _, _, botA := sampleRGBA(img, x, yBot)
 			switch {
-			case topA < 0x1010 && botA < 0x1010:
+			case topA < alphaTransparentThreshold && botA < alphaTransparentThreshold:
 				line.WriteByte(' ')
-			case topA >= 0x1010 && botA < 0x1010:
-				line.WriteString("\x1b[38;2;214;214;232m▀\x1b[0m")
-			case topA < 0x1010 && botA >= 0x1010:
-				line.WriteString("\x1b[38;2;214;214;232m▄\x1b[0m")
+			case topA >= alphaTransparentThreshold && botA < alphaTransparentThreshold:
+				line.WriteString(ansiFGSeq + "▀\x1b[0m")
+			case topA < alphaTransparentThreshold && botA >= alphaTransparentThreshold:
+				line.WriteString(ansiFGSeq + "▄\x1b[0m")
 			default:
-				line.WriteString("\x1b[38;2;214;214;232;48;2;214;214;232m▀\x1b[0m")
+				line.WriteString(ansiFGBGSeq + "▀\x1b[0m")
 			}
 		}
 		out = append(out, strings.TrimRight(line.String(), " "))
@@ -410,7 +436,7 @@ func buildBrailleInlineIcon(img image.Image, targetWidth int) string {
 
 				if px >= b.Min.X && px < b.Max.X && py >= b.Min.Y && py < b.Max.Y {
 					_, _, _, a := sampleRGBA(img, px, py)
-					if a >= 0x6000 {
+					if a >= alphaOpaqueThreshold {
 						offset |= dotMap[dy][dx]
 					}
 				}
@@ -419,7 +445,7 @@ func buildBrailleInlineIcon(img image.Image, targetWidth int) string {
 		if offset == 0 {
 			out.WriteByte(' ')
 		} else {
-			out.WriteString(fmt.Sprintf("\x1b[38;2;214;214;232m%c\x1b[0m", 0x2800+offset))
+			out.WriteString(fmt.Sprintf("%s%c\x1b[0m", ansiFGSeq, brailleBase+offset))
 		}
 	}
 	return out.String()
@@ -464,7 +490,7 @@ func buildBrailleInlineIconLines(img image.Image, targetWidth, lines int) []stri
 
 					if px >= b.Min.X && px < b.Max.X && py >= b.Min.Y && py < b.Max.Y {
 						_, _, _, a := sampleRGBA(img, px, py)
-						if a >= 0x6000 {
+						if a >= alphaOpaqueThreshold {
 							offset |= dotMap[dy][dx]
 						}
 					}
@@ -474,7 +500,7 @@ func buildBrailleInlineIconLines(img image.Image, targetWidth, lines int) []stri
 			if offset == 0 {
 				line.WriteByte(' ')
 			} else {
-				line.WriteString(fmt.Sprintf("\x1b[38;2;214;214;232m%c\x1b[0m", 0x2800+offset))
+				line.WriteString(fmt.Sprintf("%s%c\x1b[0m", ansiFGSeq, brailleBase+offset))
 			}
 		}
 		out = append(out, line.String())
@@ -484,10 +510,10 @@ func buildBrailleInlineIconLines(img image.Image, targetWidth, lines int) []stri
 
 func sampleRGBA(img image.Image, x, y int) (uint32, uint32, uint32, uint32) {
 	r, g, b, a := img.At(x, y).RGBA()
-	if a >= 0x1010 && a < 0xffff {
-		r = r * 0xffff / a
-		g = g * 0xffff / a
-		b = b * 0xffff / a
+	if a >= alphaTransparentThreshold && a < alpha16Max {
+		r = r * alpha16Max / a
+		g = g * alpha16Max / a
+		b = b * alpha16Max / a
 	}
 	return r, g, b, a
 }
@@ -500,7 +526,7 @@ func nonTransparentBounds(img image.Image, b image.Rectangle) image.Rectangle {
 	for y := b.Min.Y; y < b.Max.Y; y++ {
 		for x := b.Min.X; x < b.Max.X; x++ {
 			_, _, _, a := img.At(x, y).RGBA()
-			if a >= 0x1010 {
+			if a >= alphaTransparentThreshold {
 				found = true
 				if x < minX {
 					minX = x
@@ -572,7 +598,7 @@ func printBrailleImage(img image.Image, targetWidth int) {
 					px, py := x+dx*stepX, y+dy*stepY
 					if px < b.Max.X && py < b.Max.Y {
 						_, _, _, a := sampleRGBA(img, px, py)
-						if a >= 0x6000 {
+						if a >= alphaOpaqueThreshold {
 							offset |= dotMap[dy][dx]
 						}
 					}
@@ -581,7 +607,7 @@ func printBrailleImage(img image.Image, targetWidth int) {
 			if offset == 0 {
 				line.WriteByte(' ')
 			} else {
-				line.WriteString(fmt.Sprintf("\x1b[38;2;214;214;232m%c\x1b[0m", 0x2800+offset))
+				line.WriteString(fmt.Sprintf("%s%c\x1b[0m", ansiFGSeq, brailleBase+offset))
 			}
 		}
 		if line.Len() > 0 {

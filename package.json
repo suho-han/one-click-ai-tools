@@ -8,9 +8,6 @@
     },
     "scripts": {
         "release": "standard-version",
-        "generate:icons": "node scripts/generate-icons.js",
-        "prebuild": "npm run generate:icons",
-        "prepack": "npm run generate:icons",
         "postinstall": "node scripts/postinstall.js",
         "build": "go build -o oct main.go"
     },
@@ -74,10 +71,6 @@
         "darwin",
         "linux"
     ],
-    "dependencies": {
-        "@resvg/resvg-js": "^2.6.2",
-        "simple-icons": "^14.15.0"
-    },
     "devDependencies": {
         "standard-version": "^9.5.0"
     },

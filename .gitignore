@@ -5,3 +5,5 @@ DEPLOY_COMMAND.md
 # Go binaries
 oct
 bin/
+
+.DS_Store
