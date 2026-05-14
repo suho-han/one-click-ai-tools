@@ -21,6 +21,9 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Version parity guard (root.go vs package.json)
+        run: go test ./cmd -run TestRootVersionMatchesPackageJSON -v
+
       - name: Go test
         run: go test ./...
 
