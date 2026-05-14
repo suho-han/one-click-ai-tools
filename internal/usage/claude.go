@@ -3,13 +3,14 @@ package usage
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/suho-han/one-click-tools/internal/netclient"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 )
+
+const claudeOAuthBeta = "oauth-2025-04-20"
 
 func FetchClaudeUsage() UsageResult {
 	home, _ := os.UserHomeDir()
@@ -36,7 +37,11 @@ func FetchClaudeUsage() UsageResult {
 				AccessToken string `json:"accessToken"`
 			} `json:"claudeAiOauth"`
 		}
-		if json.Unmarshal(out, &keychainCreds) == nil && keychainCreds.ClaudeAiOauth.AccessToken != "" {
+		if err := json.Unmarshal(out, &keychainCreds); err != nil {
+			result.Message = fmt.Sprintf("Failed to parse keychain credentials: %v", err)
+			return result
+		}
+		if keychainCreds.ClaudeAiOauth.AccessToken != "" {
 			token = keychainCreds.ClaudeAiOauth.AccessToken
 		}
 	}
@@ -47,7 +52,11 @@ func FetchClaudeUsage() UsageResult {
 			var creds struct {
 				AccessToken string `json:"access_token"`
 			}
-			if err := json.Unmarshal(data, &creds); err == nil && creds.AccessToken != "" {
+			if err := json.Unmarshal(data, &creds); err != nil {
+				result.Message = fmt.Sprintf("Failed to parse credentials file: %v", err)
+				return result
+			}
+			if creds.AccessToken != "" {
 				token = creds.AccessToken
 			}
 		}
@@ -68,31 +77,36 @@ func FetchClaudeUsage() UsageResult {
 	req, _ := http.NewRequest("GET", endpoint, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("anthropic-beta", "oauth-2025-04-20")
+	req.Header.Set("anthropic-beta", claudeOAuthBeta)
 
-	resp, err := netclient.DefaultClient.DoWithRetry(req)
+	client := &http.Client{}
+	resp, err := client.Do(req)
 	if err != nil {
-		result.Message = netclient.FormatError(resp, err)
+		result.Message = fmt.Sprintf("API request failed: %v", err)
 		return result
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		if resp.StatusCode == http.StatusTooManyRequests {
-			result.Status = "ok"
-			result.Used = "100"
-			result.Buckets = map[string]string{"5h": "100.0"}
-			if os.Getenv("OCT_USAGE_DEBUG") == "1" {
-				result.SourceDetail = "http_status=429;fallback_bucket=5h"
-			}
-			result.Message = "API Rate Limited (assuming 100%)"
+			result.Status = "rate_limited"
+			result.Used = "0"
+			result.Message = "Rate limited — try again later"
 			return result
 		}
-		result.Message = netclient.FormatError(resp, nil)
+		if resp.StatusCode == http.StatusUnauthorized {
+			result.Message = "Invalid API Token (HTTP 401)"
+			return result
+		}
+		result.Message = fmt.Sprintf("API HTTP %d", resp.StatusCode)
 		return result
 	}
 
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		result.Message = fmt.Sprintf("Failed to read API response: %v", err)
+		return result
+	}
 	var data struct {
 		FiveHour struct {
 			Utilization float64 `json:"utilization"`
@@ -103,19 +117,8 @@ func FetchClaudeUsage() UsageResult {
 	}
 
 	if err := json.Unmarshal(body, &data); err != nil {
-		result.Message = "Failed to parse API response"
+		result.Message = fmt.Sprintf("Failed to parse API response: %v", err)
 		return result
-	}
-
-	result.Buckets = make(map[string]string)
-	if data.FiveHour.Utilization > 0 {
-		result.Buckets["5h"] = fmt.Sprintf("%.1f", data.FiveHour.Utilization)
-	}
-	if data.SevenDay.Utilization > 0 {
-		result.Buckets["7d"] = fmt.Sprintf("%.1f", data.SevenDay.Utilization)
-	}
-	if os.Getenv("OCT_USAGE_DEBUG") == "1" {
-		result.SourceDetail = fmt.Sprintf("five_hour=%.1f;seven_day=%.1f", data.FiveHour.Utilization, data.SevenDay.Utilization)
 	}
 
 	if data.FiveHour.Utilization > 0 {
