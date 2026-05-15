@@ -12,7 +12,12 @@
         "build": "go build -o oct main.go"
     },
     "files": [
+        "cmd/",
+        "internal/",
         "scripts/",
+        "main.go",
+        "go.mod",
+        "go.sum",
         "README.md",
         "README.en.md",
         "LICENSE"

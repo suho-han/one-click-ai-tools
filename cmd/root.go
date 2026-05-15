@@ -16,7 +16,7 @@ var rootCmd = &cobra.Command{
 	Use:     "oct",
 	Short:   "One-Click Tools for AI Engineers",
 	Long:    `A high-performance CLI tool to manage and update AI-related command-line tools across different platforms.`,
-	Version: "0.4.6",
+	Version: "0.4.7",
 }
 
 func Execute() {
