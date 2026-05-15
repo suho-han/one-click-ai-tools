@@ -52,7 +52,10 @@ func TestFetchCursorUsageRemote(t *testing.T) {
 func TestFetchCursorUsageLocalFallback(t *testing.T) {
 	tempHome := t.TempDir()
 	workspaceRoot := filepath.Join(tempHome, ".config", "Cursor", "User", "workspaceStorage")
-	if runtime.GOOS == "windows" {
+	switch runtime.GOOS {
+	case "darwin":
+		workspaceRoot = filepath.Join(tempHome, "Library", "Application Support", "Cursor", "User", "workspaceStorage")
+	case "windows":
 		workspaceRoot = filepath.Join(tempHome, "AppData", "Roaming", "Cursor", "User", "workspaceStorage")
 	}
 	workspaceDir := filepath.Join(workspaceRoot, "session-1")
