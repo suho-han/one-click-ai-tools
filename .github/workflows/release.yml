@@ -68,11 +68,11 @@ jobs:
       - name: Build darwin binaries
         run: |
           set -euo pipefail
-          mkdir -p dist
-          CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -o dist/oct_darwin_amd64 main.go
-          CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -o dist/oct_darwin_arm64 main.go
-          tar -C dist -czf dist/one-click-tools_darwin_amd64.tar.gz oct_darwin_amd64
-          tar -C dist -czf dist/one-click-tools_darwin_arm64.tar.gz oct_darwin_arm64
+          mkdir -p dist/tmp/amd64 dist/tmp/arm64
+          CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -o dist/tmp/amd64/oct main.go
+          CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -o dist/tmp/arm64/oct main.go
+          tar -C dist/tmp/amd64 -czf dist/one-click-tools_darwin_amd64.tar.gz oct
+          tar -C dist/tmp/arm64 -czf dist/one-click-tools_darwin_arm64.tar.gz oct
 
       - name: Upload darwin assets to release
         run: |
