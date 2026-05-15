@@ -83,6 +83,27 @@ jobs:
         env:
           RELEASE_TAG: ${{ github.ref_name }}
 
+      - name: Verify release assets (macOS/Linux)
+        run: |
+          set -euo pipefail
+          tag="${{ github.ref_name }}"
+          required=(
+            "one-click-tools_linux_amd64.tar.gz"
+            "one-click-tools_linux_arm64.tar.gz"
+            "one-click-tools_darwin_arm64.tar.gz"
+          )
+
+          assets_json="$(gh release view "$tag" --json assets)"
+          for name in "${required[@]}"; do
+            if ! echo "$assets_json" | jq -e --arg n "$name" '.assets[] | select(.name==$n)' >/dev/null; then
+              echo "ERROR: missing release asset: $name (tag: $tag)"
+              exit 1
+            fi
+            echo "OK: found release asset: $name"
+          done
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: npm publish dry-run
         run: npm publish --dry-run --access public
 
