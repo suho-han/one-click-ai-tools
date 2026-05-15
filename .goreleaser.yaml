@@ -18,17 +18,6 @@ builds:
     main: ./main.go
     binary: oct
 
-  - id: darwin-cgo
-    env:
-      - CGO_ENABLED=1
-    goos:
-      - darwin
-    goarch:
-      - amd64
-      - arm64
-    main: ./main.go
-    binary: oct
-
 archives:
   - name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
     formats:

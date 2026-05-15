@@ -44,9 +44,48 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  darwin-assets:
+    name: build/upload darwin assets
+    needs: goreleaser
+    runs-on: macos-latest
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'workflow_dispatch' && inputs.release_mode == 'release')
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.git_ref != '' && inputs.git_ref || github.ref }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 'stable'
+
+      - name: Build darwin binaries
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -o dist/oct_darwin_amd64 main.go
+          CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -o dist/oct_darwin_arm64 main.go
+          tar -C dist -czf dist/one-click-tools_darwin_amd64.tar.gz oct_darwin_amd64
+          tar -C dist -czf dist/one-click-tools_darwin_arm64.tar.gz oct_darwin_arm64
+
+      - name: Upload darwin assets to release
+        run: |
+          gh release upload "${{ github.ref_name }}" \
+            dist/one-click-tools_darwin_amd64.tar.gz \
+            dist/one-click-tools_darwin_arm64.tar.gz \
+            --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   npm-publish:
     name: publish npm package
-    needs: goreleaser
+    needs: [goreleaser, darwin-assets]
     runs-on: ubuntu-latest
     # 태그 릴리스 또는 수동 release 모드에서만 publish
     if: >-
