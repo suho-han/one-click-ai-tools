@@ -4,6 +4,8 @@
 
 ## 우선순위 후보
 
+- deprecated Gemini CLI 제거 + Antigravity CLI 도입 (`gemini` legacy alias migration 포함)
+- 각 agent 세션을 **토큰 사용 없이** 최신화/활성 점검하는 `oct session-refresh` 기능 추가
 - 추가 패키지 매니저 지원 확장 (`cargo`, `go install`, `pip` 등)
 - Linux/Windows 스케줄링 실환경 E2E 검증 자동화 강화
 - Cursor/OpenCode 사용량 표시 품질 개선 (플랜/리셋 시점 가시성)
