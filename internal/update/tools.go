@@ -108,9 +108,9 @@ var Tools = []Tool{
 	},
 	{
 		Name:          "Antigravity CLI",
-		Package:       "@sanchaymittal/antigravity-cli",
+		Package:       "github.com/google-antigravity/antigravity-cli",
 		BinaryName:    "agy",
-		BinaryAliases: []string{"ag", "antigravity", "gemini", "gemini-cli"},
+		BinaryAliases: []string{"antigravity", "gemini", "gemini-cli"},
 		Icon:          "✨",
 		LobeIcon:      "GeminiCLI",
 		HexColor:      "#4285F4",
@@ -133,7 +133,7 @@ func NormalizeToolName(name string) string {
 		return "claude"
 	case "cursor", "agent":
 		return "cursor-agent"
-	case "ag", "antigravity", "gemini", "gemini-cli":
+	case "antigravity", "gemini", "gemini-cli":
 		return "agy"
 	default:
 		return strings.ToLower(strings.TrimSpace(name))
