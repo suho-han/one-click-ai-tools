@@ -71,7 +71,7 @@ func TestInitConfig_IgnoresNonPrefixedEnabledToolsEnv(t *testing.T) {
 		t.Fatalf("mkdir failed: %v", err)
 	}
 	cfgPath := filepath.Join(cfgDir, "config.yaml")
-	cfg := "enabled_tools:\n  - codex\nagent_order:\n  - codex\n  - gemini\n"
+	cfg := "enabled_tools:\n  - codex\nagent_order:\n  - codex\n  - agy\n"
 	if err := os.WriteFile(cfgPath, []byte(cfg), 0o644); err != nil {
 		t.Fatalf("write config failed: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestInitConfig_IgnoresNonPrefixedEnabledToolsEnv(t *testing.T) {
 		viper.Reset()
 	})
 
-	if err := os.Setenv("ENABLED_TOOLS", "gemini,copilot"); err != nil {
+	if err := os.Setenv("ENABLED_TOOLS", "agy,copilot"); err != nil {
 		t.Fatalf("set ENABLED_TOOLS failed: %v", err)
 	}
 

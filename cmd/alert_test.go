@@ -41,7 +41,7 @@ func TestSetAlertConfigValueInvalidProviderKey(t *testing.T) {
 
 func TestProviderOptionsIncludesCursor(t *testing.T) {
 	viper.Reset()
-	viper.Set("enabled_tools", []string{"cursor-agent", "gemini", "opencode"})
+	viper.Set("enabled_tools", []string{"cursor-agent", "agy", "opencode"})
 	opts := providerOptions()
 	hasCursor := false
 	hasAntigravity := false

@@ -270,8 +270,8 @@ func formatBucketDisplay(r UsageResult, rawValue, mode string) string {
 		}
 	}
 
-	// Gemini usage is shown as count-style number in table output.
-	if strings.Contains(strings.ToLower(r.Provider), "gemini") {
+	// Antigravity alias compatibility keeps count-style numbers unmodified in table output.
+	if strings.Contains(strings.ToLower(r.Provider), "antigravity") || strings.Contains(strings.ToLower(r.Provider), "gemini") {
 		return value
 	}
 	if strings.EqualFold(r.Unit, "percent") {

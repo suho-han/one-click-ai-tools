@@ -47,3 +47,13 @@ func TestUsageOrderedTools_RespectsEnabledTools(t *testing.T) {
 		t.Fatalf("unexpected tool order: %s, %s", tools[0].BinaryName, tools[1].BinaryName)
 	}
 }
+
+func TestUsageHelpUsesAntigravityCanonicalWording(t *testing.T) {
+	got := usageCmd.Long
+	if !contains(got, "Antigravity") {
+		t.Fatalf("expected usage help to mention Antigravity, got: %s", got)
+	}
+	if !contains(got, "Legacy aliases 'gemini' and 'gemini-cli' still map to 'agy' for compatibility.") {
+		t.Fatalf("expected canonical legacy-alias wording, got: %s", got)
+	}
+}

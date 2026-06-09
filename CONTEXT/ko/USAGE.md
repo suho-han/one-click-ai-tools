@@ -18,7 +18,7 @@ oct update --beta
 지원 대상:
 - Claude Code (`@anthropic-ai/claude-code`)
 - OpenAI Codex (`@openai/codex`)
-- Antigravity CLI (`@sanchaymittal/antigravity-cli`, binary: `agy`)
+- Antigravity CLI (official installer, binary: `agy`)
 - GitHub Copilot (`@github/copilot`)
 - Cursor (`cursor-agent`)
 - OpenCode (`opencode-ai`)
@@ -52,7 +52,7 @@ oct usage --notify
   - `OCT_CODEX_USAGE_ENDPOINT`
   - `OCT_CLAUDE_USAGE_ENDPOINT`
   - `OCT_COPILOT_USAGE_ENDPOINT`
-- Antigravity legacy testing override (deprecated compatibility):
+- Antigravity compatibility testing override (legacy alias only):
   - `OCT_GEMINI_USAGE_ENDPOINT`
   - `OCT_GEMINI_API_ENDPOINT`
 - Cursor:

@@ -18,7 +18,7 @@ Updates all supported agents.
 Supported agents:
 - Claude Code (`@anthropic-ai/claude-code`)
 - OpenAI Codex (`@openai/codex`)
-- Antigravity CLI (`@sanchaymittal/antigravity-cli`, binary: `agy`)
+- Antigravity CLI (official installer, binary: `agy`)
 - GitHub Copilot (`@github/copilot`)
 - Cursor (`cursor-agent`)
 - OpenCode (`opencode-ai`)
@@ -52,7 +52,7 @@ Notes:
   - `OCT_CODEX_USAGE_ENDPOINT`
   - `OCT_CLAUDE_USAGE_ENDPOINT`
   - `OCT_COPILOT_USAGE_ENDPOINT`
-- Antigravity legacy testing overrides (deprecated compatibility):
+- Antigravity compatibility testing overrides (legacy alias only):
   - `OCT_GEMINI_USAGE_ENDPOINT`
   - `OCT_GEMINI_API_ENDPOINT`
 - Cursor:
