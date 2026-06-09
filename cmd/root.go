@@ -95,6 +95,9 @@ func initConfig() {
 	viper.SetDefault("usage_alert_quiet_hours", "")
 	viper.SetDefault("usage_alert_timezone", "")
 	viper.SetDefault("usage_alert_thresholds", map[string]float64{"default": 80})
+	viper.SetDefault("session_refresh_enabled", false)
+	viper.SetDefault("session_refresh_interval", "daily")
+	viper.SetDefault("session_refresh_hour", 9)
 	// Avoid accidental overrides from generic env vars like ENABLED_TOOLS.
 	// Require explicit OCT_* variables (e.g., OCT_ENABLED_TOOLS) for env-based overrides.
 	viper.SetEnvPrefix("OCT")

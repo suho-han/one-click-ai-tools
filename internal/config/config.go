@@ -11,10 +11,13 @@ import (
 )
 
 type Config struct {
-	EnabledTools []string `mapstructure:"enabled_tools"`
-	AgentOrder   []string `mapstructure:"agent_order"`
-	IconStyle    string   `mapstructure:"icon_style"`         // "braille" or "half-block"
-	UsageMode    string   `mapstructure:"usage_display_mode"` // "used" or "remaining"
+	EnabledTools           []string `mapstructure:"enabled_tools"`
+	AgentOrder             []string `mapstructure:"agent_order"`
+	IconStyle              string   `mapstructure:"icon_style"`         // "braille" or "half-block"
+	UsageMode              string   `mapstructure:"usage_display_mode"` // "used" or "remaining"
+	SessionRefreshEnabled  bool     `mapstructure:"session_refresh_enabled"`
+	SessionRefreshInterval string   `mapstructure:"session_refresh_interval"`
+	SessionRefreshHour     int      `mapstructure:"session_refresh_hour"`
 }
 
 func MigrateLegacyConfig() error {

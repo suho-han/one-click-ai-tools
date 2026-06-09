@@ -510,6 +510,9 @@ var configResetCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		viper.Set("enabled_tools", []string{})
 		viper.Set("usage_display_mode", "remaining")
+		viper.Set("session_refresh_enabled", false)
+		viper.Set("session_refresh_interval", "daily")
+		viper.Set("session_refresh_hour", 9)
 		if err := writeConfig(); err != nil {
 			fmt.Printf("Failed to write config: %v\n", err)
 			return
@@ -530,7 +533,10 @@ var configListCmd = &cobra.Command{
 		if usageMode != "used" && usageMode != "remaining" {
 			usageMode = "remaining"
 		}
-		fmt.Printf("Usage display mode: %s\n\n", usageMode)
+		fmt.Printf("Usage display mode: %s\n", usageMode)
+		fmt.Printf("Session refresh enabled: %v\n", viper.GetBool("session_refresh_enabled"))
+		fmt.Printf("Session refresh interval: %s\n", viper.GetString("session_refresh_interval"))
+		fmt.Printf("Session refresh hour: %d\n\n", viper.GetInt("session_refresh_hour"))
 		fmt.Println("Enabled tools (agent-update):")
 
 		for _, t := range update.Tools {

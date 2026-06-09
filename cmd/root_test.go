@@ -100,3 +100,24 @@ func TestInitConfig_IgnoresNonPrefixedEnabledToolsEnv(t *testing.T) {
 		t.Fatalf("expected config enabled_tools [codex], got %v", got)
 	}
 }
+
+func TestInitConfigSessionRefreshDefaults(t *testing.T) {
+	cfgFile = t.TempDir() + "/missing-config.yaml"
+	viper.Reset()
+	defer func() {
+		cfgFile = ""
+		viper.Reset()
+	}()
+
+	initConfig()
+
+	if viper.GetBool("session_refresh_enabled") {
+		t.Fatal("expected session_refresh_enabled default false")
+	}
+	if got := viper.GetString("session_refresh_interval"); got != "daily" {
+		t.Fatalf("expected session_refresh_interval=daily, got %q", got)
+	}
+	if got := viper.GetInt("session_refresh_hour"); got != 9 {
+		t.Fatalf("expected session_refresh_hour=9, got %d", got)
+	}
+}
