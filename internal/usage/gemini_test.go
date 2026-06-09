@@ -1,83 +1,71 @@
 package usage
 
 import (
-	"io"
-	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/suho-han/one-click-tools/internal/netclient"
 )
 
-func TestRetrieveGeminiQuotaMaps5hAnd7d(t *testing.T) {
-	oldClient := netclient.DefaultClient.HTTPClient
-	oldRetries := netclient.DefaultClient.MaxRetries
-	defer func() {
-		netclient.DefaultClient.HTTPClient = oldClient
-		netclient.DefaultClient.MaxRetries = oldRetries
-	}()
+func TestCountAntigravitySessionsCountsSupportedArtifacts(t *testing.T) {
+	root := t.TempDir()
+	pathA := filepath.Join(root, "conversations")
+	pathB := filepath.Join(root, "cache")
+	if err := os.MkdirAll(pathA, 0o755); err != nil {
+		t.Fatalf("mkdir pathA failed: %v", err)
+	}
+	if err := os.MkdirAll(pathB, 0o755); err != nil {
+		t.Fatalf("mkdir pathB failed: %v", err)
+	}
+	for _, rel := range []string{"chat-1.pb", "chat-2.db", "notes.jsonl"} {
+		if err := os.WriteFile(filepath.Join(pathA, rel), []byte("x"), 0o644); err != nil {
+			t.Fatalf("write %s failed: %v", rel, err)
+		}
+	}
+	if err := os.Mkdir(filepath.Join(pathB, "project-1"), 0o755); err != nil {
+		t.Fatalf("mkdir project dir failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(pathB, "ignore.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("write ignore.txt failed: %v", err)
+	}
 
-	netclient.DefaultClient.HTTPClient = &http.Client{
-		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-			if req.URL.String() != "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuota" {
-				t.Fatalf("unexpected URL: %s", req.URL.String())
-			}
-			body := `{"buckets":[{"bucketId":"five_hour","remainingFraction":0.71},{"bucketId":"seven_day","remainingFraction":0.28}]}`
-			return &http.Response{
-				StatusCode: http.StatusOK,
-				Body:       io.NopCloser(strings.NewReader(body)),
-				Header:     make(http.Header),
-			}, nil
-		}),
+	count, matched := countAntigravitySessions([]string{pathA, pathB})
+	if count != 4 {
+		t.Fatalf("expected 4 artifacts, got %d", count)
 	}
-	netclient.DefaultClient.MaxRetries = 0
-
-	used, limit, buckets, _, err := retrieveGeminiQuota("dummy", "proj")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if limit != 100 {
-		t.Fatalf("expected limit=100, got %f", limit)
-	}
-	if used < 28.9 || used > 29.1 {
-		t.Fatalf("expected used around 29, got %f", used)
-	}
-	if buckets["5h"] != "29.0" {
-		t.Fatalf("expected 5h=29.0, got %s", buckets["5h"])
-	}
-	if buckets["7d"] != "72.0" {
-		t.Fatalf("expected 7d=72.0, got %s", buckets["7d"])
+	if len(matched) != 2 {
+		t.Fatalf("expected 2 matched paths, got %v", matched)
 	}
 }
 
-func TestRetrieveGeminiQuotaUnknownBucketFallback(t *testing.T) {
-	oldClient := netclient.DefaultClient.HTTPClient
-	oldRetries := netclient.DefaultClient.MaxRetries
-	defer func() {
-		netclient.DefaultClient.HTTPClient = oldClient
-		netclient.DefaultClient.MaxRetries = oldRetries
-	}()
+func TestFetchAntigravityLocalUsageNoHome(t *testing.T) {
+	oldHome := os.Getenv("HOME")
+	t.Cleanup(func() {
+		if oldHome == "" {
+			_ = os.Unsetenv("HOME")
+			return
+		}
+		_ = os.Setenv("HOME", oldHome)
+	})
+	if err := os.Unsetenv("HOME"); err != nil {
+		t.Fatalf("unset HOME failed: %v", err)
+	}
 
-	netclient.DefaultClient.HTTPClient = &http.Client{
-		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-			body := `{"buckets":[{"modelId":"gemini-2.5-pro","remainingFraction":0.55}]}`
-			return &http.Response{
-				StatusCode: http.StatusOK,
-				Body:       io.NopCloser(strings.NewReader(body)),
-				Header:     make(http.Header),
-			}, nil
-		}),
+	result := FetchAntigravityLocalUsage()
+	if result.Provider != "antigravity" {
+		t.Fatalf("expected provider antigravity, got %q", result.Provider)
 	}
-	netclient.DefaultClient.MaxRetries = 0
+	if result.Status != "warn" {
+		t.Fatalf("expected warn status, got %q", result.Status)
+	}
+}
 
-	used, _, buckets, _, err := retrieveGeminiQuota("dummy", "proj")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+func TestFetchGeminiUsageDelegatesToAntigravity(t *testing.T) {
+	result := FetchGeminiUsage()
+	if result.Provider != "antigravity" {
+		t.Fatalf("expected provider antigravity, got %q", result.Provider)
 	}
-	if used < 44.9 || used > 45.1 {
-		t.Fatalf("expected used around 45, got %f", used)
-	}
-	if len(buckets) != 0 {
-		t.Fatalf("expected no classified buckets, got %v", buckets)
+	if !strings.EqualFold(result.Source, "local") {
+		t.Fatalf("expected local source, got %q", result.Source)
 	}
 }

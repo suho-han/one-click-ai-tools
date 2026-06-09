@@ -29,7 +29,7 @@ type UsageResult struct {
 func SelectedTools() []update.Tool {
 	order := viper.GetStringSlice("agent_order")
 	if len(order) == 0 {
-		order = []string{"gemini", "claude", "cursor-agent", "copilot", "opencode", "codex"}
+		order = []string{"agy", "claude", "cursor-agent", "copilot", "opencode", "codex"}
 	}
 	enabledTools := viper.GetStringSlice("enabled_tools")
 	orderedTools := update.GetOrderedTools(order)
@@ -40,7 +40,9 @@ func GetUsage() ([]UsageResult, error) {
 	selectedTools := SelectedTools()
 
 	fetchers := map[string]func() UsageResult{
-		"gemini":       FetchGeminiUsage,
+		"agy":          FetchAntigravityUsage,
+		"antigravity":  FetchAntigravityUsage,
+		"gemini":       FetchAntigravityUsage,
 		"claude":       FetchClaudeUsage,
 		"cursor-agent": FetchCursorUsage,
 		"copilot":      FetchCopilotUsage,
@@ -126,7 +128,7 @@ func colorizeProvider(label string, provider string) string {
 	p := strings.ToLower(provider)
 	code := ""
 	switch {
-	case strings.Contains(p, "gemini"):
+	case strings.Contains(p, "antigravity"), strings.Contains(p, "gemini"):
 		code = "94"
 	case strings.Contains(p, "claude"):
 		code = "93"
@@ -175,6 +177,8 @@ func providerDisplayLabel(provider string) string {
 	}
 	p := strings.ToLower(strings.TrimSpace(provider))
 	switch {
+	case strings.Contains(p, "antigravity"), strings.Contains(p, "gemini"):
+		return "✨ " + provider
 	case strings.Contains(p, "cursor"):
 		return "▣ " + provider
 	case strings.Contains(p, "opencode"):
@@ -299,7 +303,7 @@ func PrintJSON(results []UsageResult) error {
 		Error int `json:"error"`
 	}
 	payload := struct {
-		Summary UsageSummary       `json:"summary"`
+		Summary UsageSummary         `json:"summary"`
 		Results []UsageResultCompact `json:"results"`
 	}{
 		Summary: UsageSummary{Total: len(results)},

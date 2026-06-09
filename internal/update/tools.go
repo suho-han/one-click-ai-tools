@@ -7,13 +7,14 @@ import (
 )
 
 type Tool struct {
-	Name        string
-	Package     string
-	BinaryName  string
-	BrewPackage string
-	Icon        string
-	LobeIcon    string
-	HexColor    string
+	Name          string
+	Package       string
+	BinaryName    string
+	BinaryAliases []string
+	BrewPackage   string
+	Icon          string
+	LobeIcon      string
+	HexColor      string
 }
 
 func (t Tool) BrewTarget() string {
@@ -21,6 +22,19 @@ func (t Tool) BrewTarget() string {
 		return t.BrewPackage
 	}
 	return t.BinaryName
+}
+
+func (t Tool) MatchesName(name string) bool {
+	normalized := NormalizeToolName(name)
+	if normalized == NormalizeToolName(t.BinaryName) {
+		return true
+	}
+	for _, alias := range t.BinaryAliases {
+		if normalized == NormalizeToolName(alias) {
+			return true
+		}
+	}
+	return false
 }
 
 func (t Tool) hexRGB() (uint8, uint8, uint8, bool) {
@@ -54,31 +68,34 @@ func (t Tool) ColorizeWithBackgroundBlackText(text string) string {
 
 var Tools = []Tool{
 	{
-		Name:        "Claude Code",
-		Package:     "@anthropic-ai/claude-code",
-		BinaryName:  "claude",
-		BrewPackage: "claude-code",
-		Icon:        "🤖",
-		LobeIcon:    "ClaudeCode",
-		HexColor:    "#D97757",
+		Name:          "Claude Code",
+		Package:       "@anthropic-ai/claude-code",
+		BinaryName:    "claude",
+		BinaryAliases: []string{"claude-code"},
+		BrewPackage:   "claude-code",
+		Icon:          "🤖",
+		LobeIcon:      "ClaudeCode",
+		HexColor:      "#D97757",
 	},
 	{
-		Name:        "Cursor",
-		Package:     "cursor-agent",
-		BinaryName:  "cursor-agent",
-		BrewPackage: "cursor-agent",
-		Icon:        "▣",
-		LobeIcon:    "Cursor",
-		HexColor:    "#E6EDF3",
+		Name:          "Cursor CLI",
+		Package:       "cursor-agent",
+		BinaryName:    "cursor-agent",
+		BinaryAliases: []string{"cursor", "agent"},
+		BrewPackage:   "cursor-agent",
+		Icon:          "▣",
+		LobeIcon:      "Cursor",
+		HexColor:      "#E6EDF3",
 	},
 	{
-		Name:        "OpenCode",
-		Package:     "opencode-ai",
-		BinaryName:  "opencode",
-		BrewPackage: "opencode",
-		Icon:        "🧩",
-		LobeIcon:    "OpenCode",
-		HexColor:    "#4F46E5",
+		Name:          "OpenCode",
+		Package:       "opencode-ai",
+		BinaryName:    "opencode",
+		BinaryAliases: []string{"opencode-ai"},
+		BrewPackage:   "opencode",
+		Icon:          "🧩",
+		LobeIcon:      "OpenCode",
+		HexColor:      "#4F46E5",
 	},
 	{
 		Name:        "OpenAI Codex",
@@ -90,13 +107,13 @@ var Tools = []Tool{
 		HexColor:    "#00A67E",
 	},
 	{
-		Name:        "Gemini CLI",
-		Package:     "@google/gemini-cli",
-		BinaryName:  "gemini",
-		BrewPackage: "gemini-cli",
-		Icon:        "✨",
-		LobeIcon:    "GeminiCLI",
-		HexColor:    "#4285F4",
+		Name:          "Antigravity CLI",
+		Package:       "@sanchaymittal/antigravity-cli",
+		BinaryName:    "agy",
+		BinaryAliases: []string{"antigravity", "gemini", "gemini-cli"},
+		Icon:          "✨",
+		LobeIcon:      "GeminiCLI",
+		HexColor:      "#4285F4",
 	},
 	{
 		Name:       "GitHub Copilot",
@@ -108,28 +125,55 @@ var Tools = []Tool{
 	},
 }
 
+func NormalizeToolName(name string) string {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "", "none":
+		return ""
+	case "claude-code":
+		return "claude"
+	case "cursor", "agent":
+		return "cursor-agent"
+	case "antigravity", "gemini", "gemini-cli":
+		return "agy"
+	default:
+		return strings.ToLower(strings.TrimSpace(name))
+	}
+}
+
+func canonicalToolMap() map[string]Tool {
+	toolMap := make(map[string]Tool, len(Tools))
+	for _, t := range Tools {
+		toolMap[NormalizeToolName(t.BinaryName)] = t
+	}
+	return toolMap
+}
+
 func GetOrderedTools(order []string) []Tool {
 	if len(order) == 0 {
 		return Tools
 	}
 
-	var ordered []Tool
-	toolMap := make(map[string]Tool)
-	for _, t := range Tools {
-		toolMap[strings.ToLower(t.BinaryName)] = t
-	}
+	ordered := make([]Tool, 0, len(Tools))
+	toolMap := canonicalToolMap()
+	seen := make(map[string]bool, len(Tools))
 
 	for _, name := range order {
-		if t, ok := toolMap[strings.ToLower(name)]; ok {
+		normalized := NormalizeToolName(name)
+		if normalized == "" || seen[normalized] {
+			continue
+		}
+		if t, ok := toolMap[normalized]; ok {
 			ordered = append(ordered, t)
-			delete(toolMap, strings.ToLower(name))
+			seen[normalized] = true
 		}
 	}
 
 	for _, t := range Tools {
-		if _, ok := toolMap[strings.ToLower(t.BinaryName)]; ok {
-			ordered = append(ordered, t)
+		normalized := NormalizeToolName(t.BinaryName)
+		if seen[normalized] {
+			continue
 		}
+		ordered = append(ordered, t)
 	}
 
 	return ordered
@@ -139,11 +183,17 @@ func GetFilteredTools(enabled []string, ordered []Tool) []Tool {
 	if len(enabled) == 0 {
 		return ordered
 	}
-	var result []Tool
+	result := make([]Tool, 0, len(enabled))
+	seen := make(map[string]bool, len(enabled))
 	for _, et := range enabled {
+		normalized := NormalizeToolName(et)
+		if normalized == "" || seen[normalized] {
+			continue
+		}
 		for _, t := range ordered {
-			if strings.EqualFold(et, t.BinaryName) {
+			if t.MatchesName(normalized) {
 				result = append(result, t)
+				seen[normalized] = true
 				break
 			}
 		}

@@ -172,7 +172,7 @@ func colorizeMonitorProvider(provider string) string {
 	p := strings.ToLower(provider)
 	code := ""
 	switch {
-	case strings.Contains(p, "gemini"):
+	case strings.Contains(p, "antigravity"), strings.Contains(p, "gemini"):
 		code = "94"
 	case strings.Contains(p, "claude"):
 		code = "93"
@@ -222,6 +222,8 @@ func monitorProviderDisplayLabel(provider string) string {
 	}
 	p := strings.ToLower(strings.TrimSpace(provider))
 	switch {
+	case strings.Contains(p, "antigravity"), strings.Contains(p, "gemini"):
+		return "✨ " + provider
 	case strings.Contains(p, "cursor"):
 		return "▣ " + provider
 	case strings.Contains(p, "opencode"):

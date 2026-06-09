@@ -115,13 +115,13 @@ func (m usageModel) View() string {
 var usageCmd = &cobra.Command{
 	Use:     "usage",
 	GroupID: "core",
-	Short: "Show tool usage report",
+	Short:   "Show tool usage report",
 	Long: `Show tool usage report for configured AI developer tools.
 
 To properly fetch usage, ensure you are authenticated:
-  - Gemini:  Run 'gemini' once and complete browser sign-in
+  - Antigravity: Local session artifacts are scanned first (binary: 'agy')
   - Claude:  Run 'claude auth login' to log in via browser
-  - Cursor:  Remote usage is best-effort; set OCT_CURSOR_USAGE_URL for endpoint overrides
+  - Cursor CLI: Official CLI install is recommended; usage remains best-effort with local fallback
   - Copilot: Configure your token via 'oct config'
   - OpenCode: Reads usage from local session logs first (no API token)
   - Codex:   Automatically reads from local session logs`,

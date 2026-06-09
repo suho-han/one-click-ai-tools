@@ -14,13 +14,14 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/suho-han/one-click-tools/internal/notify"
+	"github.com/suho-han/one-click-tools/internal/update"
 	"github.com/suho-han/one-click-tools/internal/usage"
 )
 
 var alertCmd = &cobra.Command{
 	Use:     "alert",
 	GroupID: "manage",
-	Short: "Usage alert configuration and testing",
+	Short:   "Usage alert configuration and testing",
 }
 
 var alertConfigCmd = &cobra.Command{
@@ -285,7 +286,7 @@ func setAlertConfigValue(key, val string) error {
 }
 
 func providerOptions() []string {
-	base := []string{"codex", "claude-code", "gemini", "copilot", "cursor", "opencode"}
+	base := []string{"antigravity", "codex", "claude-code", "copilot", "cursor", "opencode"}
 	seen := map[string]bool{}
 	out := make([]string, 0, len(base)+4)
 	for _, p := range base {
@@ -293,8 +294,10 @@ func providerOptions() []string {
 		out = append(out, p)
 	}
 	for _, et := range viper.GetStringSlice("enabled_tools") {
-		p := strings.ToLower(strings.TrimSpace(et))
+		p := update.NormalizeToolName(et)
 		switch p {
+		case "agy":
+			p = "antigravity"
 		case "cursor-agent":
 			p = "cursor"
 		case "claude":

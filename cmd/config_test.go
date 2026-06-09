@@ -7,7 +7,7 @@ import (
 )
 
 func TestConfigModel_HasControlRowsAtEnd(t *testing.T) {
-	m := newConfigModel([]string{"codex"}, []string{"codex", "gemini"})
+	m := newConfigModel([]string{"codex"}, []string{"codex", "antigravity"})
 	if len(m.items) < 2 {
 		t.Fatalf("expected items")
 	}
@@ -20,7 +20,7 @@ func TestConfigModel_HasControlRowsAtEnd(t *testing.T) {
 }
 
 func TestConfigModel_EnterTogglesSingleItem(t *testing.T) {
-	m := newConfigModel([]string{"gemini"}, []string{"codex", "gemini"})
+	m := newConfigModel([]string{"antigravity"}, []string{"codex", "antigravity"})
 	for i := range m.items {
 		m.items[i].cursor = i == 0
 	}
@@ -40,7 +40,7 @@ func TestConfigModel_EnterTogglesSingleItem(t *testing.T) {
 }
 
 func TestConfigModel_ToggleControl_AllNoneByEnter(t *testing.T) {
-	m := newConfigModel([]string{"codex"}, []string{"codex", "gemini"})
+	m := newConfigModel([]string{"codex"}, []string{"codex", "antigravity"})
 	toggleIdx := len(m.items) - 2
 	for i := range m.items {
 		m.items[i].cursor = i == toggleIdx
@@ -64,7 +64,7 @@ func TestConfigModel_ToggleControl_AllNoneByEnter(t *testing.T) {
 }
 
 func TestConfigModel_EnterOnConfirmQuits(t *testing.T) {
-	m := newConfigModel([]string{}, []string{"codex", "gemini"})
+	m := newConfigModel([]string{}, []string{"codex", "antigravity"})
 	confirmIdx := len(m.items) - 1
 	for i := range m.items {
 		m.items[i].cursor = i == confirmIdx
@@ -81,7 +81,7 @@ func TestConfigModel_EnterOnConfirmQuits(t *testing.T) {
 }
 
 func TestConfigModel_KJDoesNotReorder(t *testing.T) {
-	m := newConfigModel([]string{}, []string{"codex", "gemini"})
+	m := newConfigModel([]string{}, []string{"codex", "antigravity"})
 	if len(m.items) < 3 {
 		t.Fatalf("expected at least two tools + control")
 	}

@@ -16,7 +16,7 @@ import (
 func TestPrintJSON_SummarySchemaAndCounts(t *testing.T) {
 	results := []UsageResult{
 		{Provider: "alpha", Status: "ok", Used: "10"},
-		{Provider: "beta", Status: "ok", Used: "n/a"},                          // warn: no numeric usage
+		{Provider: "beta", Status: "ok", Used: "n/a"},                                 // warn: no numeric usage
 		{Provider: "cursor", Status: "ok", Used: "0", Message: "No local logs found"}, // warn: zero with not-found signal
 		{Provider: "delta", Status: "warn", Used: "0", Message: "Partial data"},
 		{Provider: "gamma", Status: "error", Used: "n/a"},
@@ -182,6 +182,9 @@ func TestProviderDisplayLabel_IconCapability(t *testing.T) {
 
 	if got := providerDisplayLabel("Cursor"); got != "▣ Cursor" {
 		t.Fatalf("expected cursor icon label, got %q", got)
+	}
+	if got := providerDisplayLabel("Antigravity"); got != "✨ Antigravity" {
+		t.Fatalf("expected antigravity icon label, got %q", got)
 	}
 	if got := providerDisplayLabel("OpenCode"); got != "🧩 OpenCode" {
 		t.Fatalf("expected opencode icon label, got %q", got)

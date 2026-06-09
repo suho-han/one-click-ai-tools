@@ -41,7 +41,7 @@ func newConfigModel(enabledTools []string, agentOrder []string) configModel {
 		enabled := len(enabledTools) == 0
 		if len(enabledTools) > 0 {
 			for _, et := range enabledTools {
-				if strings.EqualFold(et, t.BinaryName) {
+				if update.NormalizeToolName(et) == update.NormalizeToolName(t.BinaryName) {
 					enabled = true
 					break
 				}
@@ -319,19 +319,19 @@ func setupTokens(tools []string) {
 	var needsClaudeAuth, needsGeminiAuth bool
 
 	for _, tool := range tools {
-		switch tool {
+		switch update.NormalizeToolName(tool) {
 		case "claude":
 			needsClaudeAuth = true
 			fmt.Println("✓ Claude Code: Local authentication (OAuth)")
-		case "gemini":
+		case "agy":
 			needsGeminiAuth = true
-			fmt.Println("✓ Gemini CLI:  Local authentication (OAuth)")
+			fmt.Println("✓ Antigravity CLI: Local session-first usage detection")
 		case "opencode":
 			fmt.Println("✓ OpenCode: Local session logs (~/.opencode/sessions or ~/.config/opencode/sessions)")
 		case "codex":
 			fmt.Println("✓ OpenAI Codex: Local session logs (~/.codex/sessions)")
 		case "cursor-agent":
-			fmt.Println("✓ Cursor: Remote usage is best-effort; local workspace storage fallback")
+			fmt.Println("✓ Cursor CLI: Official CLI install, with local workspace storage fallback for usage")
 		case "copilot":
 			isUpdate := false
 			existingToken := viper.GetString("github_api_token")
@@ -375,14 +375,14 @@ func setupTokens(tools []string) {
 			fmt.Println("Claude Code: Run 'claude auth login' to authenticate.")
 		}
 		if needsGeminiAuth {
-			fmt.Println("Gemini CLI:  Run 'gemini' once and complete browser sign-in (credentials saved to ~/.gemini/oauth_creds.json).")
+			fmt.Println("Antigravity CLI: Local session artifacts are used first; no token setup is required for basic usage reporting.")
 		}
 	}
 }
 
 func toolDisplayName(binaryName string) string {
 	for _, t := range update.Tools {
-		if strings.EqualFold(t.BinaryName, binaryName) {
+		if t.MatchesName(binaryName) {
 			return t.Colorize(t.Name)
 		}
 	}
@@ -422,7 +422,7 @@ func visibleLen(s string) int {
 var configCmd = &cobra.Command{
 	Use:     "config",
 	GroupID: "manage",
-	Short: "Manage configuration (interactive selection if no sub-command)",
+	Short:   "Manage configuration (interactive selection if no sub-command)",
 	Run: func(cmd *cobra.Command, args []string) {
 		newEnabledTools, newOrder, usageMode, cancelled, err := runInteractiveConfig()
 		if err != nil {
@@ -464,7 +464,7 @@ var configSetToolsCmd = &cobra.Command{
 			tool = strings.TrimSpace(tool)
 			found := false
 			for _, t := range update.Tools {
-				if strings.EqualFold(tool, t.BinaryName) {
+				if t.MatchesName(tool) {
 					validTools = append(validTools, t.BinaryName)
 					found = true
 					break

@@ -41,17 +41,23 @@ func TestSetAlertConfigValueInvalidProviderKey(t *testing.T) {
 
 func TestProviderOptionsIncludesCursor(t *testing.T) {
 	viper.Reset()
-	viper.Set("enabled_tools", []string{"cursor-agent", "opencode"})
+	viper.Set("enabled_tools", []string{"cursor-agent", "gemini", "opencode"})
 	opts := providerOptions()
 	hasCursor := false
+	hasAntigravity := false
 	for _, o := range opts {
 		if o == "cursor" {
 			hasCursor = true
-			break
+		}
+		if o == "antigravity" {
+			hasAntigravity = true
 		}
 	}
 	if !hasCursor {
 		t.Fatalf("expected cursor in provider options")
+	}
+	if !hasAntigravity {
+		t.Fatalf("expected antigravity in provider options")
 	}
 }
 
