@@ -6,4 +6,7 @@ DEPLOY_COMMAND.md
 oct
 bin/
 
+# Local release/build artifacts
+dist/
+
 .DS_Store
