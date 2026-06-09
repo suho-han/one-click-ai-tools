@@ -4,9 +4,10 @@ import "testing"
 
 func TestDetectManagerCursorAgent(t *testing.T) {
 	manager := DetectManager(Tool{
-		Name:       "Cursor",
-		Package:    "cursor-agent",
-		BinaryName: "cursor-agent",
+		Name:          "Cursor",
+		Package:       "cursor-agent",
+		BinaryName:    "cursor-agent",
+		BinaryAliases: []string{"cursor", "agent"},
 	})
 
 	if manager != CursorAgent {
@@ -15,12 +16,12 @@ func TestDetectManagerCursorAgent(t *testing.T) {
 }
 
 func TestCursorAgentInstallCommand(t *testing.T) {
-	cmd := CursorAgent.InstallCommand(Tool{BinaryName: "cursor-agent"})
-	if len(cmd.Args) != 2 {
+	cmd := CursorAgent.InstallCommand(Tool{BinaryName: "cursor-agent", BinaryAliases: []string{"cursor", "agent"}})
+	if len(cmd.Args) != 3 {
 		t.Fatalf("unexpected args length: %v", cmd.Args)
 	}
-	if cmd.Args[0] != "cursor-agent" || cmd.Args[1] != "update" {
-		t.Fatalf("CursorAgent.InstallCommand args = %v, want [cursor-agent update]", cmd.Args)
+	if cmd.Args[0] != "bash" || cmd.Args[1] != "-lc" || cmd.Args[2] != "curl https://cursor.com/install -fsS | bash" {
+		t.Fatalf("CursorAgent.InstallCommand args = %v, want [bash -lc 'curl https://cursor.com/install -fsS | bash']", cmd.Args)
 	}
 }
 
@@ -62,5 +63,18 @@ func TestInstallCommandForExpandedManagers(t *testing.T) {
 	pipCmd := Pip.InstallCommand(Tool{Package: "pip:llm"})
 	if got := pipCmd.Args; len(got) != 6 || got[0] != "python3" || got[1] != "-m" || got[2] != "pip" || got[3] != "install" || got[4] != "--upgrade" || got[5] != "llm" {
 		t.Fatalf("unexpected pip command: %v", got)
+	}
+}
+
+func TestPreferredBinariesIncludesAliases(t *testing.T) {
+	got := preferredBinaries(Tool{BinaryName: "cursor-agent", BinaryAliases: []string{"cursor", "agent", "cursor"}})
+	want := []string{"cursor-agent", "cursor", "agent"}
+	if len(got) != len(want) {
+		t.Fatalf("preferredBinaries len = %d, want %d (%v)", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("preferredBinaries[%d] = %q, want %q (all=%v)", i, got[i], want[i], got)
+		}
 	}
 }

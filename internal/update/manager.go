@@ -35,7 +35,7 @@ func DetectManager(t Tool) Manager {
 		return m
 	}
 
-	if t.BinaryName == "cursor-agent" {
+	if isCursorTool(t) {
 		return CursorAgent
 	}
 
@@ -65,7 +65,7 @@ func (m Manager) InstallCommand(t Tool) *exec.Cmd {
 func (m Manager) InstallCommandCtx(ctx context.Context, t Tool) *exec.Cmd {
 	switch m {
 	case CursorAgent:
-		return exec.Command(t.BinaryName, "update")
+		return exec.CommandContext(ctx, "bash", "-lc", "curl https://cursor.com/install -fsS | bash")
 	case Brew:
 		return exec.CommandContext(ctx, "brew", "upgrade", t.BrewTarget())
 	case Pnpm:
@@ -86,10 +86,14 @@ func (m Manager) InstallCommandCtx(ctx context.Context, t Tool) *exec.Cmd {
 func (m Manager) GetInstalledVersion(t Tool) string {
 	switch m {
 	case CursorAgent:
-		out, _ := exec.Command(t.BinaryName, "--version").Output()
-		return strings.TrimSpace(string(out))
+		for _, binary := range preferredBinaries(t) {
+			out, err := exec.Command(binary, "--version").Output()
+			if err == nil {
+				return strings.TrimSpace(string(out))
+			}
+		}
+		return ""
 	case Brew:
-		// Ignore exit code: brew list exits non-zero when package is absent
 		out, _ := exec.Command("brew", "list", "--versions", t.BrewTarget()).Output()
 		parts := strings.Fields(strings.TrimSpace(string(out)))
 		if len(parts) >= 2 {
@@ -97,7 +101,6 @@ func (m Manager) GetInstalledVersion(t Tool) string {
 		}
 		return ""
 	case Pnpm:
-		// Ignore exit code: pnpm list may exit non-zero due to unrelated warnings
 		out, _ := exec.Command("pnpm", "list", "-g", t.Package, "--depth=0").Output()
 		for _, line := range strings.Split(string(out), "\n") {
 			if strings.Contains(line, t.Package) {
@@ -109,7 +112,6 @@ func (m Manager) GetInstalledVersion(t Tool) string {
 		}
 		return ""
 	case Yarn:
-		// Ignore exit code: yarn list may exit non-zero for missing packages
 		out, _ := exec.Command("yarn", "global", "list", "--pattern", t.Package).Output()
 		return parseVersionFromAtSuffix(string(out), t.Package)
 	case Cargo:
@@ -134,8 +136,7 @@ func (m Manager) GetInstalledVersion(t Tool) string {
 			}
 		}
 		return ""
-	default: // npm
-		// Ignore exit code: npm list exits non-zero on peer-dep issues even when package is present
+	default:
 		out, _ := exec.Command("npm", "list", "-g", t.Package, "--depth=0").Output()
 		return parseVersionFromAtSuffix(string(out), t.Package)
 	}
@@ -152,10 +153,6 @@ func parseVersionFromAtSuffix(output, pkg string) string {
 	return ""
 }
 
-// IsNoChangeOutput returns true when the install command's output indicates
-// the package was already at the latest version (used as a fallback when
-// version detection is unavailable, and to handle brew which exits non-zero
-// when nothing to upgrade).
 func (m Manager) IsNoChangeOutput(output string) bool {
 	patterns, ok := noChangePatterns[m]
 	if !ok {
@@ -190,4 +187,22 @@ func packageWithoutManagerPrefix(pkg string) string {
 		return strings.TrimSpace(parts[1])
 	}
 	return pkg
+}
+
+func isCursorTool(t Tool) bool {
+	return t.MatchesName("cursor-agent") || t.MatchesName("cursor") || t.MatchesName("agent")
+}
+
+func preferredBinaries(t Tool) []string {
+	seen := map[string]bool{}
+	candidates := make([]string, 0, 1+len(t.BinaryAliases))
+	for _, candidate := range append([]string{t.BinaryName}, t.BinaryAliases...) {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" || seen[candidate] {
+			continue
+		}
+		seen[candidate] = true
+		candidates = append(candidates, candidate)
+	}
+	return candidates
 }
