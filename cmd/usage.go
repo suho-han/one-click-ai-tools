@@ -124,7 +124,9 @@ To properly fetch usage, ensure you are authenticated:
   - Cursor CLI: Official CLI install is recommended; usage remains best-effort with local fallback
   - Copilot: Configure your token via 'oct config'
   - OpenCode: Reads usage from local session logs first (no API token)
-  - Codex:   Automatically reads from local session logs`,
+  - Codex:   Automatically reads from local session logs
+
+Legacy config values 'gemini' and 'gemini-cli' still map to 'agy'.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		jsonMode, _ := cmd.Flags().GetBool("json")
 		notifyMode, _ := cmd.Flags().GetBool("notify")

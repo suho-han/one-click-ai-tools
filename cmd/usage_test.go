@@ -36,7 +36,7 @@ func TestUsageOrderedTools_RespectsEnabledTools(t *testing.T) {
 		viper.Set("enabled_tools", oldEnabled)
 	})
 
-	viper.Set("agent_order", []string{"antigravity", "claude", "cursor", "copilot", "opencode", "codex"})
+	viper.Set("agent_order", []string{"agy", "claude", "cursor", "copilot", "opencode", "codex"})
 	viper.Set("enabled_tools", []string{"codex", "opencode"})
 
 	tools := usageOrderedTools()

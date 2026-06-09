@@ -81,8 +81,9 @@ oct config
 - `Ctrl+C` / `Ctrl+Q` / `q`: cancel
 
 Environment-variable overrides now require the `OCT_` prefix.
-- Example: `OCT_ENABLED_TOOLS=codex,gemini`
+- Example: `OCT_ENABLED_TOOLS=codex,agy`
 - Non-prefixed vars like `ENABLED_TOOLS` are ignored.
+- Legacy config values `gemini` and `gemini-cli` are still accepted and normalized to `agy`.
 
 ### 3) Always-on monitoring
 

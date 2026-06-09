@@ -18,7 +18,7 @@ oct update --beta
 지원 대상:
 - Claude Code (`@anthropic-ai/claude-code`)
 - OpenAI Codex (`@openai/codex`)
-- Gemini CLI (`@google/gemini-cli`)
+- Antigravity CLI (`@sanchaymittal/antigravity-cli`, binary: `agy`)
 - GitHub Copilot (`@github/copilot`)
 - Cursor (`cursor-agent`)
 - OpenCode (`opencode-ai`)
@@ -44,15 +44,16 @@ oct usage --notify
 - 비 TTY 환경(CI/파이프)에서는 자동으로 JSON 출력으로 전환됩니다.
 - `--notify` 또는 `usage_alert_enabled=true`일 때 알림 규칙이 적용됩니다.
 - 조회 대상 provider는 `enabled_tools` 기준이며, 출력 순서는 `agent_order`를 따릅니다.
+- legacy config 값 `gemini`, `gemini-cli`는 계속 허용되지만 내부적으로 `agy`로 normalize 됩니다.
 
 ### 주요 환경 변수
 
 - 공통 endpoint override:
   - `OCT_CODEX_USAGE_ENDPOINT`
   - `OCT_CLAUDE_USAGE_ENDPOINT`
-  - `OCT_GEMINI_USAGE_ENDPOINT`
   - `OCT_COPILOT_USAGE_ENDPOINT`
-- Gemini API 경로 테스트:
+- Antigravity legacy testing override (deprecated compatibility):
+  - `OCT_GEMINI_USAGE_ENDPOINT`
   - `OCT_GEMINI_API_ENDPOINT`
 - Cursor:
   - `OCT_CURSOR_USAGE_URL` (커스텀 원격 endpoint)

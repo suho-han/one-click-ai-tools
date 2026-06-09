@@ -18,7 +18,7 @@ Updates all supported agents.
 Supported agents:
 - Claude Code (`@anthropic-ai/claude-code`)
 - OpenAI Codex (`@openai/codex`)
-- Gemini CLI (`@google/gemini-cli`)
+- Antigravity CLI (`@sanchaymittal/antigravity-cli`, binary: `agy`)
 - GitHub Copilot (`@github/copilot`)
 - Cursor (`cursor-agent`)
 - OpenCode (`opencode-ai`)
@@ -44,15 +44,16 @@ Notes:
 - In non-TTY environments (CI/pipes), output auto-switches to JSON.
 - Alert logic applies when `--notify` is set or `usage_alert_enabled=true`.
 - Selected providers are filtered by `enabled_tools`, and output order follows `agent_order`.
+- Legacy config values `gemini` and `gemini-cli` are still accepted, but they normalize internally to `agy`.
 
 ### Key environment variables
 
 - Common endpoint overrides:
   - `OCT_CODEX_USAGE_ENDPOINT`
   - `OCT_CLAUDE_USAGE_ENDPOINT`
-  - `OCT_GEMINI_USAGE_ENDPOINT`
   - `OCT_COPILOT_USAGE_ENDPOINT`
-- Gemini API testing:
+- Antigravity legacy testing overrides (deprecated compatibility):
+  - `OCT_GEMINI_USAGE_ENDPOINT`
   - `OCT_GEMINI_API_ENDPOINT`
 - Cursor:
   - `OCT_CURSOR_USAGE_URL` (custom remote endpoint)
