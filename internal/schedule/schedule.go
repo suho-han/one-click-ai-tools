@@ -2,6 +2,8 @@ package schedule
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
 	"runtime"
 )
 
@@ -23,6 +25,11 @@ type taskConfig struct {
 	Command     string
 	LogFile     string
 }
+
+var (
+	executablePath = os.Executable
+	lookPath       = exec.LookPath
+)
 
 func GetScheduler() (Scheduler, error) {
 	switch runtime.GOOS {
@@ -57,4 +64,14 @@ func taskDetails(task Task) (taskConfig, error) {
 	default:
 		return taskConfig{}, fmt.Errorf("unsupported schedule task: %s", task)
 	}
+}
+
+func resolveBinaryPath() string {
+	if binPath, err := executablePath(); err == nil && binPath != "" {
+		return binPath
+	}
+	if binPath, err := lookPath("oct"); err == nil {
+		return binPath
+	}
+	return "oct"
 }

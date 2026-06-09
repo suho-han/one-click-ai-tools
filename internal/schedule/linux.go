@@ -15,10 +15,7 @@ func (l *Linux) Enable(task Task, interval string, hour int) error {
 		return err
 	}
 
-	binPath, err := exec.LookPath("oct")
-	if err != nil {
-		binPath, _ = os.Executable()
-	}
+	binPath := resolveBinaryPath()
 
 	home, _ := os.UserHomeDir()
 	logPath := filepathJoin(home, ".oct", "logs", cfg.LogFile)

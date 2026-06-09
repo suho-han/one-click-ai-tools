@@ -2,7 +2,6 @@ package schedule
 
 import (
 	"fmt"
-	"os"
 	"os/exec"
 )
 
@@ -14,10 +13,7 @@ func (w *Windows) Enable(task Task, interval string, hour int) error {
 		return err
 	}
 
-	binPath, err := exec.LookPath("oct")
-	if err != nil {
-		binPath, _ = os.Executable()
-	}
+	binPath := resolveBinaryPath()
 
 	taskName := windowsTaskName(task)
 	exec.Command("schtasks", "/Delete", "/TN", taskName, "/F").Run()

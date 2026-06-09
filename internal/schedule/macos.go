@@ -50,10 +50,7 @@ func (m *MacOS) Enable(task Task, interval string, hour int) error {
 	}
 
 	home, _ := os.UserHomeDir()
-	binPath, err := exec.LookPath("oct")
-	if err != nil {
-		binPath, _ = os.Executable()
-	}
+	binPath := resolveBinaryPath()
 
 	logPath := filepath.Join(home, ".oct", "logs", cfg.LogFile)
 	data := struct {

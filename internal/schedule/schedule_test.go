@@ -2,6 +2,42 @@ package schedule
 
 import "testing"
 
+type testScheduleError string
+
+func (e testScheduleError) Error() string { return string(e) }
+
+func TestResolveBinaryPathPrefersExecutable(t *testing.T) {
+	origExec := executablePath
+	origLookPath := lookPath
+	t.Cleanup(func() {
+		executablePath = origExec
+		lookPath = origLookPath
+	})
+
+	executablePath = func() (string, error) { return "/tmp/current-oct", nil }
+	lookPath = func(string) (string, error) { return "/tmp/path-oct", nil }
+
+	if got := resolveBinaryPath(); got != "/tmp/current-oct" {
+		t.Fatalf("resolveBinaryPath() = %q, want executable path", got)
+	}
+}
+
+func TestResolveBinaryPathFallsBackToLookPath(t *testing.T) {
+	origExec := executablePath
+	origLookPath := lookPath
+	t.Cleanup(func() {
+		executablePath = origExec
+		lookPath = origLookPath
+	})
+
+	executablePath = func() (string, error) { return "", testScheduleError("boom") }
+	lookPath = func(string) (string, error) { return "/tmp/path-oct", nil }
+
+	if got := resolveBinaryPath(); got != "/tmp/path-oct" {
+		t.Fatalf("resolveBinaryPath() = %q, want lookPath fallback", got)
+	}
+}
+
 func TestCronExpression(t *testing.T) {
 	if got := cronExpression("daily", 3); got != "0 3 * * *" {
 		t.Fatalf("daily cron expression mismatch: %q", got)
