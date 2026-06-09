@@ -10,10 +10,13 @@ import (
 func TestFetchOpenCodeUsage_NoLogsWarns(t *testing.T) {
 	tempHome := t.TempDir()
 	prevHome := os.Getenv("HOME")
+	prevUserHomeDir := userHomeDir
 	t.Cleanup(func() {
 		_ = os.Setenv("HOME", prevHome)
+		userHomeDir = prevUserHomeDir
 	})
 	_ = os.Setenv("HOME", tempHome)
+	userHomeDir = func() (string, error) { return tempHome, nil }
 
 	result := FetchOpenCodeUsage()
 	if result.Status != "warn" {
@@ -36,10 +39,13 @@ func TestFetchOpenCodeUsage_NoMetricsWarns(t *testing.T) {
 	}
 
 	prevHome := os.Getenv("HOME")
+	prevUserHomeDir := userHomeDir
 	t.Cleanup(func() {
 		_ = os.Setenv("HOME", prevHome)
+		userHomeDir = prevUserHomeDir
 	})
 	_ = os.Setenv("HOME", tempHome)
+	userHomeDir = func() (string, error) { return tempHome, nil }
 
 	result := FetchOpenCodeUsage()
 	if result.Status != "warn" {
@@ -63,10 +69,13 @@ func TestFetchOpenCodeUsage_FromLocalLogsOK(t *testing.T) {
 	}
 
 	prevHome := os.Getenv("HOME")
+	prevUserHomeDir := userHomeDir
 	t.Cleanup(func() {
 		_ = os.Setenv("HOME", prevHome)
+		userHomeDir = prevUserHomeDir
 	})
 	_ = os.Setenv("HOME", tempHome)
+	userHomeDir = func() (string, error) { return tempHome, nil }
 
 	result := FetchOpenCodeUsage()
 	if result.Status != "ok" {

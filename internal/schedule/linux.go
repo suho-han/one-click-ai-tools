@@ -3,6 +3,7 @@ package schedule
 import (
 	"fmt"
 	"os"
+	"path"
 	"strings"
 )
 
@@ -17,8 +18,8 @@ func (l *Linux) Enable(task Task, interval string, hour int) error {
 	binPath := resolveBinaryPath()
 
 	home, _ := homeDirPath()
-	logPath := filepathJoin(home, ".oct", "logs", cfg.LogFile)
-	os.MkdirAll(filepathJoin(home, ".oct", "logs"), 0o755)
+	logPath := linuxLogPath(home, cfg.LogFile)
+	os.MkdirAll(path.Dir(logPath), 0o755)
 
 	cronExpr := cronExpression(interval, hour)
 	cronEntry := fmt.Sprintf("%s %s %s >> %s 2>&1  %s", cronExpr, binPath, cfg.Command, logPath, cronMarker(task))
@@ -88,8 +89,12 @@ func (l *Linux) Status(task Task) (string, error) {
 	return "disabled", nil
 }
 
+func linuxLogPath(home, logFile string) string {
+	return path.Join(home, ".oct", "logs", logFile)
+}
+
 func filepathJoin(elem ...string) string {
-	return strings.Join(elem, string(os.PathSeparator))
+	return path.Join(elem...)
 }
 
 func cronExpression(interval string, hour int) string {

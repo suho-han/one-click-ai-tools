@@ -11,6 +11,8 @@ import (
 	"strings"
 )
 
+var userHomeDir = os.UserHomeDir
+
 func FetchOpenCodeUsage() UsageResult {
 	result := UsageResult{
 		Provider: "opencode",
@@ -66,7 +68,7 @@ func FetchOpenCodeUsage() UsageResult {
 }
 
 func collectOpenCodeLogFiles() []string {
-	home, _ := os.UserHomeDir()
+	home, _ := userHomeDir()
 	candidates := []string{
 		filepath.Join(home, ".opencode", "sessions"),
 		filepath.Join(home, ".config", "opencode", "sessions"),

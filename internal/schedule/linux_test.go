@@ -6,6 +6,14 @@ import (
 	"testing"
 )
 
+func TestLinuxLogPathUsesForwardSlashes(t *testing.T) {
+	got := linuxLogPath("/tmp/test-home", "agent-update.log")
+	want := "/tmp/test-home/.oct/logs/agent-update.log"
+	if got != want {
+		t.Fatalf("linuxLogPath() = %q, want %q", got, want)
+	}
+}
+
 func TestLinuxEnableWritesTaskSpecificCronEntryWithoutDuplicates(t *testing.T) {
 	origExec := executablePath
 	origHome := homeDirPath
