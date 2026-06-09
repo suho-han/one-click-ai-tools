@@ -5,10 +5,26 @@
 ## Supported AI Agents
 - **Claude Code** (`@anthropic-ai/claude-code`)
 - **OpenAI Codex** (`@openai/codex`)
-- **Antigravity CLI** (`@sanchaymittal/antigravity-cli`, binary: `agy`)
+- **Antigravity CLI** (official installer, binary: `agy`)
 - **GitHub Copilot** (`@github/copilot`)
 - **Cursor CLI** (official `agent` install flow via `cursor.com/install`)
 - **OpenCode** (`opencode-ai`)
+
+## Manager Support Matrix
+
+| Manager | 감지 기준 | 설치 경로 | built-in 사용처 |
+| --- | --- | --- | --- |
+| `brew` | `brew --prefix` 하위 binary 또는 `brew list` | `brew upgrade <formula>` | Homebrew로 설치된 Claude/Cursor/OpenCode/Codex |
+| `npm` | `npm prefix -g` 또는 `npm list -g` | `npm install -g <package>` | Claude/OpenCode/Codex/Copilot 기본 fallback |
+| `pnpm` | `pnpm bin -g` 또는 `pnpm list -g` | `pnpm add -g <package>` | provenance 기반 감지만 지원 |
+| `yarn` | `yarn global bin` 또는 `yarn global list` | `yarn global add <package>` | provenance 기반 감지만 지원 |
+| `cargo` | `cargo:` package prefix 또는 cargo bin path | `cargo install <crate> --locked` | explicit package override |
+| `go-install` | `go:` package prefix 또는 `go env GOPATH` bin path | `go install <package>@latest` | explicit package override |
+| `pip` | `pip:` package prefix 또는 `python3 -m site --user-base` bin path | `python3 -m pip install --upgrade <package>` | explicit package override |
+| `cursor-agent` | tool identity (`cursor-agent` / `cursor` / `agent`) | `curl https://cursor.com/install -fsS \| bash` | Cursor CLI |
+| `antigravity-installer` | tool identity (`agy` / `antigravity`, legacy `gemini*`) | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` | Antigravity CLI |
+
+이 built-in support matrix는 `internal/update/manager_test.go`에서 회귀 테스트로 고정합니다.
 
 ## Installation
 

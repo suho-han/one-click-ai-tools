@@ -28,13 +28,27 @@
 
 ## Manager stability guard
 추가 패키지 매니저 지원 또는 manager detection 변경 시 아래를 같이 확인합니다.
+
+### Built-in manager support matrix
+
+| Tool | expected install manager | notes |
+| --- | --- | --- |
+| Claude Code | `npm` fallback or detected `brew`/`pnpm`/`yarn` | provenance-first detection 우선 |
+| Cursor CLI | `cursor-agent` | 공식 installer 고정 |
+| OpenCode | `npm` fallback or detected `brew`/`pnpm`/`yarn` | provenance-first detection 우선 |
+| OpenAI Codex | `npm` fallback or detected `brew`/`pnpm`/`yarn` | provenance-first detection 우선 |
+| Antigravity CLI (`agy`) | `antigravity-installer` | `curl -fsSL https://antigravity.google/cli/install.sh | bash` |
+| GitHub Copilot | `npm` fallback | npm local-prefix fallback 포함 |
+
 1. provenance-first detection 회귀 테스트
-   - `GOTOOLCHAIN=auto go test ./internal/update -run 'DetectManager|PreferredBinaries|ResolveManagerForInstall' -v`
+   - `GOTOOLCHAIN=auto go test ./internal/update -run 'DetectManager|PreferredBinaries|ResolveManagerForInstall|SupportMatrix' -v`
 2. 전체 update 패키지 테스트
    - `GOTOOLCHAIN=auto go test ./internal/update -v`
 3. binary path correctness 검토
    - 실제 실행 binary path가 manager prefix(`brew --prefix`, `pnpm bin -g`, `npm prefix -g`, `go env GOPATH`, `python3 -m site --user-base`)와 일치하는지 확인
-4. ambiguous fallback 검토
+4. dedicated installer 검토
+   - Cursor / Antigravity처럼 package-manager가 아닌 공식 installer flow는 `DetectManager()`와 `ResolveManagerForInstall()` 둘 다 전용 manager를 유지해야 함
+5. ambiguous fallback 검토
    - `DetectManager()`는 `Unknown`을 반환할 수 있어야 함
    - install/update 경로만 `ResolveManagerForInstall()`로 default manager fallback 허용
 

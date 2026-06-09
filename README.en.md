@@ -155,10 +155,26 @@ oct alert snooze clear --provider codex --window 5h
 
 - **Claude Code** (`@anthropic-ai/claude-code`)
 - **OpenAI Codex** (`@openai/codex`)
-- **Antigravity CLI** (`@sanchaymittal/antigravity-cli`, binary: `agy`)
+- **Antigravity CLI** (official installer, binary: `agy`)
 - **GitHub Copilot** (`@github/copilot`)
 - **Cursor CLI** (official `agent` install flow via `cursor.com/install`)
 - **OpenCode** (`opencode-ai`)
+
+## 🧭 Manager Support Matrix
+
+| Manager | Detection strategy | Install path | Built-in use |
+| --- | --- | --- | --- |
+| `brew` | binary under `brew --prefix` / `brew list` | `brew upgrade <formula>` | Claude, Cursor, OpenCode, Codex when Homebrew-owned |
+| `npm` | `npm prefix -g` / `npm list -g` | `npm install -g <package>` | default fallback for Claude, OpenCode, Codex, Copilot |
+| `pnpm` | `pnpm bin -g` / `pnpm list -g` | `pnpm add -g <package>` | provenance-based detection only |
+| `yarn` | `yarn global bin` / `yarn global list` | `yarn global add <package>` | provenance-based detection only |
+| `cargo` | `cargo:` package prefix / cargo bin path | `cargo install <crate> --locked` | explicit package override |
+| `go-install` | `go:` package prefix / `go env GOPATH` bin path | `go install <package>@latest` | explicit package override |
+| `pip` | `pip:` package prefix / `python3 -m site --user-base` bin path | `python3 -m pip install --upgrade <package>` | explicit package override |
+| `cursor-agent` | tool identity (`cursor-agent` / `cursor` / `agent`) | `curl https://cursor.com/install -fsS \| bash` | Cursor CLI |
+| `antigravity-installer` | tool identity (`agy` / `antigravity`, legacy `gemini*`) | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` | Antigravity CLI |
+
+The built-in support matrix is regression-tested in `internal/update/manager_test.go` so manager fallback changes stay explicit.
 
 ## 📖 Documentation
 

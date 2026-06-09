@@ -18,6 +18,19 @@ func TestDetectManagerCursorAgent(t *testing.T) {
 	}
 }
 
+func TestDetectManagerAntigravityInstaller(t *testing.T) {
+	manager := DetectManager(Tool{
+		Name:          "Antigravity CLI",
+		Package:       "github.com/google-antigravity/antigravity-cli",
+		BinaryName:    "agy",
+		BinaryAliases: []string{"antigravity", "gemini", "gemini-cli"},
+	})
+
+	if manager != AntigravityInstaller {
+		t.Fatalf("DetectManager(agy) = %q, want %q", manager, AntigravityInstaller)
+	}
+}
+
 func TestCursorAgentInstallCommand(t *testing.T) {
 	cmd := CursorAgent.InstallCommand(Tool{BinaryName: "cursor-agent", BinaryAliases: []string{"cursor", "agent"}})
 	if len(cmd.Args) != 3 {
@@ -25,6 +38,16 @@ func TestCursorAgentInstallCommand(t *testing.T) {
 	}
 	if cmd.Args[0] != "bash" || cmd.Args[1] != "-lc" || cmd.Args[2] != "curl https://cursor.com/install -fsS | bash" {
 		t.Fatalf("CursorAgent.InstallCommand args = %v, want [bash -lc 'curl https://cursor.com/install -fsS | bash']", cmd.Args)
+	}
+}
+
+func TestAntigravityInstallCommand(t *testing.T) {
+	cmd := AntigravityInstaller.InstallCommand(Tool{BinaryName: "agy", BinaryAliases: []string{"antigravity", "gemini", "gemini-cli"}})
+	if len(cmd.Args) != 3 {
+		t.Fatalf("unexpected args length: %v", cmd.Args)
+	}
+	if cmd.Args[0] != "bash" || cmd.Args[1] != "-lc" || cmd.Args[2] != "curl -fsSL https://antigravity.google/cli/install.sh | bash" {
+		t.Fatalf("AntigravityInstaller.InstallCommand args = %v, want [bash -lc 'curl -fsSL https://antigravity.google/cli/install.sh | bash']", cmd.Args)
 	}
 }
 
@@ -195,6 +218,30 @@ func TestResolveManagerForInstallFallsBackToDefaultManager(t *testing.T) {
 	got := ResolveManagerForInstall(Tool{Package: "mystery-tool", BinaryName: "mystery"})
 	if got != Npm {
 		t.Fatalf("ResolveManagerForInstall() = %q, want %q", got, Npm)
+	}
+}
+
+func TestBuiltInToolManagerSupportMatrix(t *testing.T) {
+	reset := stubManagerDetection(t)
+	defer reset()
+
+	wantByBinary := map[string]Manager{
+		"claude":       Npm,
+		"cursor-agent": CursorAgent,
+		"opencode":     Npm,
+		"codex":        Npm,
+		"agy":          AntigravityInstaller,
+		"copilot":      Npm,
+	}
+
+	for _, tool := range Tools {
+		want, ok := wantByBinary[tool.BinaryName]
+		if !ok {
+			t.Fatalf("missing support-matrix expectation for %q", tool.BinaryName)
+		}
+		if got := ResolveManagerForInstall(tool); got != want {
+			t.Fatalf("ResolveManagerForInstall(%s) = %q, want %q", tool.BinaryName, got, want)
+		}
 	}
 }
 

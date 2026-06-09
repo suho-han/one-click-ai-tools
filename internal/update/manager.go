@@ -11,15 +11,16 @@ import (
 type Manager string
 
 const (
-	Npm         Manager = "npm"
-	Brew        Manager = "brew"
-	Pnpm        Manager = "pnpm"
-	Yarn        Manager = "yarn"
-	Cargo       Manager = "cargo"
-	GoInstall   Manager = "go-install"
-	Pip         Manager = "pip"
-	CursorAgent Manager = "cursor-agent"
-	Unknown     Manager = "unknown"
+	Npm                  Manager = "npm"
+	Brew                 Manager = "brew"
+	Pnpm                 Manager = "pnpm"
+	Yarn                 Manager = "yarn"
+	Cargo                Manager = "cargo"
+	GoInstall            Manager = "go-install"
+	Pip                  Manager = "pip"
+	CursorAgent          Manager = "cursor-agent"
+	AntigravityInstaller Manager = "antigravity-installer"
+	Unknown              Manager = "unknown"
 )
 
 var (
@@ -29,18 +30,23 @@ var (
 )
 
 var noChangePatterns = map[Manager][]string{
-	Npm:         {"up to date"},
-	Pnpm:        {"already up to date"},
-	Yarn:        {"already up to date"},
-	Brew:        {"already installed", "up-to-date"},
-	CursorAgent: {"already up to date", "already on the latest version", "latest version"},
-	Cargo:       {"is already installed", "use --force to override"},
-	Pip:         {"requirement already satisfied"},
+	Npm:                  {"up to date"},
+	Pnpm:                 {"already up to date"},
+	Yarn:                 {"already up to date"},
+	Brew:                 {"already installed", "up-to-date"},
+	CursorAgent:          {"already up to date", "already on the latest version", "latest version"},
+	AntigravityInstaller: {"already up to date", "already on the latest version", "latest version"},
+	Cargo:                {"is already installed", "use --force to override"},
+	Pip:                  {"requirement already satisfied"},
 }
 
 func DetectManager(t Tool) Manager {
 	if m, ok := managerFromPackagePrefix(t.Package); ok {
 		return m
+	}
+
+	if isAntigravityTool(t) {
+		return AntigravityInstaller
 	}
 
 	if isCursorTool(t) {
@@ -85,6 +91,8 @@ func (m Manager) InstallCommandCtx(ctx context.Context, t Tool) *exec.Cmd {
 	switch m {
 	case CursorAgent:
 		return exec.CommandContext(ctx, "bash", "-lc", "curl https://cursor.com/install -fsS | bash")
+	case AntigravityInstaller:
+		return exec.CommandContext(ctx, "bash", "-lc", "curl -fsSL https://antigravity.google/cli/install.sh | bash")
 	case Brew:
 		return exec.CommandContext(ctx, "brew", "upgrade", t.BrewTarget())
 	case Pnpm:
@@ -104,7 +112,7 @@ func (m Manager) InstallCommandCtx(ctx context.Context, t Tool) *exec.Cmd {
 
 func (m Manager) GetInstalledVersion(t Tool) string {
 	switch m {
-	case CursorAgent:
+	case CursorAgent, AntigravityInstaller:
 		for _, binary := range preferredBinaries(t) {
 			out, err := exec.Command(binary, "--version").Output()
 			if err == nil {
@@ -240,6 +248,9 @@ func packageListCommand(m Manager, t Tool) ([]byte, error) {
 func defaultManagerForTool(t Tool) (Manager, bool) {
 	if m, ok := managerFromPackagePrefix(t.Package); ok {
 		return m, true
+	}
+	if isAntigravityTool(t) {
+		return AntigravityInstaller, true
 	}
 	if isCursorTool(t) {
 		return CursorAgent, true
@@ -388,6 +399,10 @@ func packageWithoutManagerPrefix(pkg string) string {
 
 func isCursorTool(t Tool) bool {
 	return t.MatchesName("cursor-agent") || t.MatchesName("cursor") || t.MatchesName("agent")
+}
+
+func isAntigravityTool(t Tool) bool {
+	return t.MatchesName("agy") || t.MatchesName("antigravity") || t.MatchesName("gemini") || t.MatchesName("gemini-cli")
 }
 
 func preferredBinaries(t Tool) []string {
