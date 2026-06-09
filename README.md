@@ -17,6 +17,10 @@
 npm install -g one-click-tools
 ```
 
+Install-time note:
+- In interactive terminals, `postinstall` asks whether to enable periodic token-free `session-refresh`.
+- Defaults written to config: disabled, `daily`, `09:00`.
+
 ### Via pnpm
 ```bash
 pnpm add -g one-click-tools

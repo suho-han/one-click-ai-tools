@@ -2,6 +2,7 @@ const os = require('os');
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const readline = require('readline');
 const { execSync } = require('child_process');
 
 const packageJson = require(path.join(__dirname, '..', 'package.json'));
@@ -107,6 +108,87 @@ function writeTerminalCapabilities() {
     }
 }
 
+function sessionRefreshConfigPath() {
+    return path.join(octDir, 'config.yaml');
+}
+
+function setYamlScalar(content, key, value) {
+    const serialized = typeof value === 'string' ? value : String(value);
+    const pattern = new RegExp(`^${key}:.*$`, 'm');
+    const line = `${key}: ${serialized}`;
+    if (pattern.test(content)) {
+        return content.replace(pattern, line);
+    }
+    if (content.trim() === '') {
+        return `${line}\n`;
+    }
+    return `${content.replace(/\s*$/, '')}\n${line}\n`;
+}
+
+function writeSessionRefreshConfig(enabled, interval, hour) {
+    fs.mkdirSync(octDir, { recursive: true });
+    const configPath = sessionRefreshConfigPath();
+    let content = '';
+    if (fs.existsSync(configPath)) {
+        content = fs.readFileSync(configPath, 'utf8');
+    }
+    content = setYamlScalar(content, 'session_refresh_enabled', enabled);
+    content = setYamlScalar(content, 'session_refresh_interval', interval);
+    content = setYamlScalar(content, 'session_refresh_hour', hour);
+    fs.writeFileSync(configPath, content, 'utf8');
+    return configPath;
+}
+
+function isInteractiveInstall() {
+    return Boolean(process.stdin.isTTY && process.stdout.isTTY && !process.env.CI);
+}
+
+function askQuestion(prompt) {
+    return new Promise((resolve) => {
+        const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+        rl.question(prompt, (answer) => {
+            rl.close();
+            resolve((answer || '').trim());
+        });
+    });
+}
+
+async function maybeConfigureSessionRefresh(binaryPath) {
+    const envChoice = (process.env.OCT_INSTALL_ENABLE_SESSION_REFRESH || '').trim().toLowerCase();
+    if (envChoice === '0' || envChoice === 'false' || envChoice === 'no') {
+        writeSessionRefreshConfig(false, 'daily', 9);
+        console.log('one-click-tools: session-refresh left disabled in config.');
+        return;
+    }
+
+    let enable = false;
+    if (envChoice === '1' || envChoice === 'true' || envChoice === 'yes') {
+        enable = true;
+    } else if (isInteractiveInstall()) {
+        const answer = await askQuestion('Enable periodic token-free session refresh? [y/N]: ');
+        enable = answer === 'y' || answer === 'yes';
+    }
+
+    const interval = 'daily';
+    const hour = 9;
+    const configPath = writeSessionRefreshConfig(enable, interval, hour);
+    if (!enable) {
+        console.log(`one-click-tools: session-refresh defaults saved to ${configPath} (disabled, daily 09:00).`);
+        return;
+    }
+
+    try {
+        execSync(`"${binaryPath}" schedule enable --task session-refresh --interval ${interval} --hour ${hour}`, {
+            stdio: 'inherit',
+            cwd: homeDir,
+        });
+        console.log(`one-click-tools: session-refresh enabled (${interval}, ${hour}:00).`);
+    } catch (err) {
+        console.warn(`one-click-tools: Failed to enable session-refresh schedule automatically: ${err.message}`);
+        console.warn('one-click-tools: You can enable it later with: oct schedule enable --task session-refresh --interval daily --hour 9');
+    }
+}
+
 function download(url, dest) {
     return new Promise((resolve, reject) => {
         https.get(url, (response) => {
@@ -174,6 +256,7 @@ async function install() {
         if (foundPath && fs.existsSync(foundPath)) {
             fs.chmodSync(foundPath, 0o755);
             console.log('one-click-tools: Installation successful.');
+            await maybeConfigureSessionRefresh(foundPath);
         } else {
             throw new Error(`Binary '${binName}' not found in ${binDir} after extraction.`);
         }
@@ -188,6 +271,7 @@ async function install() {
                 fs.renameSync(builtBin, targetPath);
                 fs.chmodSync(targetPath, 0o755);
                 console.log('one-click-tools: Source build and installation successful.');
+                await maybeConfigureSessionRefresh(targetPath);
             } else {
                 throw new Error('Source build did not produce the expected binary.');
             }
