@@ -10,7 +10,18 @@ import (
 	"github.com/spf13/viper"
 	"github.com/suho-han/one-click-tools/internal/sessionrefresh"
 	"github.com/suho-han/one-click-tools/internal/update"
+	"github.com/suho-han/one-click-tools/internal/usage"
 )
+
+var (
+	sessionRefreshRun      = sessionrefresh.Refresh
+	sessionRefreshGetUsage = usage.GetUsage
+)
+
+type sessionRefreshOutput struct {
+	RefreshResults []sessionrefresh.RefreshResult `json:"refresh_results"`
+	Usage          []usage.UsageResult            `json:"usage,omitempty"`
+}
 
 var sessionRefreshCmd = &cobra.Command{
 	Use:     "session-refresh",
@@ -18,27 +29,41 @@ var sessionRefreshCmd = &cobra.Command{
 	Short:   "Probe tool sessions without sending prompts",
 	Long: `Probe configured AI tool sessions without intentionally sending prompts.
 
-This command does not fetch usage/quota and does not intentionally send prompts.
-It only uses token-free probes such as auth-status checks and local session/auth artifact inspection.`,
+This command does not intentionally send prompts. It uses token-free probes such as auth-status checks and local session/auth artifact inspection,
+then re-runs local usage collection so the report reflects the latest detectable session state.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		providers, _ := cmd.Flags().GetStringSlice("provider")
 		jsonMode, _ := cmd.Flags().GetBool("json")
 		dryRun, _ := cmd.Flags().GetBool("dry-run")
 		strict, _ := cmd.Flags().GetBool("strict")
 
-		results := sessionrefresh.Refresh(sessionrefresh.RefreshOptions{
+		results := sessionRefreshRun(sessionrefresh.RefreshOptions{
 			Providers: selectedRefreshProviders(providers),
 			DryRun:    dryRun,
 		})
 
+		output := sessionRefreshOutput{RefreshResults: results}
+		if !dryRun {
+			usageResults, err := sessionRefreshGetUsage()
+			if err != nil {
+				return err
+			}
+			output.Usage = usageResults
+		}
+
 		if jsonMode {
 			enc := json.NewEncoder(cmd.OutOrStdout())
 			enc.SetIndent("", "  ")
-			if err := enc.Encode(results); err != nil {
+			if err := enc.Encode(output); err != nil {
 				return err
 			}
 		} else {
-			printSessionRefreshResults(cmd.OutOrStdout(), results)
+			printSessionRefreshResults(cmd.OutOrStdout(), output.RefreshResults)
+			if len(output.Usage) > 0 {
+				fmt.Fprintln(cmd.OutOrStdout())
+				fmt.Fprintln(cmd.OutOrStdout(), "refreshed usage")
+				usage.RenderTable(cmd.OutOrStdout(), output.Usage)
+			}
 		}
 
 		if strict {

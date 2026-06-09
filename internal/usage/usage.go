@@ -3,6 +3,7 @@ package usage
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strconv"
 	"strings"
@@ -79,6 +80,10 @@ func GetUsage() ([]UsageResult, error) {
 }
 
 func PrintTable(results []UsageResult) {
+	RenderTable(os.Stdout, results)
+}
+
+func RenderTable(w io.Writer, results []UsageResult) {
 	width := terminalWidth()
 	messageWidth := tableMessageWidth(width)
 
@@ -87,7 +92,7 @@ func PrintTable(results []UsageResult) {
 		displayMode = "used"
 	}
 
-	fmt.Printf("%-16s %-12s %-8s %-8s %-12s %-12s %-10s %-8s %-8s %s\n",
+	fmt.Fprintf(w, "%-16s %-12s %-8s %-8s %-12s %-12s %-10s %-8s %-8s %s\n",
 		"provider", "period", "5h", "1w", "used", "limit", "unit", "source", "status", "message")
 	for _, r := range results {
 		providerLabel := providerDisplayLabel(r.Provider)
@@ -119,7 +124,7 @@ func PrintTable(results []UsageResult) {
 		statusLabel := colorizeStatus(fmt.Sprintf("%-8s", r.Status), r.Status)
 		message := colorizeMessage(truncateText(r.Message, messageWidth), r.Status)
 
-		fmt.Printf("%s %-12s %-8s %-8s %-12s %-12s %-10s %-8s %s %s\n",
+		fmt.Fprintf(w, "%s %-12s %-8s %-8s %-12s %-12s %-10s %-8s %s %s\n",
 			paddedProvider, r.Period, fiveHour, oneWeek, displayUsed, r.Limit, r.Unit, r.Source, statusLabel, message)
 	}
 }

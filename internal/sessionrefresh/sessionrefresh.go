@@ -122,7 +122,7 @@ func probeCursorSession(opts RefreshOptions, tool update.Tool) RefreshResult {
 }
 
 func probeAntigravitySession(opts RefreshOptions, tool update.Tool) RefreshResult {
-	binary, err := findFirstBinary("agy", "antigravity", "gemini")
+	binary, err := findFirstBinary("agy", "ag", "antigravity", "gemini")
 	if err != nil {
 		return RefreshResult{Provider: tool.BinaryName, Supported: false, Mode: "local-session", Status: "unsupported", Message: "Antigravity binary not installed (expected 'agy')"}
 	}
