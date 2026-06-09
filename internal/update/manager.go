@@ -2,7 +2,9 @@ package update
 
 import (
 	"context"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -18,6 +20,12 @@ const (
 	Pip         Manager = "pip"
 	CursorAgent Manager = "cursor-agent"
 	Unknown     Manager = "unknown"
+)
+
+var (
+	binaryLookup          = exec.LookPath
+	commandOutput         = defaultCommandOutput
+	errExecutableNotFound = exec.ErrNotFound
 )
 
 var noChangePatterns = map[Manager][]string{
@@ -39,23 +47,34 @@ func DetectManager(t Tool) Manager {
 		return CursorAgent
 	}
 
-	if out, err := exec.Command("brew", "list", t.BrewTarget()).CombinedOutput(); err == nil && len(out) > 0 {
+	if m, ok := detectManagerFromBinaryPath(t); ok {
+		return m
+	}
+
+	if matchesInstalledPackage(Brew, t) {
 		return Brew
 	}
-
-	if out, err := exec.Command("pnpm", "list", "-g", t.Package).CombinedOutput(); err == nil && strings.Contains(string(out), t.Package) {
+	if matchesInstalledPackage(Pnpm, t) {
 		return Pnpm
 	}
-
-	if out, err := exec.Command("yarn", "global", "list", t.Package).CombinedOutput(); err == nil && strings.Contains(string(out), t.Package) {
+	if matchesInstalledPackage(Yarn, t) {
 		return Yarn
 	}
-
-	if out, err := exec.Command("npm", "list", "-g", t.Package).CombinedOutput(); err == nil && strings.Contains(string(out), t.Package) {
+	if matchesInstalledPackage(Npm, t) {
 		return Npm
 	}
 
-	return Npm
+	return Unknown
+}
+
+func ResolveManagerForInstall(t Tool) Manager {
+	if detected := DetectManager(t); detected != Unknown {
+		return detected
+	}
+	if preferred, ok := defaultManagerForTool(t); ok {
+		return preferred
+	}
+	return Unknown
 }
 
 func (m Manager) InstallCommand(t Tool) *exec.Cmd {
@@ -140,6 +159,184 @@ func (m Manager) GetInstalledVersion(t Tool) string {
 		out, _ := exec.Command("npm", "list", "-g", t.Package, "--depth=0").Output()
 		return parseVersionFromAtSuffix(string(out), t.Package)
 	}
+}
+
+func defaultCommandOutput(name string, args ...string) ([]byte, error) {
+	return exec.Command(name, args...).CombinedOutput()
+}
+
+func detectManagerFromBinaryPath(t Tool) (Manager, bool) {
+	for _, binary := range preferredBinaries(t) {
+		path, err := binaryLookup(binary)
+		if err != nil || strings.TrimSpace(path) == "" {
+			continue
+		}
+		if manager, ok := classifyManagerFromBinaryPath(path); ok {
+			return manager, true
+		}
+	}
+	return Unknown, false
+}
+
+func classifyManagerFromBinaryPath(path string) (Manager, bool) {
+	path = filepath.Clean(strings.TrimSpace(path))
+	if path == "" || path == "." {
+		return Unknown, false
+	}
+
+	checks := []struct {
+		manager  Manager
+		prefixes []string
+		contains []string
+	}{
+		{manager: Brew, prefixes: commandPrefixes("brew", "--prefix", "bin"), contains: []string{filepath.Clean("/Cellar/")}},
+		{manager: Pnpm, prefixes: commandPrefixes("pnpm", "bin", ""), contains: nil},
+		{manager: Yarn, prefixes: commandPrefixes("yarn", "global", "bin"), contains: nil},
+		{manager: Npm, prefixes: npmGlobalBinaryPrefixes(), contains: nil},
+		{manager: Cargo, prefixes: cargoBinaryPrefixes(), contains: nil},
+		{manager: GoInstall, prefixes: goInstallBinaryPrefixes(), contains: nil},
+		{manager: Pip, prefixes: pipBinaryPrefixes(), contains: nil},
+	}
+
+	for _, check := range checks {
+		for _, prefix := range check.prefixes {
+			if hasPathPrefix(path, prefix) {
+				return check.manager, true
+			}
+		}
+		for _, marker := range check.contains {
+			if marker != "" && strings.Contains(path, marker) {
+				return check.manager, true
+			}
+		}
+	}
+
+	return Unknown, false
+}
+
+func matchesInstalledPackage(m Manager, t Tool) bool {
+	if strings.TrimSpace(t.Package) == "" {
+		return false
+	}
+	out, err := packageListCommand(m, t)
+	return err == nil && strings.Contains(string(out), t.Package)
+}
+
+func packageListCommand(m Manager, t Tool) ([]byte, error) {
+	switch m {
+	case Brew:
+		return commandOutput("brew", "list", t.BrewTarget())
+	case Pnpm:
+		return commandOutput("pnpm", "list", "-g", t.Package)
+	case Yarn:
+		return commandOutput("yarn", "global", "list", t.Package)
+	case Npm:
+		return commandOutput("npm", "list", "-g", t.Package)
+	default:
+		return nil, errExecutableNotFound
+	}
+}
+
+func defaultManagerForTool(t Tool) (Manager, bool) {
+	if m, ok := managerFromPackagePrefix(t.Package); ok {
+		return m, true
+	}
+	if isCursorTool(t) {
+		return CursorAgent, true
+	}
+	if strings.TrimSpace(t.Package) != "" {
+		return Npm, true
+	}
+	if strings.TrimSpace(t.BrewPackage) != "" {
+		return Brew, true
+	}
+	return Unknown, false
+}
+
+func commandPrefixes(name string, firstArg string, mode string) []string {
+	var args []string
+	switch {
+	case name == "brew" && firstArg == "--prefix":
+		args = []string{"--prefix"}
+	case name == "pnpm" && firstArg == "bin":
+		args = []string{"bin", "-g"}
+	case name == "yarn" && firstArg == "global":
+		args = []string{"global", "bin"}
+	default:
+		args = []string{firstArg}
+	}
+	out, err := commandOutput(name, args...)
+	if err != nil {
+		return nil
+	}
+	prefix := strings.TrimSpace(string(out))
+	if prefix == "" {
+		return nil
+	}
+	prefix = filepath.Clean(prefix)
+	if mode == "bin" {
+		return []string{prefix}
+	}
+	return []string{prefix, filepath.Join(prefix, "bin")}
+}
+
+func npmGlobalBinaryPrefixes() []string {
+	out, err := commandOutput("npm", "prefix", "-g")
+	if err != nil {
+		return nil
+	}
+	prefix := strings.TrimSpace(string(out))
+	if prefix == "" {
+		return nil
+	}
+	prefix = filepath.Clean(prefix)
+	return []string{filepath.Join(prefix, "bin"), prefix}
+}
+
+func cargoBinaryPrefixes() []string {
+	if home := strings.TrimSpace(os.Getenv("CARGO_HOME")); home != "" {
+		return []string{filepath.Join(filepath.Clean(home), "bin")}
+	}
+	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+		return []string{filepath.Join(filepath.Clean(home), ".cargo", "bin")}
+	}
+	return nil
+}
+
+func goInstallBinaryPrefixes() []string {
+	out, err := commandOutput("go", "env", "GOPATH")
+	if err != nil {
+		return nil
+	}
+	prefix := strings.TrimSpace(string(out))
+	if prefix == "" {
+		return nil
+	}
+	return []string{filepath.Join(filepath.Clean(prefix), "bin")}
+}
+
+func pipBinaryPrefixes() []string {
+	out, err := commandOutput("python3", "-m", "site", "--user-base")
+	if err != nil {
+		return nil
+	}
+	base := strings.TrimSpace(string(out))
+	if base == "" {
+		return nil
+	}
+	return []string{filepath.Join(filepath.Clean(base), "bin"), filepath.Join(filepath.Clean(base), "Scripts")}
+}
+
+func hasPathPrefix(path, prefix string) bool {
+	path = filepath.Clean(strings.TrimSpace(path))
+	prefix = filepath.Clean(strings.TrimSpace(prefix))
+	if path == "" || prefix == "" || path == "." || prefix == "." {
+		return false
+	}
+	if path == prefix {
+		return true
+	}
+	return strings.HasPrefix(path, prefix+string(os.PathSeparator))
 }
 
 func parseVersionFromAtSuffix(output, pkg string) string {

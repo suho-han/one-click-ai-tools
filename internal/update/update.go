@@ -47,7 +47,7 @@ func Run() error {
 
 	for _, t := range toolsToUpdate {
 		g.Go(func() error {
-			manager := DetectManager(t)
+			manager := ResolveManagerForInstall(t)
 
 			mu.Lock()
 			count++
@@ -103,7 +103,7 @@ func Run() error {
 
 func anyBrewManaged(tools []Tool) bool {
 	for _, t := range tools {
-		if DetectManager(t) == Brew {
+		if ResolveManagerForInstall(t) == Brew {
 			return true
 		}
 	}
