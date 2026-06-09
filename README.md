@@ -5,8 +5,10 @@
 ## Supported AI Agents
 - **Claude Code** (`@anthropic-ai/claude-code`)
 - **OpenAI Codex** (`@openai/codex`)
-- **Gemini CLI** (`@google/gemini-cli`)
+- **Antigravity CLI** (`@sanchaymittal/antigravity-cli`, binary: `agy`)
 - **GitHub Copilot** (`@github/copilot`)
+- **Cursor CLI** (official `agent` install flow via `cursor.com/install`)
+- **OpenCode** (`opencode-ai`)
 
 ## Installation
 
@@ -25,8 +27,9 @@ pnpm add -g one-click-tools
 Use the `oct` command to manage your tools:
 
 - `oct agent-update`: Update or install all supported AI tools.
+- `oct session-refresh`: Probe local auth/session state without sending prompts.
 - `oct usage`: View consolidated usage statistics.
-- `oct schedule`: Manage automatic update schedules.
+- `oct schedule --task session-refresh enable`: Run token-free session probes periodically.
 - `oct update`: Update `oct` to the latest version.
 
 ## Requirements

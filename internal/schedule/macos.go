@@ -9,7 +9,7 @@ import (
 )
 
 type MacOS struct {
-	Label string
+	LabelPrefix string
 }
 
 const plistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
@@ -21,7 +21,7 @@ const plistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
     <key>ProgramArguments</key>
     <array>
         <string>{{.BinaryPath}}</string>
-        <string>agent-update</string>
+        <string>{{.Command}}</string>
     </array>
     <key>StartCalendarInterval</key>
     {{if eq .Interval "weekly"}}
@@ -37,38 +37,44 @@ const plistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
     </dict>
     {{end}}
     <key>StandardOutPath</key>
-    <string>{{.Home}}/.oct/logs/schedule.log</string>
+    <string>{{.LogPath}}</string>
     <key>StandardErrorPath</key>
-    <string>{{.Home}}/.oct/logs/schedule.log</string>
+    <string>{{.LogPath}}</string>
 </dict>
 </plist>`
 
-func (m *MacOS) Enable(interval string, hour int) error {
+func (m *MacOS) Enable(task Task, interval string, hour int) error {
+	cfg, err := taskDetails(task)
+	if err != nil {
+		return err
+	}
+
 	home, _ := os.UserHomeDir()
 	binPath, err := exec.LookPath("oct")
 	if err != nil {
-		// Fallback to absolute path of current executable if 'oct' not in PATH
 		binPath, _ = os.Executable()
 	}
 
+	logPath := filepath.Join(home, ".oct", "logs", cfg.LogFile)
 	data := struct {
 		Label      string
 		BinaryPath string
+		Command    string
 		Interval   string
 		Hour       int
-		Home       string
+		LogPath    string
 	}{
-		Label:      m.Label,
+		Label:      launchAgentLabel(m.LabelPrefix, task),
 		BinaryPath: binPath,
+		Command:    cfg.Command,
 		Interval:   interval,
 		Hour:       hour,
-		Home:       home,
+		LogPath:    logPath,
 	}
 
-	plistPath := filepath.Join(home, "Library", "LaunchAgents", m.Label+".plist")
-	
-	// Ensure log directory exists
-	os.MkdirAll(filepath.Join(home, ".oct", "logs"), 0755)
+	plistPath := launchAgentPath(home, m.LabelPrefix, task)
+	os.MkdirAll(filepath.Join(home, ".oct", "logs"), 0o755)
+	os.MkdirAll(filepath.Dir(plistPath), 0o755)
 
 	f, err := os.Create(plistPath)
 	if err != nil {
@@ -81,10 +87,7 @@ func (m *MacOS) Enable(interval string, hour int) error {
 		return err
 	}
 
-	// Unload if already loaded
 	exec.Command("launchctl", "unload", plistPath).Run()
-	
-	// Load
 	cmd := exec.Command("launchctl", "load", plistPath)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("launchctl load failed: %v, output: %s", err, string(output))
@@ -93,18 +96,32 @@ func (m *MacOS) Enable(interval string, hour int) error {
 	return nil
 }
 
-func (m *MacOS) Disable() error {
+func (m *MacOS) Disable(task Task) error {
 	home, _ := os.UserHomeDir()
-	plistPath := filepath.Join(home, "Library", "LaunchAgents", m.Label+".plist")
-	
+	plistPath := launchAgentPath(home, m.LabelPrefix, task)
 	exec.Command("launchctl", "unload", plistPath).Run()
-	return os.Remove(plistPath)
+	if err := os.Remove(plistPath); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }
 
-func (m *MacOS) Status() (string, error) {
-	cmd := exec.Command("launchctl", "list", m.Label)
+func (m *MacOS) Status(task Task) (string, error) {
+	cmd := exec.Command("launchctl", "list", launchAgentLabel(m.LabelPrefix, task))
 	if err := cmd.Run(); err == nil {
 		return "enabled", nil
 	}
 	return "disabled", nil
+}
+
+func launchAgentLabel(prefix string, task Task) string {
+	cfg, err := taskDetails(task)
+	if err != nil {
+		return prefix + ".unknown"
+	}
+	return prefix + "." + cfg.LabelSuffix
+}
+
+func launchAgentPath(home, prefix string, task Task) string {
+	return filepath.Join(home, "Library", "LaunchAgents", launchAgentLabel(prefix, task)+".plist")
 }

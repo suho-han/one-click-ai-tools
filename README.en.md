@@ -23,8 +23,11 @@ pnpm add -g one-click-tools
 ### Basic Usage
 
 ```bash
-# Update all AI agents (Claude, Codex, Gemini, Copilot, Cursor, OpenCode)
+# Update all AI agents (Claude, Codex, Antigravity, Copilot, Cursor, OpenCode)
 oct agent-update
+
+# Probe local auth/session state without sending prompts
+oct session-refresh --dry-run
 
 # Check AI tool usage/quota
 oct usage
@@ -40,8 +43,18 @@ These 4 command groups cover most use cases.
 ### 1) Update agents
 
 ```bash
-# Update Claude/Codex/Gemini/Copilot/Cursor/OpenCode
+# Update Claude/Codex/Antigravity/Copilot/Cursor/OpenCode
 oct agent-update
+```
+
+### 1-1) Token-free session refresh
+
+```bash
+# Dry-run token-free probes
+oct session-refresh --dry-run
+
+# Schedule periodic session refresh
+oct schedule enable --task session-refresh --interval daily --hour 9
 ```
 
 ### 2) Check usage
@@ -137,9 +150,9 @@ oct alert snooze clear --provider codex --window 5h
 
 - **Claude Code** (`@anthropic-ai/claude-code`)
 - **OpenAI Codex** (`@openai/codex`)
-- **Gemini CLI** (`@google/gemini-cli`)
+- **Antigravity CLI** (`@sanchaymittal/antigravity-cli`, binary: `agy`)
 - **GitHub Copilot** (`@github/copilot`)
-- **Cursor** (`cursor-agent`)
+- **Cursor CLI** (official `agent` install flow via `cursor.com/install`)
 - **OpenCode** (`opencode-ai`)
 
 ## 📖 Documentation

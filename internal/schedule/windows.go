@@ -8,22 +8,23 @@ import (
 
 type Windows struct{}
 
-func (w *Windows) Enable(interval string, hour int) error {
+func (w *Windows) Enable(task Task, interval string, hour int) error {
+	cfg, err := taskDetails(task)
+	if err != nil {
+		return err
+	}
+
 	binPath, err := exec.LookPath("oct")
 	if err != nil {
 		binPath, _ = os.Executable()
 	}
 
-	taskName := "OneClickToolsUpdate"
-	
-	// Delete existing task if any
+	taskName := windowsTaskName(task)
 	exec.Command("schtasks", "/Delete", "/TN", taskName, "/F").Run()
 
 	scheduleType := windowsScheduleType(interval)
-
 	startTime := fmt.Sprintf("%02d:00", hour)
-	
-	cmd := exec.Command("schtasks", "/Create", "/TN", taskName, "/TR", binPath+" agent-update", "/SC", scheduleType, "/ST", startTime, "/F")
+	cmd := exec.Command("schtasks", "/Create", "/TN", taskName, "/TR", binPath+" "+cfg.Command, "/SC", scheduleType, "/ST", startTime, "/F")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("schtasks failed: %v, output: %s", err, string(output))
 	}
@@ -31,18 +32,16 @@ func (w *Windows) Enable(interval string, hour int) error {
 	return nil
 }
 
-func (w *Windows) Disable() error {
-	taskName := "OneClickToolsUpdate"
-	cmd := exec.Command("schtasks", "/Delete", "/TN", taskName, "/F")
+func (w *Windows) Disable(task Task) error {
+	cmd := exec.Command("schtasks", "/Delete", "/TN", windowsTaskName(task), "/F")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("schtasks failed: %v, output: %s", err, string(output))
 	}
 	return nil
 }
 
-func (w *Windows) Status() (string, error) {
-	taskName := "OneClickToolsUpdate"
-	cmd := exec.Command("schtasks", "/Query", "/TN", taskName)
+func (w *Windows) Status(task Task) (string, error) {
+	cmd := exec.Command("schtasks", "/Query", "/TN", windowsTaskName(task))
 	if err := cmd.Run(); err == nil {
 		return "enabled", nil
 	}
@@ -54,4 +53,11 @@ func windowsScheduleType(interval string) string {
 		return "WEEKLY"
 	}
 	return "DAILY"
+}
+
+func windowsTaskName(task Task) string {
+	if task == SessionRefreshTask {
+		return "OneClickToolsSessionRefresh"
+	}
+	return "OneClickToolsUpdate"
 }

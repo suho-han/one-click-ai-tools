@@ -28,6 +28,9 @@ func TestRootCommand(t *testing.T) {
 	if !contains(out, "agent-update") {
 		t.Errorf("expected help to include agent-update command, got: %s", out)
 	}
+	if !contains(out, "session-refresh") {
+		t.Errorf("expected help to include session-refresh command, got: %s", out)
+	}
 	if !contains(out, "update") {
 		t.Errorf("expected help to include update command, got: %s", out)
 	}
