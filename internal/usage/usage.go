@@ -352,14 +352,25 @@ func classifySummaryStatus(r UsageResult) string {
 		return "warn"
 	}
 
-	// Many providers report used=0 when local/API usage data is unavailable.
-	// Keep strict "ok" only when 0 is a real measured value, not a "not found" signal.
 	msg := strings.ToLower(strings.TrimSpace(r.Message))
-	if used == "0" {
-		if strings.HasPrefix(msg, "no ") || strings.Contains(msg, "not found") || strings.Contains(msg, "no configured") {
-			return "warn"
-		}
+	if hasNoDataSignal(msg) || hasPartialSignal(msg) {
+		return "warn"
+	}
+	if used == "0" && hasNoDataSignal(msg) {
+		return "warn"
 	}
 
 	return "ok"
+}
+
+func hasNoDataSignal(msg string) bool {
+	return strings.HasPrefix(msg, "no data:") ||
+		strings.HasPrefix(msg, "no ") ||
+		strings.Contains(msg, "not found") ||
+		strings.Contains(msg, "no configured") ||
+		strings.Contains(msg, "no usage metrics")
+}
+
+func hasPartialSignal(msg string) bool {
+	return strings.HasPrefix(msg, "partial:") || strings.Contains(msg, "partial data")
 }

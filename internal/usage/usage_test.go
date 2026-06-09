@@ -16,9 +16,9 @@ import (
 func TestPrintJSON_SummarySchemaAndCounts(t *testing.T) {
 	results := []UsageResult{
 		{Provider: "alpha", Status: "ok", Used: "10"},
-		{Provider: "beta", Status: "ok", Used: "n/a"},                                 // warn: no numeric usage
-		{Provider: "cursor", Status: "ok", Used: "0", Message: "No local logs found"}, // warn: zero with not-found signal
-		{Provider: "delta", Status: "warn", Used: "0", Message: "Partial data"},
+		{Provider: "beta", Status: "ok", Used: "n/a"},                                          // warn: no numeric usage
+		{Provider: "cursor", Status: "ok", Used: "0", Message: "No data: No local logs found"}, // warn: zero with not-found signal
+		{Provider: "delta", Status: "warn", Used: "0", Message: "Partial: weekly bucket only"},
 		{Provider: "gamma", Status: "error", Used: "n/a"},
 	}
 
@@ -64,8 +64,9 @@ func TestClassifySummaryStatus(t *testing.T) {
 	}{
 		{name: "ok numeric usage", in: UsageResult{Status: "ok", Used: "12"}, want: "ok"},
 		{name: "ok but na usage", in: UsageResult{Status: "ok", Used: "n/a"}, want: "warn"},
-		{name: "ok but zero with no-data message", in: UsageResult{Status: "ok", Used: "0", Message: "No local logs found"}, want: "warn"},
-		{name: "ok zero real value", in: UsageResult{Status: "ok", Used: "0", Message: "usage successfully fetched"}, want: "ok"},
+		{name: "ok but zero with no-data message", in: UsageResult{Status: "ok", Used: "0", Message: "No data: No local logs found"}, want: "warn"},
+		{name: "ok but partial message", in: UsageResult{Status: "ok", Used: "22", Message: "Partial: weekly bucket only"}, want: "warn"},
+		{name: "ok zero real value", in: UsageResult{Status: "ok", Used: "0", Message: "Fetched from Cursor API"}, want: "ok"},
 		{name: "explicit warn", in: UsageResult{Status: "warn", Used: "0"}, want: "warn"},
 		{name: "error", in: UsageResult{Status: "error", Used: "0"}, want: "error"},
 	}

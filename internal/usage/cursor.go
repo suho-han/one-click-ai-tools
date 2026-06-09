@@ -39,6 +39,7 @@ func FetchCursorUsage() UsageResult {
 		local := FetchCursorLocalUsage()
 		local.Status = "warn"
 		local.Message = cursorReasonMessage("local_auth_api_failed", fmt.Sprintf("%s; API call failed: %v", local.Message, err))
+		local.Source = "local-auth"
 		return local
 	}
 
@@ -391,10 +392,17 @@ func trimFloat(v float64) string {
 
 func cursorReasonMessage(reason, detail string) string {
 	detail = strings.TrimSpace(detail)
-	if detail == "" {
-		return "reason=" + reason
+	prefix := "Local estimate"
+	switch reason {
+	case "remote_request_failed", "remote_http_error", "remote_parse_failed", "local_auth_api_failed":
+		prefix = "Remote failed"
+	case "local_auth_missing":
+		prefix = "Local estimate"
 	}
-	return "reason=" + reason + "; " + detail
+	if detail == "" {
+		return fmt.Sprintf("%s: reason=%s", prefix, reason)
+	}
+	return fmt.Sprintf("%s: reason=%s; %s", prefix, reason, detail)
 }
 
 func appendCursorDetail(existing, item string) string {

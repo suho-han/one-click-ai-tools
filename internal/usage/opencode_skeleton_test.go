@@ -3,6 +3,7 @@ package usage
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -61,8 +62,14 @@ func TestFetchOpenCodeUsage_NoLogs(t *testing.T) {
 	if result.Provider != "opencode" {
 		t.Fatalf("expected provider=opencode, got %s", result.Provider)
 	}
-	if result.Status != "ok" {
-		t.Fatalf("expected status=ok, got %s", result.Status)
+	if result.Status != "warn" {
+		t.Fatalf("expected status=warn, got %s", result.Status)
+	}
+	if result.Source != "local" {
+		t.Fatalf("expected source=local, got %s", result.Source)
+	}
+	if !strings.HasPrefix(result.Message, "No data:") {
+		t.Fatalf("expected no-data message, got %q", result.Message)
 	}
 	if result.Used != "0" {
 		t.Fatalf("expected used=0, got %s", result.Used)

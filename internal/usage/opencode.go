@@ -19,8 +19,8 @@ func FetchOpenCodeUsage() UsageResult {
 		Limit:    "100",
 		Unit:     "percent",
 		Source:   "local",
-		Status:   "ok",
-		Message:  "No local OpenCode session logs found",
+		Status:   "warn",
+		Message:  "No data: No local OpenCode session logs found",
 	}
 
 	logFiles := collectOpenCodeLogFiles()
@@ -35,11 +35,11 @@ func FetchOpenCodeUsage() UsageResult {
 	if err != nil {
 		result.Status = "error"
 		result.Used = "n/a"
-		result.Message = fmt.Sprintf("Failed to parse OpenCode log: %v", err)
+		result.Message = fmt.Sprintf("Parse error: failed to parse OpenCode log: %v", err)
 		return result
 	}
 	if !ok {
-		result.Message = "OpenCode logs found, but no usage metrics in latest session"
+		result.Message = "No data: Latest OpenCode session log has no usage metrics"
 		if os.Getenv("OCT_USAGE_DEBUG") == "1" {
 			result.SourceDetail = "latest_log=" + latest
 		}
@@ -57,7 +57,8 @@ func FetchOpenCodeUsage() UsageResult {
 			result.Used = weekly
 		}
 	}
-	result.Message = "Usage extracted from local OpenCode session logs"
+	result.Status = "ok"
+	result.Message = "Fetched from local OpenCode session logs"
 	if os.Getenv("OCT_USAGE_DEBUG") == "1" {
 		result.SourceDetail = "latest_log=" + latest
 	}
