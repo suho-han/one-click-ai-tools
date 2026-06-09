@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 )
 
 type Task string
@@ -27,8 +28,23 @@ type taskConfig struct {
 }
 
 var (
-	executablePath = os.Executable
-	lookPath       = exec.LookPath
+	executablePath   = os.Executable
+	lookPath         = exec.LookPath
+	homeDirPath      = os.UserHomeDir
+	linuxCrontabList = func() ([]byte, error) {
+		return exec.Command("crontab", "-l").Output()
+	}
+	linuxCrontabWrite = func(content string) error {
+		cmd := exec.Command("crontab", "-")
+		cmd.Stdin = strings.NewReader(content)
+		if output, err := cmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("crontab failed: %v, output: %s", err, string(output))
+		}
+		return nil
+	}
+	linuxCrontabRemove = func() error {
+		return exec.Command("crontab", "-r").Run()
+	}
 )
 
 func GetScheduler() (Scheduler, error) {

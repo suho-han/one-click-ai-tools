@@ -3,7 +3,6 @@ package schedule
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 )
 
@@ -17,14 +16,14 @@ func (l *Linux) Enable(task Task, interval string, hour int) error {
 
 	binPath := resolveBinaryPath()
 
-	home, _ := os.UserHomeDir()
+	home, _ := homeDirPath()
 	logPath := filepathJoin(home, ".oct", "logs", cfg.LogFile)
 	os.MkdirAll(filepathJoin(home, ".oct", "logs"), 0o755)
 
 	cronExpr := cronExpression(interval, hour)
 	cronEntry := fmt.Sprintf("%s %s %s >> %s 2>&1  %s", cronExpr, binPath, cfg.Command, logPath, cronMarker(task))
 
-	out, err := exec.Command("crontab", "-l").Output()
+	out, err := linuxCrontabList()
 	if err != nil {
 		out = []byte{}
 	}
@@ -40,17 +39,15 @@ func (l *Linux) Enable(task Task, interval string, hour int) error {
 	newLines = append(newLines, cronEntry)
 
 	newCrontab := strings.Join(newLines, "\n") + "\n"
-	cmd := exec.Command("crontab", "-")
-	cmd.Stdin = strings.NewReader(newCrontab)
-	if output, err := cmd.CombinedOutput(); err != nil {
-		return fmt.Errorf("crontab failed: %v, output: %s", err, string(output))
+	if err := linuxCrontabWrite(newCrontab); err != nil {
+		return err
 	}
 
 	return nil
 }
 
 func (l *Linux) Disable(task Task) error {
-	out, err := exec.Command("crontab", "-l").Output()
+	out, err := linuxCrontabList()
 	if err != nil {
 		return nil
 	}
@@ -74,16 +71,14 @@ func (l *Linux) Disable(task Task) error {
 
 	newCrontab := strings.Join(newLines, "\n") + "\n"
 	if len(newLines) == 0 {
-		return exec.Command("crontab", "-r").Run()
+		return linuxCrontabRemove()
 	}
 
-	cmd := exec.Command("crontab", "-")
-	cmd.Stdin = strings.NewReader(newCrontab)
-	return cmd.Run()
+	return linuxCrontabWrite(newCrontab)
 }
 
 func (l *Linux) Status(task Task) (string, error) {
-	out, err := exec.Command("crontab", "-l").Output()
+	out, err := linuxCrontabList()
 	if err != nil {
 		return "disabled", nil
 	}
