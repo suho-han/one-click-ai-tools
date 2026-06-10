@@ -3,9 +3,25 @@ package update
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
+
+func setTestHome(t *testing.T, home string) {
+	t.Helper()
+	t.Setenv("HOME", home)
+	if runtime.GOOS == "windows" {
+		t.Setenv("USERPROFILE", home)
+	}
+}
+
+func executableName(base string) string {
+	if runtime.GOOS == "windows" {
+		return base + ".exe"
+	}
+	return base
+}
 
 func TestToolFiltering(t *testing.T) {
 	ordered := GetOrderedTools(nil)
@@ -98,14 +114,15 @@ func TestShouldRemoveNpmConflictDest(t *testing.T) {
 }
 
 func TestBootstrapPATHAddsUserToolDirs(t *testing.T) {
-	t.Setenv("HOME", "/tmp/oct-home")
+	home := filepath.Clean("/tmp/oct-home")
+	setTestHome(t, home)
 
 	got := bootstrapPATH("/usr/bin")
 	wantParts := []string{
-		"/usr/bin",
-		"/tmp/oct-home/.local/bin",
-		"/tmp/oct-home/.npm-global/bin",
-		"/tmp/oct-home/.opencode/bin",
+		filepath.Clean("/usr/bin"),
+		filepath.Join(home, ".local", "bin"),
+		filepath.Join(home, ".npm-global", "bin"),
+		filepath.Join(home, ".opencode", "bin"),
 	}
 	for _, want := range wantParts {
 		if !strings.Contains(got, want) {
@@ -116,19 +133,19 @@ func TestBootstrapPATHAddsUserToolDirs(t *testing.T) {
 
 func TestLookPathWithBootstrapFindsToolOutsideCurrentPATH(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	t.Setenv("PATH", "")
 
 	toolDir := filepath.Join(home, ".local", "bin")
 	if err := os.MkdirAll(toolDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
-	toolPath := filepath.Join(toolDir, "oct-test-tool")
+	toolPath := filepath.Join(toolDir, executableName("oct-test-tool"))
 	if err := os.WriteFile(toolPath, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	got, err := lookPathWithBootstrap("oct-test-tool")
+	got, err := lookPathWithBootstrap(executableName("oct-test-tool"))
 	if err != nil {
 		t.Fatalf("lookPathWithBootstrap() error = %v", err)
 	}
@@ -139,19 +156,19 @@ func TestLookPathWithBootstrapFindsToolOutsideCurrentPATH(t *testing.T) {
 
 func TestResolveExecutableUsesBootstrappedPATH(t *testing.T) {
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	setTestHome(t, home)
 	t.Setenv("PATH", "")
 
 	toolDir := filepath.Join(home, ".local", "bin")
 	if err := os.MkdirAll(toolDir, 0o755); err != nil {
 		t.Fatalf("MkdirAll() error = %v", err)
 	}
-	toolPath := filepath.Join(toolDir, "oct-test-runner")
+	toolPath := filepath.Join(toolDir, executableName("oct-test-runner"))
 	if err := os.WriteFile(toolPath, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
 
-	if got := resolveExecutable("oct-test-runner"); got != toolPath {
+	if got := resolveExecutable(executableName("oct-test-runner")); got != toolPath {
 		t.Fatalf("resolveExecutable() = %q, want %q", got, toolPath)
 	}
 }
