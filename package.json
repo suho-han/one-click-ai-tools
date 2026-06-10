@@ -8,6 +8,8 @@
     },
     "scripts": {
         "release": "standard-version",
+        "release:npm": "bash scripts/release-package.sh npm",
+        "release:pnpm": "bash scripts/release-package.sh pnpm",
         "postinstall": "node scripts/postinstall.js",
         "build": "go build -o oct main.go"
     },
