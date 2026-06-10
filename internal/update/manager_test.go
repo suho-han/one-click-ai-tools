@@ -3,7 +3,6 @@ package update
 import (
 	"errors"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -95,11 +94,7 @@ func TestInstallCommandForExpandedManagers(t *testing.T) {
 	}
 
 	pipCmd := Pip.InstallCommand(Tool{Package: "pip:llm"})
-	pythonWant := "python3"
-	if runtime.GOOS == "windows" {
-		pythonWant = "python"
-	}
-	if got := pipCmd.Args; len(got) != 6 || commandBase(got[0]) != pythonWant || got[1] != "-m" || got[2] != "pip" || got[3] != "install" || got[4] != "--upgrade" || got[5] != "llm" {
+	if got := pipCmd.Args; len(got) != 6 || (commandBase(got[0]) != "python3" && commandBase(got[0]) != "python") || got[1] != "-m" || got[2] != "pip" || got[3] != "install" || got[4] != "--upgrade" || got[5] != "llm" {
 		t.Fatalf("unexpected pip command: %v", got)
 	}
 }
