@@ -38,7 +38,9 @@ var monitorCmd = &cobra.Command{
 				fmt.Printf("[%s] error: %v\n", now.Format("2006-01-02 15:04:05"), err)
 				return
 			}
-			results = sortMonitorResults(results, sortBy, desc)
+			if strings.TrimSpace(sortBy) != "" {
+				results = sortMonitorResults(results, sortBy, desc)
+			}
 			if top > 0 && top < len(results) {
 				results = results[:top]
 			}
@@ -263,6 +265,13 @@ func isTruthyEnv(v string) bool {
 }
 
 func usageSeverity(r usage.UsageResult) string {
+	status := strings.ToLower(strings.TrimSpace(r.Status))
+	switch status {
+	case "error":
+		return "CRIT"
+	case "warn":
+		return "WARN"
+	}
 	if !strings.EqualFold(r.Unit, "percent") {
 		return "UNKNOWN"
 	}
@@ -292,7 +301,7 @@ func sortMonitorResults(results []usage.UsageResult, sortBy string, desc bool) [
 	copy(out, results)
 	k := strings.ToLower(strings.TrimSpace(sortBy))
 	if k == "" {
-		k = "provider"
+		return out
 	}
 	getMetric := func(r usage.UsageResult, metric string) float64 {
 		switch metric {
@@ -381,7 +390,7 @@ func init() {
 	monitorCmd.Flags().Duration("interval", 30*time.Second, "refresh interval")
 	monitorCmd.Flags().String("state-path", "", "snapshot file path (default: ~/.oct/state/usage-latest.json)")
 	monitorCmd.Flags().Bool("once", false, "run one cycle and exit")
-	monitorCmd.Flags().String("sort-by", "provider", "sort key: provider|used|5h|7d")
+	monitorCmd.Flags().String("sort-by", "", "sort key: provider|used|5h|7d (default: preserve configured order)")
 	monitorCmd.Flags().Bool("desc", false, "sort descending")
 	monitorCmd.Flags().Int("top", 0, "show top N providers (0=all)")
 	monitorCmd.Flags().Bool("compact", false, "compact monitor output")

@@ -21,6 +21,20 @@ func TestSortMonitorResults(t *testing.T) {
 	}
 }
 
+func TestSortMonitorResults_EmptySortKeyPreservesInputOrder(t *testing.T) {
+	in := []usage.UsageResult{
+		{Provider: "codex"},
+		{Provider: "claude-code"},
+		{Provider: "antigravity"},
+	}
+	out := sortMonitorResults(in, "", false)
+	for i := range in {
+		if out[i].Provider != in[i].Provider {
+			t.Fatalf("expected preserved order at %d: got %s want %s", i, out[i].Provider, in[i].Provider)
+		}
+	}
+}
+
 func TestUsageSeverity(t *testing.T) {
 	if got := usageSeverity(usage.UsageResult{Unit: "percent", Used: "70"}); got != "OK" {
 		t.Fatalf("expected OK, got %s", got)
@@ -30,6 +44,9 @@ func TestUsageSeverity(t *testing.T) {
 	}
 	if got := usageSeverity(usage.UsageResult{Unit: "percent", Used: "99"}); got != "CRIT" {
 		t.Fatalf("expected CRIT, got %s", got)
+	}
+	if got := usageSeverity(usage.UsageResult{Unit: "percent", Used: "100", Status: "warn", Message: "No data: No local OpenCode session logs found"}); got != "WARN" {
+		t.Fatalf("expected WARN for explicit warn status, got %s", got)
 	}
 }
 
