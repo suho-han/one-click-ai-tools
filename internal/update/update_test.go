@@ -1,6 +1,9 @@
 package update
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -91,5 +94,64 @@ func TestShouldRemoveNpmConflictDest(t *testing.T) {
 	}
 	if shouldRemoveNpmConflictDest("/home/me/.local/lib/node_modules/@github/copilot", home) {
 		t.Fatal("did not expect non-temp package directory to be removable")
+	}
+}
+
+func TestBootstrapPATHAddsUserToolDirs(t *testing.T) {
+	t.Setenv("HOME", "/tmp/oct-home")
+
+	got := bootstrapPATH("/usr/bin")
+	wantParts := []string{
+		"/usr/bin",
+		"/tmp/oct-home/.local/bin",
+		"/tmp/oct-home/.npm-global/bin",
+		"/tmp/oct-home/.opencode/bin",
+	}
+	for _, want := range wantParts {
+		if !strings.Contains(got, want) {
+			t.Fatalf("bootstrapPATH() missing %q in %q", want, got)
+		}
+	}
+}
+
+func TestLookPathWithBootstrapFindsToolOutsideCurrentPATH(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", "")
+
+	toolDir := filepath.Join(home, ".local", "bin")
+	if err := os.MkdirAll(toolDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	toolPath := filepath.Join(toolDir, "oct-test-tool")
+	if err := os.WriteFile(toolPath, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	got, err := lookPathWithBootstrap("oct-test-tool")
+	if err != nil {
+		t.Fatalf("lookPathWithBootstrap() error = %v", err)
+	}
+	if got != toolPath {
+		t.Fatalf("lookPathWithBootstrap() = %q, want %q", got, toolPath)
+	}
+}
+
+func TestResolveExecutableUsesBootstrappedPATH(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", "")
+
+	toolDir := filepath.Join(home, ".local", "bin")
+	if err := os.MkdirAll(toolDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll() error = %v", err)
+	}
+	toolPath := filepath.Join(toolDir, "oct-test-runner")
+	if err := os.WriteFile(toolPath, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+
+	if got := resolveExecutable("oct-test-runner"); got != toolPath {
+		t.Fatalf("resolveExecutable() = %q, want %q", got, toolPath)
 	}
 }

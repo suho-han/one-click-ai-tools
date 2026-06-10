@@ -24,7 +24,7 @@ const (
 )
 
 var (
-	binaryLookup          = exec.LookPath
+	binaryLookup          = lookPathWithBootstrap
 	commandOutput         = defaultCommandOutput
 	errExecutableNotFound = exec.ErrNotFound
 )
@@ -90,23 +90,23 @@ func (m Manager) InstallCommand(t Tool) *exec.Cmd {
 func (m Manager) InstallCommandCtx(ctx context.Context, t Tool) *exec.Cmd {
 	switch m {
 	case CursorAgent:
-		return exec.CommandContext(ctx, "bash", "-lc", "curl https://cursor.com/install -fsS | bash")
+		return commandContextWithEnv(ctx, "bash", "-lc", "curl https://cursor.com/install -fsS | bash")
 	case AntigravityInstaller:
-		return exec.CommandContext(ctx, "bash", "-lc", "curl -fsSL https://antigravity.google/cli/install.sh | bash")
+		return commandContextWithEnv(ctx, "bash", "-lc", "curl -fsSL https://antigravity.google/cli/install.sh | bash")
 	case Brew:
-		return exec.CommandContext(ctx, "brew", "upgrade", t.BrewTarget())
+		return commandContextWithEnv(ctx, "brew", "upgrade", t.BrewTarget())
 	case Pnpm:
-		return exec.CommandContext(ctx, "pnpm", "add", "-g", t.Package)
+		return commandContextWithEnv(ctx, "pnpm", "add", "-g", t.Package)
 	case Yarn:
-		return exec.CommandContext(ctx, "yarn", "global", "add", t.Package)
+		return commandContextWithEnv(ctx, "yarn", "global", "add", t.Package)
 	case Cargo:
-		return exec.CommandContext(ctx, "cargo", "install", packageWithoutManagerPrefix(t.Package), "--locked")
+		return commandContextWithEnv(ctx, "cargo", "install", packageWithoutManagerPrefix(t.Package), "--locked")
 	case GoInstall:
-		return exec.CommandContext(ctx, "go", "install", packageWithoutManagerPrefix(t.Package)+"@latest")
+		return commandContextWithEnv(ctx, "go", "install", packageWithoutManagerPrefix(t.Package)+"@latest")
 	case Pip:
-		return exec.CommandContext(ctx, "python3", "-m", "pip", "install", "--upgrade", packageWithoutManagerPrefix(t.Package))
+		return commandContextWithEnv(ctx, "python3", "-m", "pip", "install", "--upgrade", packageWithoutManagerPrefix(t.Package))
 	default:
-		return exec.CommandContext(ctx, "npm", "install", "-g", t.Package)
+		return commandContextWithEnv(ctx, "npm", "install", "-g", t.Package)
 	}
 }
 
@@ -114,21 +114,21 @@ func (m Manager) GetInstalledVersion(t Tool) string {
 	switch m {
 	case CursorAgent, AntigravityInstaller:
 		for _, binary := range preferredBinaries(t) {
-			out, err := exec.Command(binary, "--version").Output()
+			out, err := commandWithEnv(binary, "--version").Output()
 			if err == nil {
 				return strings.TrimSpace(string(out))
 			}
 		}
 		return ""
 	case Brew:
-		out, _ := exec.Command("brew", "list", "--versions", t.BrewTarget()).Output()
+		out, _ := commandWithEnv("brew", "list", "--versions", t.BrewTarget()).Output()
 		parts := strings.Fields(strings.TrimSpace(string(out)))
 		if len(parts) >= 2 {
 			return parts[1]
 		}
 		return ""
 	case Pnpm:
-		out, _ := exec.Command("pnpm", "list", "-g", t.Package, "--depth=0").Output()
+		out, _ := commandWithEnv("pnpm", "list", "-g", t.Package, "--depth=0").Output()
 		for _, line := range strings.Split(string(out), "\n") {
 			if strings.Contains(line, t.Package) {
 				parts := strings.Fields(line)
@@ -139,10 +139,10 @@ func (m Manager) GetInstalledVersion(t Tool) string {
 		}
 		return ""
 	case Yarn:
-		out, _ := exec.Command("yarn", "global", "list", "--pattern", t.Package).Output()
+		out, _ := commandWithEnv("yarn", "global", "list", "--pattern", t.Package).Output()
 		return parseVersionFromAtSuffix(string(out), t.Package)
 	case Cargo:
-		out, _ := exec.Command("cargo", "install", "--list").Output()
+		out, _ := commandWithEnv("cargo", "install", "--list").Output()
 		for _, line := range strings.Split(string(out), "\n") {
 			if strings.HasPrefix(strings.TrimSpace(line), packageWithoutManagerPrefix(t.Package)+" ") {
 				fields := strings.Fields(strings.TrimSuffix(strings.TrimSpace(line), ":"))
@@ -153,10 +153,10 @@ func (m Manager) GetInstalledVersion(t Tool) string {
 		}
 		return ""
 	case GoInstall:
-		out, _ := exec.Command(t.BinaryName, "--version").Output()
+		out, _ := commandWithEnv(t.BinaryName, "--version").Output()
 		return strings.TrimSpace(string(out))
 	case Pip:
-		out, _ := exec.Command("python3", "-m", "pip", "show", packageWithoutManagerPrefix(t.Package)).Output()
+		out, _ := commandWithEnv("python3", "-m", "pip", "show", packageWithoutManagerPrefix(t.Package)).Output()
 		for _, line := range strings.Split(string(out), "\n") {
 			if strings.HasPrefix(strings.ToLower(line), "version:") {
 				return strings.TrimSpace(strings.TrimPrefix(line, "Version:"))
@@ -164,13 +164,13 @@ func (m Manager) GetInstalledVersion(t Tool) string {
 		}
 		return ""
 	default:
-		out, _ := exec.Command("npm", "list", "-g", t.Package, "--depth=0").Output()
+		out, _ := commandWithEnv("npm", "list", "-g", t.Package, "--depth=0").Output()
 		return parseVersionFromAtSuffix(string(out), t.Package)
 	}
 }
 
 func defaultCommandOutput(name string, args ...string) ([]byte, error) {
-	return exec.Command(name, args...).CombinedOutput()
+	return commandWithEnv(name, args...).CombinedOutput()
 }
 
 func detectManagerFromBinaryPath(t Tool) (Manager, bool) {

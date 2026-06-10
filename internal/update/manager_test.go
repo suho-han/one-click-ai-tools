@@ -37,7 +37,7 @@ func TestCursorAgentInstallCommand(t *testing.T) {
 	if len(cmd.Args) != 3 {
 		t.Fatalf("unexpected args length: %v", cmd.Args)
 	}
-	if cmd.Args[0] != "bash" || cmd.Args[1] != "-lc" || cmd.Args[2] != "curl https://cursor.com/install -fsS | bash" {
+	if filepath.Base(cmd.Args[0]) != "bash" || cmd.Args[1] != "-lc" || cmd.Args[2] != "curl https://cursor.com/install -fsS | bash" {
 		t.Fatalf("CursorAgent.InstallCommand args = %v, want [bash -lc 'curl https://cursor.com/install -fsS | bash']", cmd.Args)
 	}
 }
@@ -47,7 +47,7 @@ func TestAntigravityInstallCommand(t *testing.T) {
 	if len(cmd.Args) != 3 {
 		t.Fatalf("unexpected args length: %v", cmd.Args)
 	}
-	if cmd.Args[0] != "bash" || cmd.Args[1] != "-lc" || cmd.Args[2] != "curl -fsSL https://antigravity.google/cli/install.sh | bash" {
+	if filepath.Base(cmd.Args[0]) != "bash" || cmd.Args[1] != "-lc" || cmd.Args[2] != "curl -fsSL https://antigravity.google/cli/install.sh | bash" {
 		t.Fatalf("AntigravityInstaller.InstallCommand args = %v, want [bash -lc 'curl -fsSL https://antigravity.google/cli/install.sh | bash']", cmd.Args)
 	}
 }
@@ -78,17 +78,17 @@ func TestDetectManagerByPackagePrefix(t *testing.T) {
 
 func TestInstallCommandForExpandedManagers(t *testing.T) {
 	cargoCmd := Cargo.InstallCommand(Tool{Package: "cargo:uv"})
-	if got := cargoCmd.Args; len(got) != 4 || got[0] != "cargo" || got[1] != "install" || got[2] != "uv" || got[3] != "--locked" {
+	if got := cargoCmd.Args; len(got) != 4 || filepath.Base(got[0]) != "cargo" || got[1] != "install" || got[2] != "uv" || got[3] != "--locked" {
 		t.Fatalf("unexpected cargo command: %v", got)
 	}
 
 	goCmd := GoInstall.InstallCommand(Tool{Package: "go:github.com/some/tool/cmd/tool"})
-	if got := goCmd.Args; len(got) != 3 || got[0] != "go" || got[1] != "install" || got[2] != "github.com/some/tool/cmd/tool@latest" {
+	if got := goCmd.Args; len(got) != 3 || filepath.Base(got[0]) != "go" || got[1] != "install" || got[2] != "github.com/some/tool/cmd/tool@latest" {
 		t.Fatalf("unexpected go install command: %v", got)
 	}
 
 	pipCmd := Pip.InstallCommand(Tool{Package: "pip:llm"})
-	if got := pipCmd.Args; len(got) != 6 || got[0] != "python3" || got[1] != "-m" || got[2] != "pip" || got[3] != "install" || got[4] != "--upgrade" || got[5] != "llm" {
+	if got := pipCmd.Args; len(got) != 6 || filepath.Base(got[0]) != "python3" || got[1] != "-m" || got[2] != "pip" || got[3] != "install" || got[4] != "--upgrade" || got[5] != "llm" {
 		t.Fatalf("unexpected pip command: %v", got)
 	}
 }

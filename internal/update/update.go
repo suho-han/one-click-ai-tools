@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -33,7 +32,7 @@ func Run() error {
 
 	if runtime.GOOS == "darwin" && anyBrewManaged(toolsToUpdate) {
 		fmt.Println("Updating Homebrew...")
-		if out, err := exec.Command("brew", "update").CombinedOutput(); err != nil {
+		if out, err := commandWithEnv("brew", "update").CombinedOutput(); err != nil {
 			fmt.Fprintf(os.Stderr, "brew update failed: %v\n%s\n", err, out)
 		}
 	}
@@ -187,7 +186,7 @@ func runNpmInstall(ctx context.Context, pkg, prefix string, extraArgs ...string)
 	}
 	args = append(args, extraArgs...)
 	args = append(args, pkg)
-	cmd := exec.CommandContext(ctx, "npm", args...)
+	cmd := commandContextWithEnv(ctx, "npm", args...)
 	return cmd.CombinedOutput()
 }
 
