@@ -2,6 +2,28 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.4.14](https://github.com/suho-han/one-click-tools/compare/v0.4.13...v0.4.14) (2026-06-10)
+
+
+### Features
+
+* **session-refresh:** add claude and opencode probes ([0f1bbdb](https://github.com/suho-han/one-click-tools/commit/0f1bbdbbb08cf3c34df340fcbf7ebaacc41ceb0a))
+* **session-refresh:** add confidence to probe results ([bb6b327](https://github.com/suho-han/one-click-tools/commit/bb6b3276494d944ec93e4b4f9f78ba51f1078b04))
+
+
+### Bug Fixes
+
+* **monitor:** preserve configured provider order and warn severity ([bb76f03](https://github.com/suho-han/one-click-tools/commit/bb76f033a685f3996796d05e33b173df58ad04b0))
+* **session-refresh:** bootstrap CLI lookup via execenv ([4417bc1](https://github.com/suho-han/one-click-tools/commit/4417bc159e39871277f4b9064269cf24c9680272))
+* **update:** avoid brew misdetection and serialize brew upgrades ([e5a19c3](https://github.com/suho-han/one-click-tools/commit/e5a19c3995544ca24ade9ef40bdb766eeb5fa07d))
+* **update:** bootstrap tool paths for non-interactive shells ([0bd6eb9](https://github.com/suho-han/one-click-tools/commit/0bd6eb90ba4aa76567c715f560564e00549341a2))
+* **update:** support brew copilot-cli ownership ([add4ca1](https://github.com/suho-han/one-click-tools/commit/add4ca176856b83056b9c60666bc47d37246e7d8))
+
+
+### Refactors
+
+* **exec:** share bootstrapped command env helpers ([6d1e2a6](https://github.com/suho-han/one-click-tools/commit/6d1e2a6394828e55a9d7cb3b19acf59ddc3d6077))
+
 ### [0.4.13](https://github.com/suho-han/one-click-tools/compare/v0.4.12...v0.4.13) (2026-06-10)
 
 
