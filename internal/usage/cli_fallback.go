@@ -3,16 +3,17 @@ package usage
 import (
 	"bytes"
 	"context"
-	"os/exec"
 	"strings"
 	"time"
+
+	"github.com/suho-han/one-click-tools/internal/execenv"
 )
 
 func commandOutput(timeout time.Duration, name string, args ...string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, name, args...)
+	cmd := execenv.CommandContext(ctx, name, args...)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out
