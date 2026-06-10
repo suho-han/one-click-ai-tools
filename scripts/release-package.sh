@@ -34,9 +34,32 @@ fi
 echo "--- Step 1: Bumping version and tagging ---"
 npx standard-version
 
+PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+RELEASE_TAG="v${PACKAGE_VERSION}"
+
+if grep -qE '^[[:space:]]*Version:[[:space:]]*"[^"]+"' cmd/root.go; then
+  python3 - "$PACKAGE_VERSION" <<'PY'
+import re
+import sys
+from pathlib import Path
+version = sys.argv[1]
+path = Path('cmd/root.go')
+text = path.read_text()
+updated, count = re.subn(r'(Version:\s*")([^"]+)(")', rf'\g<1>{version}\g<3>', text, count=1)
+if count != 1:
+    raise SystemExit('failed to update cmd/root.go version')
+path.write_text(updated)
+PY
+  if ! git diff --quiet -- cmd/root.go; then
+    git add cmd/root.go
+    git commit --amend --no-edit
+    git tag -f "$RELEASE_TAG"
+  fi
+fi
+
 echo
 echo "--- Step 2: Verifying release integrity ---"
-RELEASE_TAG="$(git describe --tags --abbrev=0)" bash scripts/verify-release-integrity.sh
+RELEASE_TAG="$RELEASE_TAG" bash scripts/verify-release-integrity.sh
 
 echo
 echo "--- Step 3: Running tests/build ---"

@@ -2,14 +2,37 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
-## Unreleased
+### [0.4.13](https://github.com/suho-han/one-click-tools/compare/v0.4.12...v0.4.13) (2026-06-10)
+
 
 ### Features
-- **config:** use `Enter` to toggle selections and add a final `Confirm` row to save
 
-### Chore
-- **config:** require `OCT_` prefix for environment-variable overrides (ignore generic vars like `ENABLED_TOOLS`)
+* **config:** add session refresh defaults ([836b8d0](https://github.com/suho-han/one-click-tools/commit/836b8d093865b67a93c2a14083e780ff735a3ee7))
+* **install:** prompt for session refresh scheduling ([015293d](https://github.com/suho-han/one-click-tools/commit/015293d78a0f723851f28954e6a1e81f06589669))
+* **session-refresh:** add scheduled token-free session probes ([01e8078](https://github.com/suho-han/one-click-tools/commit/01e80781f19e3f5b64d37200987c4dcf69263f58))
+* **session-refresh:** include refreshed usage and ag alias support ([5b8c0cc](https://github.com/suho-han/one-click-tools/commit/5b8c0cc57efb8da9a76c2c8c04eb331c8de1b9f4))
+* **update:** use official Cursor CLI install flow ([3802989](https://github.com/suho-han/one-click-tools/commit/3802989cb3b8632056de9cc855c63cce3d118492))
+* **usage:** migrate gemini provider to antigravity ([2588e42](https://github.com/suho-han/one-click-tools/commit/2588e4230225e1e21133abd48d1ff44533cba843))
 
+
+### Bug Fixes
+
+* **antigravity:** require official agy binary only ([2a58878](https://github.com/suho-han/one-click-tools/commit/2a5887892937dc1ff66501d0b89c39e3f8c3dfef))
+* **schedule:** prefer current oct binary for scheduled tasks ([184d206](https://github.com/suho-han/one-click-tools/commit/184d206efe0b84bacbf7295d6bad2b08f0564583))
+* **test:** harden smoke-matrix cross-platform regressions ([3fec3b0](https://github.com/suho-han/one-click-tools/commit/3fec3b0fe6b6b5aca0fc8723cfcb4306c3dbce1c))
+* **update:** add manager support matrix for antigravity ([7b4f62d](https://github.com/suho-han/one-click-tools/commit/7b4f62ddaed4b75cc23da57ca69252f488f9741d))
+* **update:** prefer provenance-first manager detection ([77bc794](https://github.com/suho-han/one-click-tools/commit/77bc794e083c546b9563cbb00c5db8e3e78724c0))
+* **usage:** clarify cursor and opencode fallback states ([4d65243](https://github.com/suho-han/one-click-tools/commit/4d652434a776e8ac90c345d5f9cf4769d84355d5))
+
+
+### Documentation
+
+* add antigravity migration and session refresh plan ([6ae8e66](https://github.com/suho-han/one-click-tools/commit/6ae8e6678bb884795dd4a5dd4affcfd24c796e52))
+* add package manager stability plan ([ab96ce1](https://github.com/suho-han/one-click-tools/commit/ab96ce187908765dff8e30c9cdff5e62c5e40528))
+* canonicalize antigravity naming ([26b6d86](https://github.com/suho-han/one-click-tools/commit/26b6d86206bf3a2deee4f762b82c7be382e180ea))
+* **plan:** add antigravity cleanup and usage quality plans ([32332d8](https://github.com/suho-han/one-click-tools/commit/32332d8282df75f7c50336bac3c714642f203de7))
+* **plan:** expand scheduler e2e validation checklist ([1fc2835](https://github.com/suho-han/one-click-tools/commit/1fc28355590dd1e27c799068f55a218857f9b4fa))
+* **usage:** finish antigravity naming cleanup ([327c409](https://github.com/suho-han/one-click-tools/commit/327c4091dba0593a337e7ff05e0983e403b53adf))
 
 ### [0.4.3](https://github.com/suho-han/one-click-tools/compare/v0.4.1...v0.4.3) (2026-05-12)
 
