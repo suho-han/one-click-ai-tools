@@ -23,6 +23,7 @@ type RefreshResult struct {
 	Supported  bool   `json:"supported"`
 	Mode       string `json:"mode"`
 	Status     string `json:"status"`
+	Confidence string `json:"confidence,omitempty"`
 	Message    string `json:"message"`
 	SourcePath string `json:"source_path,omitempty"`
 }
@@ -82,6 +83,11 @@ func resolveTool(name string) (update.Tool, bool) {
 	return update.Tool{}, false
 }
 
+const (
+	confidenceVerified = "verified"
+	confidencePartial  = "partial"
+)
+
 func unsupportedProbe(mode, message string) refresher {
 	return func(opts RefreshOptions, tool update.Tool) RefreshResult {
 		return RefreshResult{Provider: tool.BinaryName, Supported: false, Mode: mode, Status: "unsupported", Message: message}
@@ -90,7 +96,7 @@ func unsupportedProbe(mode, message string) refresher {
 
 func probeClaudeSession(opts RefreshOptions, tool update.Tool) RefreshResult {
 	if opts.DryRun {
-		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "auth-status", Status: "skipped", Message: "would run 'claude auth status --json'"}
+		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "auth-status", Status: "skipped", Confidence: confidenceVerified, Message: "would run 'claude auth status --json'"}
 	}
 	if _, err := refreshLookPath("claude"); err != nil {
 		return RefreshResult{Provider: tool.BinaryName, Supported: false, Mode: "auth-status", Status: "unsupported", Message: "Claude CLI binary not installed (expected 'claude')"}
@@ -108,28 +114,28 @@ func probeClaudeSession(opts RefreshOptions, tool update.Tool) RefreshResult {
 			if strings.TrimSpace(data.AuthMethod) != "" {
 				msg = fmt.Sprintf("Claude auth status confirmed (%s)", data.AuthMethod)
 			}
-			return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "auth-status", Status: "ok", Message: msg}
+			return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "auth-status", Status: "ok", Confidence: confidenceVerified, Message: msg}
 		}
 		msg := "Claude auth not logged in"
 		if strings.TrimSpace(data.AuthMethod) != "" && !strings.EqualFold(strings.TrimSpace(data.AuthMethod), "none") {
 			msg = fmt.Sprintf("Claude auth not logged in (%s)", data.AuthMethod)
 		}
-		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "auth-status", Status: "skipped", Message: msg}
+		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "auth-status", Status: "skipped", Confidence: confidenceVerified, Message: msg}
 	}
 	if err != nil {
-		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "auth-status", Status: "error", Message: trimCommandOutput(out, err)}
+		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "auth-status", Status: "error", Confidence: confidenceVerified, Message: trimCommandOutput(out, err)}
 	}
 	msg := firstNonEmptyLine(string(out))
 	if msg == "" {
 		msg = "Claude auth status command returned no parseable output"
-		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "auth-status", Status: "error", Message: msg}
+		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "auth-status", Status: "error", Confidence: confidenceVerified, Message: msg}
 	}
-	return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "auth-status", Status: "ok", Message: msg}
+	return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "auth-status", Status: "ok", Confidence: confidenceVerified, Message: msg}
 }
 
 func probeOpenCodeSession(opts RefreshOptions, tool update.Tool) RefreshResult {
 	if opts.DryRun {
-		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "providers-list", Status: "skipped", Message: "would run 'opencode providers list'"}
+		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "providers-list", Status: "skipped", Confidence: confidenceVerified, Message: "would run 'opencode providers list'"}
 	}
 	if _, err := refreshLookPath("opencode"); err != nil {
 		return RefreshResult{Provider: tool.BinaryName, Supported: false, Mode: "providers-list", Status: "unsupported", Message: "OpenCode CLI binary not installed (expected 'opencode')"}
@@ -137,44 +143,44 @@ func probeOpenCodeSession(opts RefreshOptions, tool update.Tool) RefreshResult {
 	cmd := refreshCommand("opencode", "providers", "list")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "providers-list", Status: "error", Message: trimCommandOutput(out, err)}
+		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "providers-list", Status: "error", Confidence: confidenceVerified, Message: trimCommandOutput(out, err)}
 	}
 	credentialCount := parseCredentialCount(string(out))
 	if credentialCount > 0 {
-		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "providers-list", Status: "ok", Message: fmt.Sprintf("OpenCode credential inventory detected (%d credential(s))", credentialCount)}
+		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "providers-list", Status: "ok", Confidence: confidenceVerified, Message: fmt.Sprintf("OpenCode credential inventory detected (%d credential(s))", credentialCount)}
 	}
 	if strings.Contains(strings.ToLower(string(out)), "environment") {
-		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "providers-list", Status: "skipped", Message: "OpenCode environment credential hints detected, but no stored credentials listed"}
+		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "providers-list", Status: "skipped", Confidence: confidencePartial, Message: "OpenCode environment credential hints detected, but no stored credentials listed"}
 	}
-	return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "providers-list", Status: "skipped", Message: "OpenCode providers list reported no configured credentials"}
+	return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "providers-list", Status: "skipped", Confidence: confidenceVerified, Message: "OpenCode providers list reported no configured credentials"}
 }
 
 func probeCopilotSession(opts RefreshOptions, tool update.Tool) RefreshResult {
 	if opts.DryRun {
-		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "partial-auth", Status: "skipped", Message: "would inspect GitHub auth and local Copilot auth artifacts"}
+		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "partial-auth", Status: "skipped", Confidence: confidencePartial, Message: "would inspect GitHub auth and local Copilot auth artifacts"}
 	}
 	if _, err := refreshLookPath("copilot"); err != nil {
 		return RefreshResult{Provider: tool.BinaryName, Supported: false, Mode: "partial-auth", Status: "unsupported", Message: "Copilot CLI binary not installed (expected 'copilot')"}
 	}
 	if copilotTokenEnvExists() {
-		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "partial-auth", Status: "skipped", Message: "GitHub auth detected via token environment, but Copilot exposes no dedicated token-free status probe"}
+		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "partial-auth", Status: "skipped", Confidence: confidencePartial, Message: "GitHub auth detected via token environment, but Copilot exposes no dedicated token-free status probe"}
 	}
 	if _, err := refreshLookPath("gh"); err == nil {
 		cmd := refreshCommand("gh", "auth", "status")
 		out, err := cmd.CombinedOutput()
 		if err == nil && strings.Contains(strings.ToLower(string(out)), "logged in to") {
-			return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "partial-auth", Status: "skipped", Message: "GitHub auth detected, but Copilot exposes no dedicated token-free status probe"}
+			return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "partial-auth", Status: "skipped", Confidence: confidencePartial, Message: "GitHub auth detected, but Copilot exposes no dedicated token-free status probe"}
 		}
 	}
 	if copilotAuthEvidenceExists() {
-		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "partial-auth", Status: "skipped", Message: "Local Copilot auth evidence detected, but Copilot exposes no dedicated token-free status probe"}
+		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "partial-auth", Status: "skipped", Confidence: confidencePartial, Message: "Local Copilot auth evidence detected, but Copilot exposes no dedicated token-free status probe"}
 	}
 	return RefreshResult{Provider: tool.BinaryName, Supported: false, Mode: "partial-auth", Status: "unsupported", Message: "No verified token-free Copilot status probe beyond partial auth evidence"}
 }
 
 func probeCodexSession(opts RefreshOptions, tool update.Tool) RefreshResult {
 	if opts.DryRun {
-		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "auth-status", Status: "skipped", Message: "would run 'codex login status'"}
+		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "auth-status", Status: "skipped", Confidence: confidenceVerified, Message: "would run 'codex login status'"}
 	}
 	if _, err := refreshLookPath("codex"); err != nil {
 		return RefreshResult{Provider: tool.BinaryName, Supported: false, Mode: "auth-status", Status: "unsupported", Message: "codex binary not installed"}
@@ -182,13 +188,13 @@ func probeCodexSession(opts RefreshOptions, tool update.Tool) RefreshResult {
 	cmd := refreshCommand("codex", "login", "status")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "auth-status", Status: "error", Message: trimCommandOutput(out, err)}
+		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "auth-status", Status: "error", Confidence: confidenceVerified, Message: trimCommandOutput(out, err)}
 	}
 	msg := firstNonEmptyLine(string(out))
 	if msg == "" {
 		msg = "login status confirmed"
 	}
-	return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "auth-status", Status: "ok", Message: msg}
+	return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "auth-status", Status: "ok", Confidence: confidenceVerified, Message: msg}
 }
 
 func probeCursorSession(opts RefreshOptions, tool update.Tool) RefreshResult {
@@ -204,12 +210,12 @@ func probeCursorSession(opts RefreshOptions, tool update.Tool) RefreshResult {
 		if path != "" {
 			msg += " and local auth.json"
 		}
-		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "local-auth", Status: "skipped", Message: msg, SourcePath: path}
+		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "local-auth", Status: "skipped", Confidence: confidenceVerified, Message: msg, SourcePath: path}
 	}
 	if path == "" {
-		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "local-auth", Status: "skipped", Message: fmt.Sprintf("%s found, but no local Cursor auth.json detected", binary)}
+		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "local-auth", Status: "skipped", Confidence: confidenceVerified, Message: fmt.Sprintf("%s found, but no local Cursor auth.json detected", binary)}
 	}
-	return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "local-auth", Status: "ok", Message: fmt.Sprintf("Cursor auth.json detected via %s", binary), SourcePath: path}
+	return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "local-auth", Status: "ok", Confidence: confidenceVerified, Message: fmt.Sprintf("Cursor auth.json detected via %s", binary), SourcePath: path}
 }
 
 func probeAntigravitySession(opts RefreshOptions, tool update.Tool) RefreshResult {
@@ -228,12 +234,12 @@ func probeAntigravitySession(opts RefreshOptions, tool update.Tool) RefreshResul
 		if path != "" {
 			msg += " and existing session storage"
 		}
-		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "local-session", Status: "skipped", Message: msg, SourcePath: path}
+		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "local-session", Status: "skipped", Confidence: confidenceVerified, Message: msg, SourcePath: path}
 	}
 	if path == "" {
-		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "local-session", Status: "skipped", Message: fmt.Sprintf("%s found, but no local Antigravity session artifacts detected", binary)}
+		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "local-session", Status: "skipped", Confidence: confidenceVerified, Message: fmt.Sprintf("%s found, but no local Antigravity session artifacts detected", binary)}
 	}
-	return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "local-session", Status: "ok", Message: fmt.Sprintf("Local Antigravity session artifacts detected via %s", binary), SourcePath: path}
+	return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "local-session", Status: "ok", Confidence: confidenceVerified, Message: fmt.Sprintf("Local Antigravity session artifacts detected via %s", binary), SourcePath: path}
 }
 
 func cursorAuthPaths(home string) []string {

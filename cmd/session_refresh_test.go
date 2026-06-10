@@ -23,11 +23,12 @@ func TestSessionRefreshJSONModeEmitsStructuredResultsAndUsage(t *testing.T) {
 
 	sessionRefreshRun = func(opts sessionrefresh.RefreshOptions) []sessionrefresh.RefreshResult {
 		return []sessionrefresh.RefreshResult{{
-			Provider:  "agy",
-			Supported: true,
-			Mode:      "local-session",
-			Status:    "ok",
-			Message:   "Local Antigravity session artifacts detected",
+			Provider:   "agy",
+			Supported:  true,
+			Mode:       "local-session",
+			Status:     "ok",
+			Confidence: "verified",
+			Message:    "Local Antigravity session artifacts detected",
 		}}
 	}
 	sessionRefreshGetUsage = func() ([]usage.UsageResult, error) {
@@ -62,6 +63,9 @@ func TestSessionRefreshJSONModeEmitsStructuredResultsAndUsage(t *testing.T) {
 	if output.RefreshResults[0]["provider"] != "agy" {
 		t.Fatalf("expected agy refresh provider, got %#v", output.RefreshResults[0])
 	}
+	if output.RefreshResults[0]["confidence"] != "verified" {
+		t.Fatalf("expected verified confidence, got %#v", output.RefreshResults[0])
+	}
 	if len(output.Usage) != 1 {
 		t.Fatalf("expected 1 usage result, got %d", len(output.Usage))
 	}
@@ -79,7 +83,7 @@ func TestSessionRefreshTextModePrintsRefreshedUsage(t *testing.T) {
 	})
 
 	sessionRefreshRun = func(opts sessionrefresh.RefreshOptions) []sessionrefresh.RefreshResult {
-		return []sessionrefresh.RefreshResult{{Provider: "codex", Status: "ok", Mode: "auth-status", Message: "Logged in using ChatGPT"}}
+		return []sessionrefresh.RefreshResult{{Provider: "codex", Status: "ok", Confidence: "verified", Mode: "auth-status", Message: "Logged in using ChatGPT"}}
 	}
 	sessionRefreshGetUsage = func() ([]usage.UsageResult, error) {
 		return []usage.UsageResult{{Provider: "codex", Period: "current", Used: "1.0", Limit: "100", Unit: "percent", Source: "local", Status: "ok", Message: "Usage extracted from local Codex session logs"}}, nil
@@ -96,6 +100,9 @@ func TestSessionRefreshTextModePrintsRefreshedUsage(t *testing.T) {
 	}
 	if !strings.Contains(out, "codex") {
 		t.Fatalf("expected codex in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "verified") {
+		t.Fatalf("expected confidence column in output, got:\n%s", out)
 	}
 }
 

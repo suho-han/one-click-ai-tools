@@ -108,13 +108,17 @@ func splitCommaProviders(values []string) []string {
 }
 
 func printSessionRefreshResults(w io.Writer, results []sessionrefresh.RefreshResult) {
-	fmt.Fprintf(w, "%-14s %-12s %-16s %s\n", "provider", "status", "mode", "message")
+	fmt.Fprintf(w, "%-14s %-12s %-12s %-16s %s\n", "provider", "status", "confidence", "mode", "message")
 	for _, result := range results {
 		message := result.Message
 		if result.SourcePath != "" {
 			message += " [" + result.SourcePath + "]"
 		}
-		fmt.Fprintf(w, "%-14s %-12s %-16s %s\n", result.Provider, result.Status, result.Mode, message)
+		confidence := result.Confidence
+		if confidence == "" {
+			confidence = "-"
+		}
+		fmt.Fprintf(w, "%-14s %-12s %-12s %-16s %s\n", result.Provider, result.Status, confidence, result.Mode, message)
 	}
 }
 

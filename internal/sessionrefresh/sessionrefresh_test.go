@@ -68,6 +68,9 @@ func TestProbeCodexSessionUsesBootstrappedPath(t *testing.T) {
 	if result.Status != "ok" {
 		t.Fatalf("expected ok result via bootstrapped PATH, got %#v", result)
 	}
+	if result.Confidence != confidenceVerified {
+		t.Fatalf("expected verified confidence, got %#v", result)
+	}
 	if result.Message != "Logged in" {
 		t.Fatalf("unexpected codex probe message: %q", result.Message)
 	}
@@ -125,6 +128,9 @@ func TestProbeClaudeSessionReportsLoggedOutState(t *testing.T) {
 	if result.Mode != "auth-status" {
 		t.Fatalf("unexpected mode: %#v", result)
 	}
+	if result.Confidence != confidenceVerified {
+		t.Fatalf("expected verified confidence, got %#v", result)
+	}
 	if !strings.Contains(strings.ToLower(result.Message), "not logged in") {
 		t.Fatalf("expected logged-out message, got %q", result.Message)
 	}
@@ -153,8 +159,45 @@ func TestProbeOpenCodeSessionDetectsCredentialInventory(t *testing.T) {
 	if result.Status != "ok" {
 		t.Fatalf("expected ok result for detected OpenCode credentials, got %#v", result)
 	}
+	if result.Confidence != confidenceVerified {
+		t.Fatalf("expected verified confidence, got %#v", result)
+	}
 	if result.Mode != "providers-list" {
 		t.Fatalf("unexpected mode: %#v", result)
+	}
+}
+
+func TestProbeOpenCodeSessionMarksEnvironmentHintsAsPartial(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script fixture is unix-only")
+	}
+
+	home := t.TempDir()
+	binDir := filepath.Join(home, ".local", "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	opencodePath := filepath.Join(binDir, "opencode")
+	script := "#!/bin/sh\ncat <<'EOF'\nOpenAI (environment)\nAnthropic (environment)\nEOF\n"
+	if err := os.WriteFile(opencodePath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write opencode fixture failed: %v", err)
+	}
+
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", "/usr/bin:/bin")
+
+	result := probeOpenCodeSession(RefreshOptions{}, update.Tool{BinaryName: "opencode"})
+	if result.Status != "skipped" {
+		t.Fatalf("expected skipped result for environment-only OpenCode hints, got %#v", result)
+	}
+	if result.Confidence != confidencePartial {
+		t.Fatalf("expected partial confidence, got %#v", result)
+	}
+	if result.Mode != "providers-list" {
+		t.Fatalf("unexpected mode: %#v", result)
+	}
+	if !strings.Contains(strings.ToLower(result.Message), "environment credential hints") {
+		t.Fatalf("unexpected message: %q", result.Message)
 	}
 }
 
@@ -185,6 +228,9 @@ func TestProbeCopilotSessionReportsPartialGithubAuth(t *testing.T) {
 	result := probeCopilotSession(RefreshOptions{}, update.Tool{BinaryName: "copilot"})
 	if result.Status != "skipped" {
 		t.Fatalf("expected partial Copilot probe to be skipped, got %#v", result)
+	}
+	if result.Confidence != confidencePartial {
+		t.Fatalf("expected partial confidence, got %#v", result)
 	}
 	if result.Mode != "partial-auth" {
 		t.Fatalf("unexpected mode: %#v", result)
