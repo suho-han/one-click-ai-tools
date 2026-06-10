@@ -17,6 +17,8 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+var brewInstallMu sync.Mutex
+
 func Run() error {
 	enabledTools := viper.GetStringSlice("enabled_tools")
 	agentOrder := viper.GetStringSlice("agent_order")
@@ -65,7 +67,15 @@ func Run() error {
 
 			versionBefore := manager.GetInstalledVersion(t)
 			start := time.Now()
-			output, err := runInstallWithFallback(ctx, manager, t)
+			var output []byte
+			var err error
+			if manager == Brew {
+				brewInstallMu.Lock()
+				output, err = runInstallWithFallback(ctx, manager, t)
+				brewInstallMu.Unlock()
+			} else {
+				output, err = runInstallWithFallback(ctx, manager, t)
+			}
 			duration := time.Since(start).Round(time.Second)
 			versionAfter := manager.GetInstalledVersion(t)
 

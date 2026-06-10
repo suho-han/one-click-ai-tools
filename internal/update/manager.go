@@ -179,17 +179,33 @@ func detectManagerFromBinaryPath(t Tool) (Manager, bool) {
 		if err != nil || strings.TrimSpace(path) == "" {
 			continue
 		}
-		if manager, ok := classifyManagerFromBinaryPath(path); ok {
+		candidates := classifyManagersFromBinaryPath(path)
+		if len(candidates) == 0 {
+			continue
+		}
+		if len(candidates) == 1 {
+			return candidates[0], true
+		}
+		if manager, ok := resolveAmbiguousPathManagers(t, candidates); ok {
 			return manager, true
 		}
+		return candidates[0], true
 	}
 	return Unknown, false
 }
 
 func classifyManagerFromBinaryPath(path string) (Manager, bool) {
+	managers := classifyManagersFromBinaryPath(path)
+	if len(managers) == 0 {
+		return Unknown, false
+	}
+	return managers[0], true
+}
+
+func classifyManagersFromBinaryPath(path string) []Manager {
 	path = filepath.Clean(strings.TrimSpace(path))
 	if path == "" || path == "." {
-		return Unknown, false
+		return nil
 	}
 
 	checks := []struct {
@@ -206,15 +222,45 @@ func classifyManagerFromBinaryPath(path string) (Manager, bool) {
 		{manager: Pip, prefixes: pipBinaryPrefixes(), contains: nil},
 	}
 
+	var matches []Manager
 	for _, check := range checks {
 		for _, prefix := range check.prefixes {
 			if hasPathPrefix(path, prefix) {
-				return check.manager, true
+				matches = appendManagerIfMissing(matches, check.manager)
+				break
 			}
 		}
 		for _, marker := range check.contains {
 			if marker != "" && strings.Contains(path, marker) {
-				return check.manager, true
+				matches = appendManagerIfMissing(matches, check.manager)
+				break
+			}
+		}
+	}
+
+	return matches
+}
+
+func appendManagerIfMissing(managers []Manager, manager Manager) []Manager {
+	for _, existing := range managers {
+		if existing == manager {
+			return managers
+		}
+	}
+	return append(managers, manager)
+}
+
+func resolveAmbiguousPathManagers(t Tool, candidates []Manager) (Manager, bool) {
+	for _, manager := range candidates {
+		if matchesInstalledPackage(manager, t) {
+			return manager, true
+		}
+	}
+
+	if preferred, ok := defaultManagerForTool(t); ok {
+		for _, manager := range candidates {
+			if manager == preferred {
+				return manager, true
 			}
 		}
 	}

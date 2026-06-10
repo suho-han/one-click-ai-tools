@@ -1,6 +1,7 @@
 package update
 
 import (
+	"errors"
 	"path/filepath"
 	"testing"
 )
@@ -242,6 +243,42 @@ func TestBuiltInToolManagerSupportMatrix(t *testing.T) {
 		if got := ResolveManagerForInstall(tool); got != want {
 			t.Fatalf("ResolveManagerForInstall(%s) = %q, want %q", tool.BinaryName, got, want)
 		}
+	}
+}
+
+func TestDetectManagerPrefersNpmWhenHomebrewBinPathIsAmbiguous(t *testing.T) {
+	reset := stubManagerDetection(t)
+	defer reset()
+
+	binaryLookup = func(name string) (string, error) {
+		if name == "copilot" {
+			return "/opt/homebrew/bin/copilot", nil
+		}
+		return "", errExecutableNotFound
+	}
+	commandOutput = func(name string, args ...string) ([]byte, error) {
+		switch name {
+		case "brew":
+			if len(args) >= 1 && args[0] == "--prefix" {
+				return []byte("/opt/homebrew\n"), nil
+			}
+			if len(args) >= 2 && args[0] == "list" && args[1] == "copilot" {
+				return []byte("Error: copilot not installed\n"), errors.New("exit status 1")
+			}
+		case "npm":
+			if len(args) >= 2 && args[0] == "prefix" && args[1] == "-g" {
+				return []byte("/opt/homebrew\n"), nil
+			}
+			if len(args) >= 3 && args[0] == "list" {
+				return []byte("@github/copilot@1.0.0\n"), nil
+			}
+		}
+		return nil, errExecutableNotFound
+	}
+
+	got := DetectManager(Tool{Package: "@github/copilot", BinaryName: "copilot"})
+	if got != Npm {
+		t.Fatalf("DetectManager() = %q, want %q", got, Npm)
 	}
 }
 
