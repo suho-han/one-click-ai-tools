@@ -4,10 +4,10 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
+	"github.com/suho-han/one-click-tools/internal/execenv"
 	"github.com/suho-han/one-click-tools/internal/update"
 )
 
@@ -35,6 +35,11 @@ var refreshers = map[string]refresher{
 	"copilot":      unsupportedProbe("probe", "no verified token-free auth/session probe yet"),
 	"opencode":     unsupportedProbe("probe", "no verified token-free auth/session probe yet"),
 }
+
+var (
+	refreshLookPath = execenv.LookPath
+	refreshCommand  = execenv.Command
+)
 
 func Refresh(opts RefreshOptions) []RefreshResult {
 	providers := opts.Providers
@@ -85,10 +90,10 @@ func probeCodexSession(opts RefreshOptions, tool update.Tool) RefreshResult {
 	if opts.DryRun {
 		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "auth-status", Status: "skipped", Message: "would run 'codex login status'"}
 	}
-	if _, err := exec.LookPath("codex"); err != nil {
+	if _, err := refreshLookPath("codex"); err != nil {
 		return RefreshResult{Provider: tool.BinaryName, Supported: false, Mode: "auth-status", Status: "unsupported", Message: "codex binary not installed"}
 	}
-	cmd := exec.Command("codex", "login", "status")
+	cmd := refreshCommand("codex", "login", "status")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "auth-status", Status: "error", Message: trimCommandOutput(out, err)}
@@ -157,7 +162,7 @@ func cursorAuthPaths(home string) []string {
 
 func findFirstBinary(names ...string) (string, error) {
 	for _, name := range names {
-		if path, err := exec.LookPath(name); err == nil {
+		if path, err := refreshLookPath(name); err == nil {
 			return path, nil
 		}
 	}
