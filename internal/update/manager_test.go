@@ -262,8 +262,8 @@ func TestDetectManagerPrefersNpmWhenHomebrewBinPathIsAmbiguous(t *testing.T) {
 			if len(args) >= 1 && args[0] == "--prefix" {
 				return []byte("/opt/homebrew\n"), nil
 			}
-			if len(args) >= 2 && args[0] == "list" && args[1] == "copilot" {
-				return []byte("Error: copilot not installed\n"), errors.New("exit status 1")
+			if len(args) >= 2 && args[0] == "list" && args[1] == "copilot-cli" {
+				return []byte("Error: copilot-cli not installed\n"), errors.New("exit status 1")
 			}
 		case "npm":
 			if len(args) >= 2 && args[0] == "prefix" && args[1] == "-g" {
@@ -276,9 +276,45 @@ func TestDetectManagerPrefersNpmWhenHomebrewBinPathIsAmbiguous(t *testing.T) {
 		return nil, errExecutableNotFound
 	}
 
-	got := DetectManager(Tool{Package: "@github/copilot", BinaryName: "copilot"})
+	got := DetectManager(Tool{Package: "@github/copilot", BinaryName: "copilot", BrewPackage: "copilot-cli"})
 	if got != Npm {
 		t.Fatalf("DetectManager() = %q, want %q", got, Npm)
+	}
+}
+
+func TestDetectManagerUsesConfiguredBrewPackageForCopilotCask(t *testing.T) {
+	reset := stubManagerDetection(t)
+	defer reset()
+
+	binaryLookup = func(name string) (string, error) {
+		if name == "copilot" {
+			return "/opt/homebrew/bin/copilot", nil
+		}
+		return "", errExecutableNotFound
+	}
+	commandOutput = func(name string, args ...string) ([]byte, error) {
+		switch name {
+		case "brew":
+			if len(args) >= 1 && args[0] == "--prefix" {
+				return []byte("/opt/homebrew\n"), nil
+			}
+			if len(args) >= 2 && args[0] == "list" && args[1] == "copilot-cli" {
+				return []byte("/opt/homebrew/Caskroom/copilot-cli/1.0.34/copilot\n"), nil
+			}
+		case "npm":
+			if len(args) >= 2 && args[0] == "prefix" && args[1] == "-g" {
+				return []byte("/opt/homebrew\n"), nil
+			}
+			if len(args) >= 3 && args[0] == "list" {
+				return []byte("(empty)\n"), nil
+			}
+		}
+		return nil, errExecutableNotFound
+	}
+
+	got := DetectManager(Tool{Package: "@github/copilot", BinaryName: "copilot", BrewPackage: "copilot-cli"})
+	if got != Brew {
+		t.Fatalf("DetectManager() = %q, want %q", got, Brew)
 	}
 }
 

@@ -116,12 +116,13 @@ var Tools = []Tool{
 		HexColor:      "#4285F4",
 	},
 	{
-		Name:       "GitHub Copilot",
-		Package:    "@github/copilot",
-		BinaryName: "copilot",
-		Icon:       "🐙",
-		LobeIcon:   "GithubCopilot",
-		HexColor:   "#BC8CF2",
+		Name:        "GitHub Copilot",
+		Package:     "@github/copilot",
+		BinaryName:  "copilot",
+		BrewPackage: "copilot-cli",
+		Icon:        "🐙",
+		LobeIcon:    "GithubCopilot",
+		HexColor:    "#BC8CF2",
 	},
 }
 

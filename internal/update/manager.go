@@ -269,11 +269,17 @@ func resolveAmbiguousPathManagers(t Tool, candidates []Manager) (Manager, bool) 
 }
 
 func matchesInstalledPackage(m Manager, t Tool) bool {
-	if strings.TrimSpace(t.Package) == "" {
+	if m != Brew && strings.TrimSpace(t.Package) == "" {
 		return false
 	}
 	out, err := packageListCommand(m, t)
-	return err == nil && strings.Contains(string(out), t.Package)
+	if err != nil {
+		return false
+	}
+	if m == Brew {
+		return true
+	}
+	return strings.Contains(string(out), t.Package)
 }
 
 func packageListCommand(m Manager, t Tool) ([]byte, error) {
