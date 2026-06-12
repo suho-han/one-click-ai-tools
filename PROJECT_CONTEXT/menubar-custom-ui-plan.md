@@ -14,9 +14,11 @@
 
 - Local Linux host: `swift --version` 실패 (`swift: command not found`)
 - Remote macOS host (`macmini-tailscale`): `Swift 6.3.1` 사용 가능
+- Remote macOS host에서 `swift build`는 통과했지만, vanilla SwiftPM sample 포함 `swift test`는 `no such module 'Testing'` 로 실패했다.
 - 결론:
   - 계획/문서/파일 scaffold는 현재 host에서도 가능
   - 실제 compile/run 검증은 remote macOS host에서 수행해야 함
+  - 현 시점 테스트 lane은 remote SwiftPM toolchain 정비 또는 Xcode lane 확인이 추가로 필요함
 
 ## Why a new lane is required
 
