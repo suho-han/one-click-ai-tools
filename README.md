@@ -44,6 +44,8 @@ Install-time note:
 pnpm add -g one-click-tools
 ```
 
+공식 패키지 릴리스 경로는 `npm publish` 입니다.
+
 ## Quick Start
 
 Use the `oct` command to manage your tools:
