@@ -19,6 +19,17 @@ type menubarSnapshot struct {
 	ProviderDetails [][]string
 }
 
+func menubarOverviewTitle() string {
+	return "Usage Overview"
+}
+
+func menubarProviderSectionTitle(count int) string {
+	if count <= 0 {
+		return "Providers"
+	}
+	return fmt.Sprintf("Providers (%d)", count)
+}
+
 func buildMenubarLoadingSnapshot(toolNames []string) menubarSnapshot {
 	lines := make([]string, 0, len(toolNames))
 	details := make([][]string, 0, len(toolNames))
@@ -120,7 +131,7 @@ func menubarProviderLine(result usage.UsageResult) string {
 	five := bucketVal(result, "5h", "used")
 	seven := bucketVal(result, "7d", "used")
 	status := classifyMenubarStatus(result.Status)
-	line := fmt.Sprintf("%s · 5h %s · 7d %s · %s", provider, five, seven, status)
+	line := fmt.Sprintf("[%s] %s · 5h %s · 7d %s", status, provider, five, seven)
 	if msg := strings.TrimSpace(result.Message); msg != "" && status != "ok" {
 		line += " · " + truncateMenubarText(msg, 28)
 	}

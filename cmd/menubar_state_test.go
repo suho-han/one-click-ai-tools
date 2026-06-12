@@ -21,6 +21,18 @@ func TestMenubarLoadingSnapshot(t *testing.T) {
 	}
 }
 
+func TestMenubarOverviewAndProviderSectionLabels(t *testing.T) {
+	if got := menubarOverviewTitle(); got != "Usage Overview" {
+		t.Fatalf("menubarOverviewTitle = %q", got)
+	}
+	if got := menubarProviderSectionTitle(0); got != "Providers" {
+		t.Fatalf("menubarProviderSectionTitle(0) = %q", got)
+	}
+	if got := menubarProviderSectionTitle(6); got != "Providers (6)" {
+		t.Fatalf("menubarProviderSectionTitle(6) = %q", got)
+	}
+}
+
 func TestMenubarUsageSnapshotSummarizesCounts(t *testing.T) {
 	now := time.Date(2026, 6, 12, 14, 5, 6, 0, time.FixedZone("KST", 9*3600))
 	results := []usage.UsageResult{
@@ -44,7 +56,7 @@ func TestMenubarUsageSnapshotSummarizesCounts(t *testing.T) {
 	}
 }
 
-func TestMenubarProviderLineIncludesBucketsAndStatus(t *testing.T) {
+func TestMenubarProviderLineIncludesBadgeBucketsAndStatus(t *testing.T) {
 	line := menubarProviderLine(usage.UsageResult{
 		Provider: "Codex",
 		Status:   "warn",
@@ -56,10 +68,21 @@ func TestMenubarProviderLineIncludesBucketsAndStatus(t *testing.T) {
 		},
 	})
 
-	for _, want := range []string{"Codex", "5h 88%", "7d 64%", "warn"} {
+	for _, want := range []string{"[warn]", "Codex", "5h 88%", "7d 64%"} {
 		if !strings.Contains(line, want) {
 			t.Fatalf("line = %q, want substring %q", line, want)
 		}
+	}
+}
+
+func TestMenubarProviderLineOmitsMessageForOKStatus(t *testing.T) {
+	line := menubarProviderLine(usage.UsageResult{
+		Provider: "Copilot",
+		Status:   "ok",
+		Message:  "should stay hidden",
+	})
+	if strings.Contains(line, "should stay hidden") {
+		t.Fatalf("line = %q, want ok provider message omitted", line)
 	}
 }
 

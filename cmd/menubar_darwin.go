@@ -47,21 +47,25 @@ func startMenubarDetached() error {
 }
 
 type menubarUI struct {
-	execPath           string
-	toolNames          []string
-	refreshInterval    time.Duration
-	statusItem         *systray.MenuItem
-	updatedItem        *systray.MenuItem
-	autoRefreshItem    *systray.MenuItem
-	providerGroups     []menubarProviderGroup
-	refreshItem        *systray.MenuItem
-	usageItem          *systray.MenuItem
-	sessionRefreshItem *systray.MenuItem
-	monitorItem        *systray.MenuItem
-	alertItem          *systray.MenuItem
-	quitItem           *systray.MenuItem
-	mu                 sync.Mutex
-	refreshing         bool
+	execPath             string
+	toolNames            []string
+	refreshInterval      time.Duration
+	overviewItem         *systray.MenuItem
+	statusItem           *systray.MenuItem
+	updatedItem          *systray.MenuItem
+	autoRefreshItem      *systray.MenuItem
+	providersLabelItem   *systray.MenuItem
+	providerGroups       []menubarProviderGroup
+	openLabelItem        *systray.MenuItem
+	refreshItem          *systray.MenuItem
+	usageItem            *systray.MenuItem
+	maintenanceLabelItem *systray.MenuItem
+	sessionRefreshItem   *systray.MenuItem
+	monitorItem          *systray.MenuItem
+	alertItem            *systray.MenuItem
+	quitItem             *systray.MenuItem
+	mu                   sync.Mutex
+	refreshing           bool
 }
 
 func onMenubarReady() {
@@ -101,6 +105,9 @@ func newMenubarUI() (*menubarUI, error) {
 		toolNames:       toolNames,
 		refreshInterval: refreshInterval,
 	}
+	ui.overviewItem = systray.AddMenuItem(menubarOverviewTitle(), "Menubar overview")
+	ui.overviewItem.Disable()
+	systray.AddSeparator()
 	ui.statusItem = systray.AddMenuItem("Loading usage…", "Current usage summary")
 	ui.statusItem.Disable()
 	ui.updatedItem = systray.AddMenuItem("Last refresh: -", "Last refresh time")
@@ -109,6 +116,8 @@ func newMenubarUI() (*menubarUI, error) {
 	ui.autoRefreshItem.Disable()
 
 	systray.AddSeparator()
+	ui.providersLabelItem = systray.AddMenuItem(menubarProviderSectionTitle(len(toolNames)), "Provider section")
+	ui.providersLabelItem.Disable()
 	loadingSnapshot := buildMenubarLoadingSnapshot(toolNames)
 	ui.providerGroups = make([]menubarProviderGroup, 0, len(toolNames))
 	for i, name := range toolNames {
@@ -133,10 +142,15 @@ func newMenubarUI() (*menubarUI, error) {
 		systray.AddSeparator()
 	}
 
+	ui.openLabelItem = systray.AddMenuItem("Open", "Navigation actions")
+	ui.openLabelItem.Disable()
 	ui.refreshItem = systray.AddMenuItem("Refresh now", "Refresh usage summary")
 	ui.usageItem = systray.AddMenuItem("Open Usage", "Run current oct binary: usage")
-	ui.sessionRefreshItem = systray.AddMenuItem("Run Session Refresh", "Run current oct binary: session-refresh")
 	ui.monitorItem = systray.AddMenuItem("Open Monitor", "Run current oct binary: monitor --once")
+	systray.AddSeparator()
+	ui.maintenanceLabelItem = systray.AddMenuItem("Maintenance", "Maintenance actions")
+	ui.maintenanceLabelItem.Disable()
+	ui.sessionRefreshItem = systray.AddMenuItem("Run Session Refresh", "Run current oct binary: session-refresh")
 	ui.alertItem = systray.AddMenuItem("Run Alert Check", "Run current oct binary: usage --notify")
 	systray.AddSeparator()
 	ui.quitItem = systray.AddMenuItem("Quit", "Quit menubar")
@@ -222,6 +236,7 @@ func (ui *menubarUI) applySnapshot(snapshot menubarSnapshot) {
 	ui.statusItem.SetTitle(snapshot.SummaryLine)
 	ui.updatedItem.SetTitle(snapshot.UpdatedLine)
 	ui.autoRefreshItem.SetTitle(menubarAutoRefreshLabel(ui.refreshInterval))
+	ui.providersLabelItem.SetTitle(menubarProviderSectionTitle(len(snapshot.ProviderLines)))
 
 	for i := range ui.providerGroups {
 		group := &ui.providerGroups[i]
