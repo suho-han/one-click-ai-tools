@@ -68,6 +68,9 @@ CI release job는 계속 `npm publish`를 canonical path로 사용합니다.
    - install/update 경로만 `ResolveManagerForInstall()`로 default manager fallback 허용
 
 ## Failure / Rollback Guide
+- `npm run release:npm -- --help` 는 help를 출력하지 않고 실제 release 스크립트를 실행합니다.
+  - 이유: `scripts/release-package.sh` 가 `--help` 를 별도 처리하지 않고 추가 publish args로 전달함
+  - 따라서 help/preview 용도로 실행하지 말고, 스크립트 파일 내용을 직접 확인하거나 별도 dry-run 경로를 사용해야 함
 - 버전 불일치 실패 시
   - `cmd/root.go`의 `Version`과 `package.json`의 `version`을 동일하게 수정
   - 재커밋 후 태그 재생성
