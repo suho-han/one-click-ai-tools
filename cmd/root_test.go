@@ -120,4 +120,7 @@ func TestInitConfigSessionRefreshDefaults(t *testing.T) {
 	if got := viper.GetInt("session_refresh_hour"); got != 9 {
 		t.Fatalf("expected session_refresh_hour=9, got %d", got)
 	}
+	if got := viper.GetString("menubar_refresh_interval"); got != "1m" {
+		t.Fatalf("expected menubar_refresh_interval=1m, got %q", got)
+	}
 }

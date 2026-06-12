@@ -154,14 +154,24 @@ func TestMenubarProviderDetailsIncludesDeepStatus(t *testing.T) {
 }
 
 func TestMenubarRefreshIntervalFallsBackAndFormatsLabel(t *testing.T) {
-	if got := menubarRefreshInterval(""); got != 5*time.Minute {
-		t.Fatalf("menubarRefreshInterval(empty) = %s, want 5m", got)
+	if got := menubarRefreshInterval(""); got != time.Minute {
+		t.Fatalf("menubarRefreshInterval(empty) = %s, want 1m", got)
 	}
 	if got := menubarRefreshInterval("90s"); got != 90*time.Second {
 		t.Fatalf("menubarRefreshInterval(90s) = %s, want 90s", got)
 	}
 	if got := menubarAutoRefreshLabel(90 * time.Second); got != "Auto refresh: every 1m30s" {
 		t.Fatalf("menubarAutoRefreshLabel = %q", got)
+	}
+}
+
+func TestMenubarNextRefreshLabel(t *testing.T) {
+	now := time.Date(2026, 6, 12, 15, 26, 4, 0, time.UTC)
+	if got := menubarNextRefreshLabel(time.Time{}, time.Minute); got != "Next refresh: pending" {
+		t.Fatalf("menubarNextRefreshLabel(zero) = %q", got)
+	}
+	if got := menubarNextRefreshLabel(now, time.Minute); got != "Next refresh: 15:27:04" {
+		t.Fatalf("menubarNextRefreshLabel = %q", got)
 	}
 }
 

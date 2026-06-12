@@ -15,6 +15,7 @@ type menubarSnapshot struct {
 	Tooltip         string
 	SummaryLine     string
 	UpdatedLine     string
+	LastRefreshAt   time.Time
 	ProviderLines   []string
 	ProviderDetails [][]string
 }
@@ -45,6 +46,7 @@ func buildMenubarLoadingSnapshot(toolNames []string) menubarSnapshot {
 		Tooltip:         "one-click-tools menubar loading",
 		SummaryLine:     fmt.Sprintf("Loading usage for %d provider(s)…", len(toolNames)),
 		UpdatedLine:     "Last refresh: -",
+		LastRefreshAt:   time.Time{},
 		ProviderLines:   lines,
 		ProviderDetails: details,
 	}
@@ -77,6 +79,7 @@ func buildMenubarUsageSnapshot(results []usage.UsageResult, now time.Time) menub
 		Tooltip:         fmt.Sprintf("%d provider(s): %d ok, %d warn, %d error", len(results), okCount, warnCount, errCount),
 		SummaryLine:     fmt.Sprintf("%d providers · %d ok · %d warn · %d error", len(results), okCount, warnCount, errCount),
 		UpdatedLine:     "Last refresh: " + menubarTimeLabel(now),
+		LastRefreshAt:   now,
 		ProviderLines:   lines,
 		ProviderDetails: details,
 	}
@@ -102,6 +105,7 @@ func buildMenubarErrorSnapshot(toolNames []string, now time.Time, err error) men
 		Tooltip:         "menubar refresh failed",
 		SummaryLine:     "Refresh failed · " + truncateMenubarText(msg, 48),
 		UpdatedLine:     "Last refresh: " + menubarTimeLabel(now),
+		LastRefreshAt:   now,
 		ProviderLines:   lines,
 		ProviderDetails: details,
 	}
@@ -214,20 +218,30 @@ func truncateMenubarText(s string, max int) string {
 func menubarRefreshInterval(raw string) time.Duration {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return 5 * time.Minute
+		return time.Minute
 	}
 	d, err := time.ParseDuration(raw)
 	if err != nil || d <= 0 {
-		return 5 * time.Minute
+		return time.Minute
 	}
 	return d
 }
 
 func menubarAutoRefreshLabel(interval time.Duration) string {
 	if interval <= 0 {
-		interval = 5 * time.Minute
+		interval = time.Minute
 	}
 	return "Auto refresh: every " + interval.String()
+}
+
+func menubarNextRefreshLabel(lastRefresh time.Time, interval time.Duration) string {
+	if lastRefresh.IsZero() {
+		return "Next refresh: pending"
+	}
+	if interval <= 0 {
+		interval = time.Minute
+	}
+	return "Next refresh: " + menubarTimeLabel(lastRefresh.Add(interval))
 }
 
 func shellQuote(arg string) string {

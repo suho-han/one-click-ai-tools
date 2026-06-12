@@ -54,6 +54,7 @@ type menubarUI struct {
 	statusItem           *systray.MenuItem
 	updatedItem          *systray.MenuItem
 	autoRefreshItem      *systray.MenuItem
+	nextRefreshItem      *systray.MenuItem
 	providersLabelItem   *systray.MenuItem
 	providerGroups       []menubarProviderGroup
 	openLabelItem        *systray.MenuItem
@@ -114,6 +115,8 @@ func newMenubarUI() (*menubarUI, error) {
 	ui.updatedItem.Disable()
 	ui.autoRefreshItem = systray.AddMenuItem(menubarAutoRefreshLabel(refreshInterval), "Automatic refresh interval")
 	ui.autoRefreshItem.Disable()
+	ui.nextRefreshItem = systray.AddMenuItem(menubarNextRefreshLabel(time.Time{}, refreshInterval), "Next automatic refresh time")
+	ui.nextRefreshItem.Disable()
 
 	systray.AddSeparator()
 	ui.providersLabelItem = systray.AddMenuItem(menubarProviderSectionTitle(len(toolNames)), "Provider section")
@@ -236,6 +239,7 @@ func (ui *menubarUI) applySnapshot(snapshot menubarSnapshot) {
 	ui.statusItem.SetTitle(snapshot.SummaryLine)
 	ui.updatedItem.SetTitle(snapshot.UpdatedLine)
 	ui.autoRefreshItem.SetTitle(menubarAutoRefreshLabel(ui.refreshInterval))
+	ui.nextRefreshItem.SetTitle(menubarNextRefreshLabel(snapshot.LastRefreshAt, ui.refreshInterval))
 	ui.providersLabelItem.SetTitle(menubarProviderSectionTitle(len(snapshot.ProviderLines)))
 
 	for i := range ui.providerGroups {
