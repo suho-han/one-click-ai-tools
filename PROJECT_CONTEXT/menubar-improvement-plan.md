@@ -22,7 +22,10 @@
 
 - menubar 상단에 현재 상태(summary / last refresh) 표시
 - provider별 compact usage line 표시
+- provider 상세 submenu 표시
 - refresh-now 액션 추가
+- 주기적 auto-refresh ticker 추가
+- alert shortcut(`usage --notify`) 추가
 - `usage`, `session-refresh`, `monitor` 진입을 current executable 기준으로 실행
 - 상태 모델/명령 문자열 helper에 대한 unit tests 추가
 

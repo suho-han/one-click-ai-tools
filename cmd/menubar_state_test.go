@@ -94,9 +94,51 @@ func TestMenubarCommandUsesCurrentExecutable(t *testing.T) {
 }
 
 func TestMenubarAppleScriptEscapesCommand(t *testing.T) {
-	script := buildTerminalAppleScript(`'/tmp/oct' 'usage' '--flag=\"quoted\"'`)
-	if !strings.Contains(script, `do script "'/tmp/oct' 'usage' '--flag=\\\"quoted\\\"'"`) {
+	script := buildTerminalAppleScript(`'/tmp/oct' 'usage' '--flag=\\\"quoted\\\"'`)
+	if !strings.Contains(script, `do script "'/tmp/oct' 'usage' '--flag=\\\\\\\"quoted\\\\\\\"'"`) {
 		t.Fatalf("script = %q, want escaped do script payload", script)
+	}
+}
+
+func TestMenubarProviderDetailsIncludesDeepStatus(t *testing.T) {
+	details := menubarProviderDetails(usage.UsageResult{
+		Provider:     "Codex",
+		Status:       "warn",
+		Used:         "88",
+		Limit:        "100",
+		Unit:         "percent",
+		Source:       "local",
+		SourceDetail: "session logs",
+		Message:      "approaching threshold",
+		Buckets: map[string]string{
+			"5h": "88",
+			"7d": "64",
+		},
+	})
+
+	for _, want := range []string{"Provider: Codex", "Status: warn", "5h: 88%", "7d: 64%", "Used: 88", "Limit: 100", "Source: local", "Detail: session logs", "Message: approaching threshold"} {
+		found := false
+		for _, got := range details {
+			if strings.Contains(got, want) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Fatalf("details = %#v, want substring %q", details, want)
+		}
+	}
+}
+
+func TestMenubarRefreshIntervalFallsBackAndFormatsLabel(t *testing.T) {
+	if got := menubarRefreshInterval(""); got != 5*time.Minute {
+		t.Fatalf("menubarRefreshInterval(empty) = %s, want 5m", got)
+	}
+	if got := menubarRefreshInterval("90s"); got != 90*time.Second {
+		t.Fatalf("menubarRefreshInterval(90s) = %s, want 90s", got)
+	}
+	if got := menubarAutoRefreshLabel(90 * time.Second); got != "Auto refresh: every 1m30s" {
+		t.Fatalf("menubarAutoRefreshLabel = %q", got)
 	}
 }
 

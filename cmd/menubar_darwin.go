@@ -10,10 +10,16 @@ import (
 	"time"
 
 	"github.com/getlantern/systray"
+	"github.com/spf13/viper"
 	"github.com/suho-han/one-click-tools/internal/usage"
 )
 
 var menubarFetchUsage = usage.GetUsage
+
+type menubarProviderGroup struct {
+	summary *systray.MenuItem
+	details []*systray.MenuItem
+}
 
 func runMenubar() error {
 	systray.Run(onMenubarReady, func() {})
@@ -43,13 +49,16 @@ func startMenubarDetached() error {
 type menubarUI struct {
 	execPath           string
 	toolNames          []string
+	refreshInterval    time.Duration
 	statusItem         *systray.MenuItem
 	updatedItem        *systray.MenuItem
-	providerItems      []*systray.MenuItem
+	autoRefreshItem    *systray.MenuItem
+	providerGroups     []menubarProviderGroup
 	refreshItem        *systray.MenuItem
 	usageItem          *systray.MenuItem
 	sessionRefreshItem *systray.MenuItem
 	monitorItem        *systray.MenuItem
+	alertItem          *systray.MenuItem
 	quitItem           *systray.MenuItem
 	mu                 sync.Mutex
 	refreshing         bool
@@ -83,24 +92,42 @@ func newMenubarUI() (*menubarUI, error) {
 	}
 
 	toolNames := selectedMenubarToolNames()
+	refreshInterval := menubarRefreshInterval(viper.GetString("menubar_refresh_interval"))
 	systray.SetTitle("oct …")
 	systray.SetTooltip("one-click-tools menubar")
 
 	ui := &menubarUI{
-		execPath:  execPath,
-		toolNames: toolNames,
+		execPath:        execPath,
+		toolNames:       toolNames,
+		refreshInterval: refreshInterval,
 	}
 	ui.statusItem = systray.AddMenuItem("Loading usage…", "Current usage summary")
 	ui.statusItem.Disable()
 	ui.updatedItem = systray.AddMenuItem("Last refresh: -", "Last refresh time")
 	ui.updatedItem.Disable()
-	ui.providerItems = make([]*systray.MenuItem, 0, len(toolNames))
+	ui.autoRefreshItem = systray.AddMenuItem(menubarAutoRefreshLabel(refreshInterval), "Automatic refresh interval")
+	ui.autoRefreshItem.Disable()
 
 	systray.AddSeparator()
-	for _, name := range toolNames {
-		item := systray.AddMenuItem(name+" · loading…", "Provider status")
-		item.Disable()
-		ui.providerItems = append(ui.providerItems, item)
+	loadingSnapshot := buildMenubarLoadingSnapshot(toolNames)
+	ui.providerGroups = make([]menubarProviderGroup, 0, len(toolNames))
+	for i, name := range toolNames {
+		summary := name + " · loading…"
+		details := []string{"Provider: " + name, "Status: loading"}
+		if i < len(loadingSnapshot.ProviderLines) {
+			summary = loadingSnapshot.ProviderLines[i]
+		}
+		if i < len(loadingSnapshot.ProviderDetails) {
+			details = loadingSnapshot.ProviderDetails[i]
+		}
+		group := menubarProviderGroup{summary: systray.AddMenuItem(summary, "Provider status details")}
+		group.summary.Enable()
+		for _, detail := range details {
+			child := group.summary.AddSubMenuItem(detail, "Provider detail")
+			child.Disable()
+			group.details = append(group.details, child)
+		}
+		ui.providerGroups = append(ui.providerGroups, group)
 	}
 	if len(toolNames) > 0 {
 		systray.AddSeparator()
@@ -110,6 +137,7 @@ func newMenubarUI() (*menubarUI, error) {
 	ui.usageItem = systray.AddMenuItem("Open Usage", "Run current oct binary: usage")
 	ui.sessionRefreshItem = systray.AddMenuItem("Run Session Refresh", "Run current oct binary: session-refresh")
 	ui.monitorItem = systray.AddMenuItem("Open Monitor", "Run current oct binary: monitor --once")
+	ui.alertItem = systray.AddMenuItem("Run Alert Check", "Run current oct binary: usage --notify")
 	systray.AddSeparator()
 	ui.quitItem = systray.AddMenuItem("Quit", "Quit menubar")
 	return ui, nil
@@ -132,8 +160,13 @@ func selectedMenubarToolNames() []string {
 }
 
 func (ui *menubarUI) run() {
+	ticker := time.NewTicker(ui.refreshInterval)
+	defer ticker.Stop()
+
 	for {
 		select {
+		case <-ticker.C:
+			go ui.refreshUsage()
 		case <-ui.refreshItem.ClickedCh:
 			go ui.refreshUsage()
 		case <-ui.usageItem.ClickedCh:
@@ -142,6 +175,8 @@ func (ui *menubarUI) run() {
 			_ = runInTerminal(ui.command("session-refresh"))
 		case <-ui.monitorItem.ClickedCh:
 			_ = runInTerminal(ui.command("monitor", "--once"))
+		case <-ui.alertItem.ClickedCh:
+			_ = runInTerminal(ui.command("usage", "--notify"))
 		case <-ui.quitItem.ClickedCh:
 			systray.Quit()
 			return
@@ -186,14 +221,41 @@ func (ui *menubarUI) applySnapshot(snapshot menubarSnapshot) {
 	systray.SetTooltip(snapshot.Tooltip)
 	ui.statusItem.SetTitle(snapshot.SummaryLine)
 	ui.updatedItem.SetTitle(snapshot.UpdatedLine)
-	for i, item := range ui.providerItems {
+	ui.autoRefreshItem.SetTitle(menubarAutoRefreshLabel(ui.refreshInterval))
+
+	for i := range ui.providerGroups {
+		group := &ui.providerGroups[i]
 		if i < len(snapshot.ProviderLines) {
-			item.SetTitle(snapshot.ProviderLines[i])
-			item.Show()
-			item.Disable()
+			group.summary.SetTitle(snapshot.ProviderLines[i])
+			group.summary.Show()
+			if i < len(snapshot.ProviderDetails) && len(snapshot.ProviderDetails[i]) > 0 {
+				group.summary.Enable()
+				ui.syncProviderDetails(group, snapshot.ProviderDetails[i])
+			} else {
+				group.summary.Disable()
+				ui.syncProviderDetails(group, nil)
+			}
 			continue
 		}
-		item.Hide()
+		group.summary.Hide()
+		ui.syncProviderDetails(group, nil)
+	}
+}
+
+func (ui *menubarUI) syncProviderDetails(group *menubarProviderGroup, details []string) {
+	for len(group.details) < len(details) {
+		child := group.summary.AddSubMenuItem("", "Provider detail")
+		child.Disable()
+		group.details = append(group.details, child)
+	}
+	for i, child := range group.details {
+		if i < len(details) {
+			child.SetTitle(details[i])
+			child.Show()
+			child.Disable()
+			continue
+		}
+		child.Hide()
 	}
 }
 

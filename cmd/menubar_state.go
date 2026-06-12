@@ -11,33 +11,42 @@ import (
 )
 
 type menubarSnapshot struct {
-	Title         string
-	Tooltip       string
-	SummaryLine   string
-	UpdatedLine   string
-	ProviderLines []string
+	Title           string
+	Tooltip         string
+	SummaryLine     string
+	UpdatedLine     string
+	ProviderLines   []string
+	ProviderDetails [][]string
 }
 
 func buildMenubarLoadingSnapshot(toolNames []string) menubarSnapshot {
 	lines := make([]string, 0, len(toolNames))
+	details := make([][]string, 0, len(toolNames))
 	for _, name := range toolNames {
 		lines = append(lines, fmt.Sprintf("%s · loading…", name))
+		details = append(details, []string{
+			"Provider: " + name,
+			"Status: loading",
+		})
 	}
 	return menubarSnapshot{
-		Title:         "oct …",
-		Tooltip:       "one-click-tools menubar loading",
-		SummaryLine:   fmt.Sprintf("Loading usage for %d provider(s)…", len(toolNames)),
-		UpdatedLine:   "Last refresh: -",
-		ProviderLines: lines,
+		Title:           "oct …",
+		Tooltip:         "one-click-tools menubar loading",
+		SummaryLine:     fmt.Sprintf("Loading usage for %d provider(s)…", len(toolNames)),
+		UpdatedLine:     "Last refresh: -",
+		ProviderLines:   lines,
+		ProviderDetails: details,
 	}
 }
 
 func buildMenubarUsageSnapshot(results []usage.UsageResult, now time.Time) menubarSnapshot {
 	okCount, warnCount, errCount := 0, 0, 0
 	lines := make([]string, 0, len(results))
+	details := make([][]string, 0, len(results))
 	severity := "ok"
 	for _, result := range results {
 		lines = append(lines, menubarProviderLine(result))
+		details = append(details, menubarProviderDetails(result))
 		switch classifyMenubarStatus(result.Status) {
 		case "ok":
 			okCount++
@@ -53,29 +62,37 @@ func buildMenubarUsageSnapshot(results []usage.UsageResult, now time.Time) menub
 	}
 
 	return menubarSnapshot{
-		Title:         menubarTitleForSeverity(severity),
-		Tooltip:       fmt.Sprintf("%d provider(s): %d ok, %d warn, %d error", len(results), okCount, warnCount, errCount),
-		SummaryLine:   fmt.Sprintf("%d providers · %d ok · %d warn · %d error", len(results), okCount, warnCount, errCount),
-		UpdatedLine:   "Last refresh: " + menubarTimeLabel(now),
-		ProviderLines: lines,
+		Title:           menubarTitleForSeverity(severity),
+		Tooltip:         fmt.Sprintf("%d provider(s): %d ok, %d warn, %d error", len(results), okCount, warnCount, errCount),
+		SummaryLine:     fmt.Sprintf("%d providers · %d ok · %d warn · %d error", len(results), okCount, warnCount, errCount),
+		UpdatedLine:     "Last refresh: " + menubarTimeLabel(now),
+		ProviderLines:   lines,
+		ProviderDetails: details,
 	}
 }
 
 func buildMenubarErrorSnapshot(toolNames []string, now time.Time, err error) menubarSnapshot {
 	lines := make([]string, 0, len(toolNames))
+	details := make([][]string, 0, len(toolNames))
 	for _, name := range toolNames {
 		lines = append(lines, fmt.Sprintf("%s · unavailable", name))
+		details = append(details, []string{
+			"Provider: " + name,
+			"Status: error",
+			"Message: unavailable during refresh",
+		})
 	}
 	msg := "unknown error"
 	if err != nil {
 		msg = err.Error()
 	}
 	return menubarSnapshot{
-		Title:         "oct !!",
-		Tooltip:       "menubar refresh failed",
-		SummaryLine:   "Refresh failed · " + truncateMenubarText(msg, 48),
-		UpdatedLine:   "Last refresh: " + menubarTimeLabel(now),
-		ProviderLines: lines,
+		Title:           "oct !!",
+		Tooltip:         "menubar refresh failed",
+		SummaryLine:     "Refresh failed · " + truncateMenubarText(msg, 48),
+		UpdatedLine:     "Last refresh: " + menubarTimeLabel(now),
+		ProviderLines:   lines,
+		ProviderDetails: details,
 	}
 }
 
@@ -108,6 +125,39 @@ func menubarProviderLine(result usage.UsageResult) string {
 		line += " · " + truncateMenubarText(msg, 28)
 	}
 	return line
+}
+
+func menubarProviderDetails(result usage.UsageResult) []string {
+	provider := strings.TrimSpace(result.Provider)
+	if provider == "" {
+		provider = lookupToolName(result.Provider)
+	}
+	if provider == "" {
+		provider = "Unknown"
+	}
+
+	details := []string{
+		"Provider: " + provider,
+		"Status: " + classifyMenubarStatus(result.Status),
+		"5h: " + bucketVal(result, "5h", "used"),
+		"7d: " + bucketVal(result, "7d", "used"),
+	}
+	if used := strings.TrimSpace(result.Used); used != "" {
+		details = append(details, "Used: "+used)
+	}
+	if limit := strings.TrimSpace(result.Limit); limit != "" {
+		details = append(details, "Limit: "+limit)
+	}
+	if source := strings.TrimSpace(result.Source); source != "" {
+		details = append(details, "Source: "+source)
+	}
+	if detail := strings.TrimSpace(result.SourceDetail); detail != "" {
+		details = append(details, "Detail: "+truncateMenubarText(detail, 48))
+	}
+	if msg := strings.TrimSpace(result.Message); msg != "" {
+		details = append(details, "Message: "+truncateMenubarText(msg, 48))
+	}
+	return details
 }
 
 func classifyMenubarStatus(status string) string {
@@ -148,6 +198,25 @@ func truncateMenubarText(s string, max int) string {
 		return s[:max]
 	}
 	return s[:max-3] + "..."
+}
+
+func menubarRefreshInterval(raw string) time.Duration {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 5 * time.Minute
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil || d <= 0 {
+		return 5 * time.Minute
+	}
+	return d
+}
+
+func menubarAutoRefreshLabel(interval time.Duration) string {
+	if interval <= 0 {
+		interval = 5 * time.Minute
+	}
+	return "Auto refresh: every " + interval.String()
 }
 
 func shellQuote(arg string) string {
