@@ -7,6 +7,7 @@ import (
 )
 
 var menubarDaemon bool
+var menubarLegacy bool
 
 var menubarCmd = &cobra.Command{
 	Use:     "menubar",
@@ -30,5 +31,6 @@ var menubarCmd = &cobra.Command{
 
 func init() {
 	menubarCmd.Flags().BoolVar(&menubarDaemon, "daemon", false, "start menubar in background and return")
+	menubarCmd.Flags().BoolVar(&menubarLegacy, "legacy", false, "force legacy systray/NSMenu menubar instead of Swift helper")
 	rootCmd.AddCommand(menubarCmd)
 }

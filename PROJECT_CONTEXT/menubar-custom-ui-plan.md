@@ -14,11 +14,15 @@
 
 - Local Linux host: `swift --version` 실패 (`swift: command not found`)
 - Remote macOS host (`macmini-tailscale`): `Swift 6.3.1` 사용 가능
-- Remote macOS host에서 `swift build`는 통과했지만, vanilla SwiftPM sample 포함 `swift test`는 `no such module 'Testing'` 로 실패했다.
+- Remote macOS host에서 `swift build`는 통과한다.
+- Remote macOS host의 active developer dir는 `/Library/Developer/CommandLineTools` 이고, `xcodebuild -version` 은 `tool 'xcodebuild' requires Xcode` 로 실패한다.
+- Remote macOS host에서 package test는 프로젝트 코드와 무관하게 lane 자체가 깨져 있다:
+  - vanilla SwiftPM sample `swift test` → `no such module 'Testing'`
+  - 현재 package `swift test --filter UsageSnapshotTests` → `no such module 'XCTest'`
 - 결론:
   - 계획/문서/파일 scaffold는 현재 host에서도 가능
   - 실제 compile/run 검증은 remote macOS host에서 수행해야 함
-  - 현 시점 테스트 lane은 remote SwiftPM toolchain 정비 또는 Xcode lane 확인이 추가로 필요함
+  - 현 시점 test/Xcode lane 복구는 **full Xcode 설치 또는 active developer dir 전환**이 선행돼야 한다
 
 ## Why a new lane is required
 
@@ -114,9 +118,11 @@ Suggested model split:
 - Modify: `PROJECT_CONTEXT/menubar-custom-ui-plan.md`
 
 **Step 1: Record launch modes**
-- `oct menubar` legacy 유지 여부
-- Swift helper binary 이름
-- helper가 `oct` path를 어떻게 찾을지 정의
+- `oct menubar` 는 Swift helper (`OctMenubarApp`)를 우선 실행하고, helper를 찾지 못하면 legacy systray/NSMenu path로 fallback 한다.
+- `oct menubar --legacy` 는 기존 systray/NSMenu path를 강제한다.
+- Swift helper binary 이름은 `OctMenubarApp` 으로 고정한다.
+- helper는 `OCT_MENUBAR_HELPER_PATH` override 또는 repo-relative candidate(`macos/OctMenubar/.build/debug/OctMenubarApp`) 탐색으로 찾는다.
+- helper는 `OCT_MENUBAR_OCT_PATH` 로 현재 `oct` 실행 binary path를 받아 action/refresh 실행에 사용한다.
 
 **Step 2: Record verification lanes**
 - Linux: docs / scaffolding only

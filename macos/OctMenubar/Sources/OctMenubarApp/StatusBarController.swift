@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 @MainActor
@@ -6,16 +7,18 @@ final class StatusBarController: NSObject, NSApplicationDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let popover = NSPopover()
     private let viewModel = UsageViewModel(service: OctCLIService())
+    private var cancellables: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.accessory)
         configureStatusItem()
         configurePopover()
-        viewModel.refresh()
+        bindSnapshot()
     }
 
     private func configureStatusItem() {
         guard let button = statusItem.button else { return }
-        button.title = "oct"
+        button.title = UsageSnapshot.placeholder.statusItemTitle
         button.target = self
         button.action = #selector(togglePopover(_:))
     }
@@ -23,8 +26,17 @@ final class StatusBarController: NSObject, NSApplicationDelegate {
     private func configurePopover() {
         popover.behavior = .transient
         popover.animates = true
-        popover.contentSize = NSSize(width: 360, height: 520)
+        popover.contentSize = NSSize(width: 388, height: 560)
         popover.contentViewController = NSHostingController(rootView: PopoverView(viewModel: viewModel))
+    }
+
+    private func bindSnapshot() {
+        viewModel.$snapshot
+            .receive(on: RunLoop.main)
+            .sink { [weak self] snapshot in
+                self?.statusItem.button?.title = snapshot.statusItemTitle
+            }
+            .store(in: &cancellables)
     }
 
     @objc

@@ -3,8 +3,10 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -22,11 +24,22 @@ type menubarProviderGroup struct {
 }
 
 func runMenubar() error {
+	if !menubarLegacy {
+		if launched, err := launchSwiftMenubarHelper(false); launched || err != nil {
+			return err
+		}
+	}
 	systray.Run(onMenubarReady, func() {})
 	return nil
 }
 
 func startMenubarDetached() error {
+	if !menubarLegacy {
+		if launched, err := launchSwiftMenubarHelper(true); launched || err != nil {
+			return err
+		}
+	}
+
 	execPath, err := os.Executable()
 	if err != nil {
 		return err
@@ -38,12 +51,65 @@ func startMenubarDetached() error {
 	}
 	defer devNull.Close()
 
-	cmd := exec.Command(execPath, "menubar")
+	cmdArgs := []string{"menubar"}
+	if menubarLegacy {
+		cmdArgs = append(cmdArgs, "--legacy")
+	}
+	cmd := exec.Command(execPath, cmdArgs...)
 	cmd.Stdout = devNull
 	cmd.Stderr = devNull
 	cmd.Stdin = devNull
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	return cmd.Start()
+}
+
+func launchSwiftMenubarHelper(detached bool) (bool, error) {
+	execPath, err := os.Executable()
+	if err != nil {
+		return false, err
+	}
+	workingDir, _ := os.Getwd()
+	helperPath, searched := resolveMenubarHelperPath(menubarEnvironmentMap(), execPath, workingDir)
+	if helperPath == "" {
+		return false, nil
+	}
+
+	devNull, err := os.OpenFile(os.DevNull, os.O_RDWR, 0)
+	if err != nil {
+		return true, err
+	}
+	defer devNull.Close()
+
+	cmd := exec.Command(helperPath)
+	cmd.Env = append(os.Environ(), "OCT_MENUBAR_OCT_PATH="+execPath)
+	cmd.Stdout = devNull
+	cmd.Stderr = devNull
+	cmd.Stdin = devNull
+	if detached {
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+	}
+	if err := cmd.Start(); err != nil {
+		return true, fmt.Errorf("swift menubar helper launch failed (%s): %w", strings.Join(searched, ", "), err)
+	}
+	if detached {
+		return true, nil
+	}
+	go func() {
+		_ = cmd.Wait()
+	}()
+	return true, nil
+}
+
+func menubarEnvironmentMap() map[string]string {
+	env := make(map[string]string)
+	for _, entry := range os.Environ() {
+		key, value, ok := strings.Cut(entry, "=")
+		if !ok {
+			continue
+		}
+		env[key] = value
+	}
+	return env
 }
 
 type menubarUI struct {
