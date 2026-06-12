@@ -33,6 +33,8 @@
 npm install -g one-click-tools
 ```
 
+공식 패키지 릴리스 경로는 `npm publish` 입니다.
+
 Install-time note:
 - In interactive terminals, `postinstall` asks whether to enable periodic token-free `session-refresh`.
 - Defaults written to config: disabled, `daily`, `09:00`.
@@ -55,3 +57,8 @@ Use the `oct` command to manage your tools:
 ## Requirements
 - **Node.js/npm** or **pnpm** (All platforms)
 - **Homebrew** (macOS)
+
+## Release
+- dependency management: `pnpm`
+- official package publish: `npm`
+- local release wrapper: `npm run release:npm`

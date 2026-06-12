@@ -20,6 +20,8 @@ npm install -g one-click-tools
 pnpm add -g one-click-tools
 ```
 
+Official package releases are published with `npm publish`.
+
 Install-time note:
 - In interactive terminals, `postinstall` asks whether to enable periodic token-free `session-refresh`.
 - Defaults written to config: disabled, `daily`, `09:00`.
@@ -194,6 +196,12 @@ For English documentation, start here:
   - **Windows**: Node.js/npm (Experimental)
 - **Developers (build/test from source)**
   - **Go >= 1.25**
+
+## Release
+
+- Dependency management: `pnpm`
+- Official package publish: `npm`
+- Local release wrapper: `npm run release:npm`
 
 ## License
 

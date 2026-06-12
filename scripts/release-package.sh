@@ -8,14 +8,11 @@ MANAGER="${1:-npm}"
 shift || true
 PUBLISH_ARGS=("$@")
 
-case "$MANAGER" in
-  npm|pnpm)
-    ;;
-  *)
-    echo "Usage: bash scripts/release-package.sh [npm|pnpm] [publish args...]"
-    exit 1
-    ;;
-esac
+if [ "$MANAGER" != "npm" ]; then
+  echo "ERROR: official release path is npm only"
+  echo "Usage: bash scripts/release-package.sh [npm] [publish args...]"
+  exit 1
+fi
 
 if [ -f .env ]; then
   echo "Loading environment variables from .env..."
@@ -67,35 +64,21 @@ GOTOOLCHAIN=auto go test ./...
 GOTOOLCHAIN=auto go build ./...
 
 echo
-echo "--- Step 4: Dry-run publish via $MANAGER ---"
-case "$MANAGER" in
-  npm)
-    npm publish --dry-run --access public "${PUBLISH_ARGS[@]}"
-    ;;
-  pnpm)
-    pnpm publish --dry-run --access public --no-git-checks "${PUBLISH_ARGS[@]}"
-    ;;
-esac
+echo "--- Step 4: Dry-run publish via npm ---"
+npm publish --dry-run --access public "${PUBLISH_ARGS[@]}"
 
 echo
 echo "--- Step 5: Pushing git commit and tag ---"
 git push --follow-tags origin main
 
 echo
-echo "--- Step 6: Publishing via $MANAGER ---"
-case "$MANAGER" in
-  npm)
-    npm publish --access public "${PUBLISH_ARGS[@]}"
-    ;;
-  pnpm)
-    pnpm publish --access public --no-git-checks "${PUBLISH_ARGS[@]}"
-    ;;
-esac
+echo "--- Step 6: Publishing via npm ---"
+npm publish --access public "${PUBLISH_ARGS[@]}"
 
 echo
 echo "=========================================="
 echo "✅ Release completed successfully"
-echo "manager: $MANAGER"
+echo "manager: npm"
 echo "1. Git commit & tag created"
 echo "2. Verified release integrity"
 echo "3. Ran go test ./... and go build ./..."

@@ -1,7 +1,7 @@
-# Release Checklist (npm / pnpm)
+# Release Checklist (npm)
 
 ## Goal
-태그 릴리즈 시 `oct` 바이너리 버전, `package.json` 버전, Git 태그가 항상 일치하도록 보장하고 npm/pnpm publish 실패 가능성을 사전 차단합니다.
+태그 릴리즈 시 `oct` 바이너리 버전, `package.json` 버전, Git 태그가 항상 일치하도록 보장하고 npm publish 실패 가능성을 사전 차단합니다.
 
 ## Preflight (로컬)
 1. 워킹트리 clean 확인
@@ -16,18 +16,15 @@
 - npm publish
   - `bash scripts/release-package.sh npm`
   - 또는 `npm run release:npm`
-- pnpm publish
-  - `bash scripts/release-package.sh pnpm`
-  - 또는 `npm run release:pnpm`
 
-공통 동작:
+동작:
 - `standard-version`으로 버전/태그 생성
 - `verify-release-integrity.sh` 실행
 - `go test ./...`
 - `go build ./...`
 - publish dry-run 실행
 - `git push --follow-tags`
-- 선택한 manager로 publish 실행
+- npm으로 publish 실행
 
 호환성 wrapper:
 - `bash scripts/publish.sh` 는 계속 npm release wrapper로 동작
@@ -41,8 +38,8 @@ CI release job는 계속 `npm publish`를 canonical path로 사용합니다.
 4. `npm publish --access public`
 
 정리 원칙:
-- 로컬 배포 루틴은 `npm`/`pnpm` 둘 다 지원
-- GitHub release CI의 registry publish는 `npm`을 기준으로 유지
+- dependency management는 `pnpm`을 사용할 수 있음
+- package registry publish는 로컬/CI 모두 `npm`을 기준으로 유지
 
 ## Manager stability guard
 추가 패키지 매니저 지원 또는 manager detection 변경 시 아래를 같이 확인합니다.
