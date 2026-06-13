@@ -2,7 +2,10 @@
 
 ## Quick run
 
+Current recommended local Go toolchain: `go1.26.4` (`~/.local/go`)
+
 ```bash
+go version
 go run main.go help
 go run main.go usage --json
 ```

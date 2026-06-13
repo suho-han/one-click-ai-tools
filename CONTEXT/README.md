@@ -14,6 +14,7 @@
 
 - [ko/LOCAL_TEST.md](ko/LOCAL_TEST.md): 로컬 실행, 빌드, 테스트, Windows 검증
 - [ko/PLATFORM_E2E_CHECKLIST.md](ko/PLATFORM_E2E_CHECKLIST.md): Linux/Windows E2E 체크리스트
+- [ko/MENUBAR_HELPER_OPERATIONS.md](ko/MENUBAR_HELPER_OPERATIONS.md): macOS menubar helper 빌드/설치/원격 검증 운영 가이드
 
 ## 내부 참고 문서
 

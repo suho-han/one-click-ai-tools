@@ -14,6 +14,7 @@ This index organizes documents under `CONTEXT/` by purpose.
 
 - [en/LOCAL_TEST.md](en/LOCAL_TEST.md): local run/build/test and Windows validation
 - [en/PLATFORM_E2E_CHECKLIST.md](en/PLATFORM_E2E_CHECKLIST.md): Linux/Windows E2E checklist
+- [en/MENUBAR_HELPER_OPERATIONS.md](en/MENUBAR_HELPER_OPERATIONS.md): operational guide for macOS menubar helper build/install/remote validation
 
 ## Internal Reference
 
