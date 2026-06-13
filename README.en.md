@@ -6,7 +6,7 @@
 
 [한국어](README.md)
 
-**one-click-tools (oct)** is a high-performance CLI for installing and updating popular AI developer tools in one command.
+**one-click-tools (oct)** is a high-performance CLI for installing, updating, and inspecting popular AI developer tools from one command.
 
 ## 🚀 Quick Start
 
@@ -26,51 +26,65 @@ Install-time note:
 - In interactive terminals, `postinstall` asks whether to enable periodic token-free `session-refresh`.
 - Defaults written to config: disabled, `daily`, `09:00`.
 
-### Basic Usage
+### Core flows
 
 ```bash
-# Update all AI agents (Claude, Codex, Antigravity, Copilot, Cursor, OpenCode)
+# Update all AI agents
 oct agent-update
+
+# Show update plan without executing installs
+oct agent-update --dry-run --explain
 
 # Probe local auth/session state without sending prompts
 oct session-refresh --dry-run
 
-# Check AI tool usage/quota
+# Check usage/quota
 oct usage
 
-# Show help
-oct help
+# Check release preflight
+oct release-doctor
+
+# Compare raw vs bootstrapped PATH resolution
+oct doctor shell
+```
+
+## 🍎 Menubar helper (macOS)
+
+The Swift menubar helper can be built and installed separately.
+
+```bash
+# Inspect helper resolution / launch mode
+oct menubar doctor
+
+# Build the Swift helper
+oct menubar build-helper
+
+# Install to ~/.local/bin/OctMenubarApp
+oct menubar install-helper
 ```
 
 ## ✅ Common Commands
 
-These 4 command groups cover most use cases.
-
-### 1) Update agents
+### Update agents
 
 ```bash
-# Update Claude/Codex/Antigravity/Copilot/Cursor/OpenCode
 oct agent-update
 ```
 
-### 1-1) Token-free session refresh
+### Token-free session refresh
 
 ```bash
-# Dry-run token-free probes
 oct session-refresh --dry-run
-
-# Schedule periodic session refresh
 oct schedule enable --task session-refresh --interval daily --hour 9
 ```
 
-### 2) Check usage
+### Check usage
 
 ```bash
-# Check current usage
 oct usage
 ```
 
-### 2-1) Interactive keys for `oct config`
+### Interactive `oct config`
 
 ```bash
 oct config
@@ -82,75 +96,29 @@ oct config
 - `Enter` on final `Confirm` row: save and exit
 - `Ctrl+C` / `Ctrl+Q` / `q`: cancel
 
-Environment-variable overrides now require the `OCT_` prefix.
+Environment-variable overrides require the `OCT_` prefix.
 - Example: `OCT_ENABLED_TOOLS=codex,agy`
 - Non-prefixed vars like `ENABLED_TOOLS` are ignored.
 - Legacy config values `gemini` and `gemini-cli` are still accepted and normalized to `agy`.
 
-### 3) Always-on monitoring
+### Always-on monitoring
 
 ```bash
-# Refresh every 10 seconds
 oct monitor --interval 10s
-
-# Run once
 oct monitor --once
-
-# Show top 5 by highest usage
 oct monitor --once --sort-by used --desc --top 5 --compact
 ```
 
-### 4) Usage alert configuration
+### Usage alert configuration
 
 ```bash
-# Show current alert config
 oct alert config show
-
-# Enable alerts / set base config
 oct alert config set enabled true
 oct alert config set cooldown_minutes 120
 oct alert config set threshold_percent 85
 oct alert config set critical_percent 98
 oct alert config set quiet_hours 00:00-08:00
 oct alert config set timezone Asia/Seoul
-```
-
-What each attribute does:
-- `enabled`: turn usage alerts on/off
-- `cooldown_minutes`: minimum resend interval (minutes) for the same provider/window
-- `threshold_percent`: default warning threshold (%)
-- `critical_percent`: CRITICAL threshold (%), overrides quiet hours/snooze
-- `quiet_hours`: mute window for non-critical alerts (`HH:MM-HH:MM`)
-- `timezone`: timezone used for quiet-hours evaluation (e.g. `Asia/Seoul`)
-
-#### Detailed thresholds (window/provider)
-
-```bash
-# Global thresholds by window
-oct alert config set threshold.5h 90
-oct alert config set threshold.7d 92
-
-# Provider-specific thresholds
-oct alert config set provider.codex.5h 94
-oct alert config set provider.codex.default 88
-oct alert config set provider.cursor.5h 93
-oct alert config set provider.opencode.default 87
-```
-
-#### Snooze
-
-```bash
-# Snooze all alerts for 2 hours
-oct alert snooze set --duration 2h
-
-# Snooze specific provider/window
-oct alert snooze set --duration 1h --provider codex --window 5h
-oct alert snooze set --duration 1h --provider cursor --window 5h
-oct alert snooze set --duration 1h --provider opencode --window 7d
-
-# Show/clear snooze
-oct alert snooze show
-oct alert snooze clear --provider codex --window 5h
 ```
 
 ## 🛠 Supported Agents
@@ -177,16 +145,6 @@ oct alert snooze clear --provider codex --window 5h
 | `antigravity-installer` | tool identity (`agy` / `antigravity`, legacy `gemini*`) | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` | Antigravity CLI |
 
 The built-in support matrix is regression-tested in `internal/update/manager_test.go` so manager fallback changes stay explicit.
-
-## 📖 Documentation
-
-For English documentation, start here:
-
-- [CONTEXT Docs Index](CONTEXT/README.en.md)
-- [Detailed Usage Guide](CONTEXT/en/USAGE.md)
-- [Usage Alerts](CONTEXT/en/USAGE_ALERTS.md)
-- [Always-on Monitoring](CONTEXT/en/MONITORING.md)
-- [Local Development & Testing](CONTEXT/en/LOCAL_TEST.md)
 
 ## Requirements
 
