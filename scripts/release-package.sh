@@ -70,6 +70,11 @@ npm publish --dry-run --access public "${PUBLISH_ARGS[@]}"
 echo
 echo "--- Step 5: Pushing git commit and tag ---"
 git push --follow-tags origin main
+if ! git ls-remote --tags origin | grep -q "refs/tags/${RELEASE_TAG}$"; then
+  echo "remote tag missing after --follow-tags; pushing explicit tag ${RELEASE_TAG}"
+  git push origin "refs/tags/${RELEASE_TAG}"
+fi
+git ls-remote --tags origin | grep "refs/tags/${RELEASE_TAG}$"
 
 echo
 echo "--- Step 6: Publishing via npm ---"
