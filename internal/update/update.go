@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -18,7 +19,32 @@ import (
 
 var brewInstallMu sync.Mutex
 
-func Run() error {
+type Options struct {
+	DryRun  bool
+	Explain bool
+	Output  io.Writer
+}
+
+type Plan struct {
+	Tool           Tool
+	Manager        Manager
+	Reason         string
+	ActiveBinary   string
+	ActivePath     string
+	VersionBefore  string
+	InstallCommand []string
+}
+
+func Run(opts ...Options) error {
+	config := Options{}
+	if len(opts) > 0 {
+		config = opts[0]
+	}
+	out := config.Output
+	if out == nil {
+		out = os.Stdout
+	}
+
 	enabledTools := viper.GetStringSlice("enabled_tools")
 	agentOrder := viper.GetStringSlice("agent_order")
 
@@ -26,19 +52,28 @@ func Run() error {
 	toolsToUpdate := GetFilteredTools(enabledTools, orderedTools)
 
 	if len(toolsToUpdate) == 0 {
-		fmt.Println("No tools selected for update.")
+		fmt.Fprintln(out, "No tools selected for update.")
+		return nil
+	}
+
+	plans := ExplainPlans(toolsToUpdate)
+	if config.Explain || config.DryRun {
+		printPlans(out, plans)
+	}
+	if config.DryRun {
+		fmt.Fprintf(out, "\nDry-run complete: %d tool(s) planned, 0 executed.\n", len(plans))
 		return nil
 	}
 
 	if runtime.GOOS == "darwin" && anyBrewManaged(toolsToUpdate) {
-		fmt.Println("Updating Homebrew...")
-		if out, err := commandWithEnv("brew", "update").CombinedOutput(); err != nil {
-			fmt.Fprintf(os.Stderr, "brew update failed: %v\n%s\n", err, out)
+		fmt.Fprintln(out, "Updating Homebrew...")
+		if brewOut, err := commandWithEnv("brew", "update").CombinedOutput(); err != nil {
+			fmt.Fprintf(os.Stderr, "brew update failed: %v\n%s\n", err, brewOut)
 		}
 	}
 
 	total := len(toolsToUpdate)
-	fmt.Printf("Updating %d tools...\n", total)
+	fmt.Fprintf(out, "Updating %d tools...\n", total)
 
 	g := new(errgroup.Group)
 	ctx := context.Background()
@@ -47,56 +82,55 @@ func Run() error {
 	failureCount := 0
 
 	for _, t := range toolsToUpdate {
+		tool := t
 		g.Go(func() error {
-			manager := ResolveManagerForInstall(t)
+			manager := ResolveManagerForInstall(tool)
 
 			mu.Lock()
 			count++
 			current := count
 
-			lines := ui.InlineIconLines(t.LobeIcon, 6, 3)
+			lines := ui.InlineIconLines(tool.LobeIcon, 6, 3)
 			if len(lines) >= 3 {
-				fmt.Printf("      %s\n", lines[0])
-				fmt.Printf("[%d/%d] %s %s: Detecting manager... (using %s)\n", current, total, lines[1], t.Colorize(t.Name), manager)
-				fmt.Printf("      %s\n", lines[2])
+				fmt.Fprintf(out, "      %s\n", lines[0])
+				fmt.Fprintf(out, "[%d/%d] %s %s: Detecting manager... (using %s)\n", current, total, lines[1], tool.Colorize(tool.Name), manager)
+				fmt.Fprintf(out, "      %s\n", lines[2])
 			} else {
-				fmt.Printf("[%d/%d] %s: Detecting manager... (using %s)\n", current, total, t.Colorize(t.Name), manager)
+				fmt.Fprintf(out, "[%d/%d] %s: Detecting manager... (using %s)\n", current, total, tool.Colorize(tool.Name), manager)
 			}
 			mu.Unlock()
 
-			versionBefore := manager.GetInstalledVersion(t)
+			versionBefore := manager.GetInstalledVersion(tool)
 			start := time.Now()
 			var output []byte
 			var err error
 			if manager == Brew {
 				brewInstallMu.Lock()
-				output, err = runInstallWithFallback(ctx, manager, t)
+				output, err = runInstallWithFallback(ctx, manager, tool)
 				brewInstallMu.Unlock()
 			} else {
-				output, err = runInstallWithFallback(ctx, manager, t)
+				output, err = runInstallWithFallback(ctx, manager, tool)
 			}
 			duration := time.Since(start).Round(time.Second)
-			versionAfter := manager.GetInstalledVersion(t)
+			versionAfter := manager.GetInstalledVersion(tool)
 
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
-				// brew upgrade exits non-zero when nothing to upgrade; treat that as up to date.
 				if manager.IsNoChangeOutput(string(output)) {
-					fmt.Printf("[%s] ✓ Already up to date in %v\n", t.Colorize(t.Name), duration)
+					fmt.Fprintf(out, "[%s] ✓ Already up to date in %v\n", tool.Colorize(tool.Name), duration)
 					return nil
 				}
-				fmt.Printf("[%s] ✗ Failed after %v: %v\nOutput: %s\n", t.Colorize(t.Name), duration, err, string(output))
+				fmt.Fprintf(out, "[%s] ✗ Failed after %v: %v\nOutput: %s\n", tool.Colorize(tool.Name), duration, err, string(output))
 				failureCount++
 				return nil
 			}
 
-			alreadyUpToDate := (versionBefore != "" && versionBefore == versionAfter) ||
-				manager.IsNoChangeOutput(string(output))
+			alreadyUpToDate := (versionBefore != "" && versionBefore == versionAfter) || manager.IsNoChangeOutput(string(output))
 			if alreadyUpToDate {
-				fmt.Printf("[%s] ✓ Already up to date in %v\n", t.Colorize(t.Name), duration)
+				fmt.Fprintf(out, "[%s] ✓ Already up to date in %v\n", tool.Colorize(tool.Name), duration)
 			} else {
-				fmt.Printf("[%s] ✓ Updated successfully in %v\n", t.Colorize(t.Name), duration)
+				fmt.Fprintf(out, "[%s] ✓ Updated successfully in %v\n", tool.Colorize(tool.Name), duration)
 			}
 			return nil
 		})
@@ -104,10 +138,79 @@ func Run() error {
 
 	_ = g.Wait()
 	if failureCount == 0 {
-		fmt.Println("\nAll tools updated successfully!")
+		fmt.Fprintln(out, "\nAll tools updated successfully!")
 		return nil
 	}
 	return fmt.Errorf("%w: %d tool(s) failed", errors.New("update failed"), failureCount)
+}
+
+func ExplainPlans(tools []Tool) []Plan {
+	plans := make([]Plan, 0, len(tools))
+	for _, tool := range tools {
+		manager, reason := explainResolvedManager(tool)
+		binary, path := firstResolvedBinary(tool)
+		cmd := manager.InstallCommandCtx(context.Background(), tool)
+		version := manager.GetInstalledVersion(tool)
+		plans = append(plans, Plan{
+			Tool:           tool,
+			Manager:        manager,
+			Reason:         reason,
+			ActiveBinary:   binary,
+			ActivePath:     path,
+			VersionBefore:  version,
+			InstallCommand: append([]string{cmd.Path}, cmd.Args[1:]...),
+		})
+	}
+	return plans
+}
+
+func explainResolvedManager(t Tool) (Manager, string) {
+	if m, ok := managerFromPackagePrefix(t.Package); ok {
+		return m, "package prefix"
+	}
+	if isAntigravityTool(t) {
+		return AntigravityInstaller, "tool-specific installer"
+	}
+	if isCursorTool(t) {
+		return CursorAgent, "tool-specific installer"
+	}
+	if m, ok := detectManagerFromBinaryPath(t); ok {
+		return m, "active binary path"
+	}
+	for _, manager := range []Manager{Brew, Pnpm, Yarn, Npm} {
+		if matchesInstalledPackage(manager, t) {
+			return manager, "installed package lookup"
+		}
+	}
+	if m, ok := defaultManagerForTool(t); ok {
+		return m, "default fallback"
+	}
+	return Unknown, "unknown"
+}
+
+func firstResolvedBinary(t Tool) (string, string) {
+	for _, binary := range preferredBinaries(t) {
+		if path, err := binaryLookup(binary); err == nil && strings.TrimSpace(path) != "" {
+			return binary, path
+		}
+	}
+	return "", ""
+}
+
+func printPlans(w io.Writer, plans []Plan) {
+	fmt.Fprintln(w, "update plan")
+	for _, plan := range plans {
+		fmt.Fprintf(w, "- %s\n", plan.Tool.Name)
+		fmt.Fprintf(w, "  manager: %s (%s)\n", plan.Manager, plan.Reason)
+		if plan.ActiveBinary != "" {
+			fmt.Fprintf(w, "  active binary: %s -> %s\n", plan.ActiveBinary, plan.ActivePath)
+		}
+		if plan.VersionBefore != "" {
+			fmt.Fprintf(w, "  version before: %s\n", plan.VersionBefore)
+		}
+		fmt.Fprintf(w, "  package: %s\n", plan.Tool.Package)
+		fmt.Fprintf(w, "  command: %s\n", strings.Join(plan.InstallCommand, " "))
+	}
 }
 
 func anyBrewManaged(tools []Tool) bool {
