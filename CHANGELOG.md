@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.4.15](https://github.com/suho-han/one-click-tools/compare/v0.4.14...v0.4.15) (2026-06-13)
+
+
+### Features
+
+* **menubar:** add auto refresh and provider detail menus ([c1d186b](https://github.com/suho-han/one-click-tools/commit/c1d186bbcc1383fcdc80f798286df40771337a4f))
+* **menubar:** add sectioned overview menu ([cc06801](https://github.com/suho-han/one-click-tools/commit/cc0680129057d50a8275c4a80249dbd43c956428))
+* **menubar:** add status snapshots and refresh actions ([9d90024](https://github.com/suho-han/one-click-tools/commit/9d90024817aea7c692a6bd0c563a81f4555107b5))
+* **menubar:** launch swift helper by default ([c6c7205](https://github.com/suho-han/one-click-tools/commit/c6c7205d13170757d4fcb56b1cb5082c7fb8e5d0))
+* **menubar:** scaffold swift popover helper ([8764208](https://github.com/suho-han/one-click-tools/commit/8764208a936174e1b5e904178b3439865e3c6a3e))
+* **menubar:** surface next auto refresh timing ([f763663](https://github.com/suho-han/one-click-tools/commit/f7636631489a33e915a0ac9758ea0d79fffbfd14))
+
+
+### Documentation
+
+* **menubar:** add improvement plan and ux design ([9e82fad](https://github.com/suho-han/one-click-tools/commit/9e82fad572b28d20b678c3a929acf95c8450db0b))
+* **menubar:** capture reference-ui iteration ([d6c967b](https://github.com/suho-han/one-click-tools/commit/d6c967b98c00bc0f38e55b16033f8b9244ce6d12))
+* **menubar:** plan swiftui popover migration ([357e767](https://github.com/suho-han/one-click-tools/commit/357e767ab29b826c838afd85bf2df9b9a11baf1d))
+* **release:** clarify npm publish path ([bfb960c](https://github.com/suho-han/one-click-tools/commit/bfb960c03597f5c8c960a43d2b01a234a1989eb4))
+* **release:** warn that release help runs release ([30b9787](https://github.com/suho-han/one-click-tools/commit/30b97875f4127bedf883fa312ff9669dd7302e17))
+
 ### [0.4.14](https://github.com/suho-han/one-click-tools/compare/v0.4.13...v0.4.14) (2026-06-10)
 
 
