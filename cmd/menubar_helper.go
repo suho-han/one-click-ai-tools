@@ -1,8 +1,12 @@
 package cmd
 
 import (
+	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -72,5 +76,58 @@ func menubarHelperCandidates(env map[string]string, execPath string, workingDir 
 		}
 	}
 
+	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+		appendCandidate(filepath.Join(home, ".local", "bin", "OctMenubarApp"))
+	}
+
 	return candidates
+}
+
+func buildMenubarHelper(projectDir string) error {
+	if runtime.GOOS != "darwin" {
+		return fmt.Errorf("menubar helper build is supported only on macOS")
+	}
+	cmd := exec.Command("swift", "build")
+	cmd.Dir = projectDir
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+func installMenubarHelper(projectDir string) (string, error) {
+	if runtime.GOOS != "darwin" {
+		return "", fmt.Errorf("menubar helper install is supported only on macOS")
+	}
+	src := filepath.Join(projectDir, ".build", "debug", "OctMenubarApp")
+	if info, err := os.Stat(src); err != nil || info.IsDir() {
+		return "", fmt.Errorf("built helper not found at %s (run 'oct menubar build-helper' first)", src)
+	}
+	dst, err := defaultMenubarInstallPath()
+	if err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return "", err
+	}
+	if err := copyExecutableFile(src, dst); err != nil {
+		return "", err
+	}
+	return dst, nil
+}
+
+func copyExecutableFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	if _, err := io.Copy(out, in); err != nil {
+		return err
+	}
+	return out.Chmod(0o755)
 }
