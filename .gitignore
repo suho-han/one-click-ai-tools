@@ -10,3 +10,6 @@ bin/
 dist/
 
 .DS_Store
+
+# Packaged release artifacts
+*.tgz
