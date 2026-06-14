@@ -16,13 +16,15 @@ func FetchClaudeUsage() UsageResult {
 	credsFile := filepath.Join(home, ".claude", ".credentials.json")
 
 	result := UsageResult{
-		Provider: "claude-code",
-		Period:   "current",
-		Used:     "n/a",
-		Limit:    "100",
-		Unit:     "percent",
-		Source:   "cli",
-		Status:   "error",
+		Provider:   "claude-code",
+		Plan:       "unknown",
+		PlanSource: "claude plan not exposed",
+		Period:     "current",
+		Used:       "n/a",
+		Limit:      "100",
+		Unit:       "percent",
+		Source:     "cli",
+		Status:     "error",
 	}
 
 	var token string
@@ -58,11 +60,16 @@ func FetchClaudeUsage() UsageResult {
 	}
 
 	if token == "" {
+		plan, source := detectClaudePlan(token)
+		result = withPlan(result, plan, source)
 		result.Status = "ok"
 		result.Used = "0"
 		result.Message = "No Claude OAuth token found (check ~/.claude/.credentials.json or CLAUDE_API_TOKEN)"
 		return result
 	}
+
+	plan, source := detectClaudePlan(token)
+	result = withPlan(result, plan, source)
 
 	endpoint := "https://api.anthropic.com/api/oauth/usage"
 	req, _ := http.NewRequest("GET", endpoint, nil)

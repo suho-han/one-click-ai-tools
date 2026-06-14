@@ -126,6 +126,8 @@ func TestMenubarAppleScriptEscapesCommand(t *testing.T) {
 func TestMenubarProviderDetailsIncludesDeepStatus(t *testing.T) {
 	details := menubarProviderDetails(usage.UsageResult{
 		Provider:     "Codex",
+		Plan:         "plus",
+		PlanSource:   "codex auth.jwt id_token",
 		Status:       "warn",
 		Used:         "88",
 		Limit:        "100",
@@ -139,7 +141,7 @@ func TestMenubarProviderDetailsIncludesDeepStatus(t *testing.T) {
 		},
 	})
 
-	for _, want := range []string{"Provider: Codex", "Status: warn", "5h: 88%", "7d: 64%", "Used: 88", "Limit: 100", "Source: local", "Detail: session logs", "Message: approaching threshold"} {
+	for _, want := range []string{"Provider: Codex", "Status: warn", "5h: 88%", "7d: 64%", "Plan: plus", "Plan source: codex auth.jwt id_token", "Used: 88", "Limit: 100", "Source: local", "Detail: session logs", "Message: approaching threshold"} {
 		found := false
 		for _, got := range details {
 			if strings.Contains(got, want) {

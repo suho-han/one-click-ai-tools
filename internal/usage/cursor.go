@@ -27,27 +27,27 @@ func cursorAPIUsageURL() string {
 func FetchCursorUsage() UsageResult {
 	// 1. User-supplied custom endpoint takes priority
 	if endpoint := strings.TrimSpace(os.Getenv("OCT_CURSOR_USAGE_URL")); endpoint != "" {
-		return fetchCursorCustomEndpoint(endpoint)
+		return withPlanDetection(fetchCursorCustomEndpoint(endpoint), detectCursorPlan)
 	}
 
 	// 2. Local auth token → known Cursor API
 	if token := readCursorAuthToken(); token != "" {
 		result, err := fetchCursorAPIUsage(token)
 		if err == nil {
-			return result
+			return withPlanDetection(result, detectCursorPlan)
 		}
 		local := FetchCursorLocalUsage()
 		local.Status = "warn"
 		local.Message = cursorReasonMessage("local_auth_api_failed", fmt.Sprintf("%s; API call failed: %v", local.Message, err))
 		local.Source = "local-auth"
-		return local
+		return withPlanDetection(local, detectCursorPlan)
 	}
 
 	// 3. Workspace storage count fallback
 	local := FetchCursorLocalUsage()
 	local.Status = "warn"
 	local.Message = cursorReasonMessage("local_auth_missing", "No Cursor auth token found; "+local.Message)
-	return local
+	return withPlanDetection(local, detectCursorPlan)
 }
 
 func fetchCursorCustomEndpoint(endpoint string) UsageResult {
@@ -205,14 +205,16 @@ func parseCursorAPIResponse(body []byte) (UsageResult, error) {
 
 func FetchCursorLocalUsage() UsageResult {
 	result := UsageResult{
-		Provider: "cursor",
-		Period:   "local",
-		Used:     "0",
-		Limit:    "n/a",
-		Unit:     "sessions",
-		Source:   "local",
-		Status:   "ok",
-		Message:  "No local Cursor workspace storage found",
+		Provider:   "cursor",
+		Plan:       "unknown",
+		PlanSource: "cursor plan not exposed",
+		Period:     "local",
+		Used:       "0",
+		Limit:      "n/a",
+		Unit:       "sessions",
+		Source:     "local",
+		Status:     "ok",
+		Message:    "No local Cursor workspace storage found",
 	}
 
 	count, paths := countCursorWorkspaceStorage()

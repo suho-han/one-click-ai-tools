@@ -12,14 +12,18 @@ import (
 
 func FetchCodexUsage() UsageResult {
 	result := UsageResult{
-		Provider: "codex",
-		Period:   "current",
-		Used:     "n/a",
-		Limit:    "100",
-		Unit:     "percent",
-		Source:   "local",
-		Status:   "error",
+		Provider:   "codex",
+		Plan:       "unknown",
+		PlanSource: "codex auth unavailable",
+		Period:     "current",
+		Used:       "n/a",
+		Limit:      "100",
+		Unit:       "percent",
+		Source:     "local",
+		Status:     "error",
 	}
+
+	result = withPlanDetection(result, detectCodexPlan)
 
 	home, _ := os.UserHomeDir()
 	sessionDir := filepath.Join(home, ".codex", "sessions")

@@ -15,7 +15,7 @@ import (
 
 func TestPrintJSON_SummarySchemaAndCounts(t *testing.T) {
 	results := []UsageResult{
-		{Provider: "alpha", Status: "ok", Used: "10"},
+		{Provider: "alpha", Plan: "plus", PlanSource: "codex auth.jwt id_token", Status: "ok", Used: "10"},
 		{Provider: "beta", Status: "ok", Used: "n/a"},                                          // warn: no numeric usage
 		{Provider: "cursor", Status: "ok", Used: "0", Message: "No data: No local logs found"}, // warn: zero with not-found signal
 		{Provider: "delta", Status: "warn", Used: "0", Message: "Partial: weekly bucket only"},
@@ -53,6 +53,12 @@ func TestPrintJSON_SummarySchemaAndCounts(t *testing.T) {
 	}
 	if _, ok := payload.Results[0]["period"]; ok {
 		t.Fatalf("compact JSON should omit verbose fields like period: %+v", payload.Results[0])
+	}
+	if payload.Results[0]["plan"] != "plus" {
+		t.Fatalf("expected compact JSON to include plan, got %+v", payload.Results[0])
+	}
+	if payload.Results[0]["plan_source"] != "codex auth.jwt id_token" {
+		t.Fatalf("expected compact JSON to include plan_source, got %+v", payload.Results[0])
 	}
 }
 

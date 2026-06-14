@@ -56,9 +56,6 @@ struct ProviderCard: Equatable, Identifiable {
         self.message = message
     }
 
-    var metricsLine: String {
-        metrics.map { "\($0.label) \($0.value)" }.joined(separator: " · ")
-    }
 }
 
 struct UsageMetric: Equatable {
@@ -104,11 +101,24 @@ struct UsageResponse: Decodable, Equatable {
 
     struct Result: Decodable, Equatable {
         let provider: String
+        let plan: String?
+        let planSource: String?
         let status: String
         let used: String
         let unit: String
         let buckets: [String: String]?
         let message: String?
+
+        enum CodingKeys: String, CodingKey {
+            case provider
+            case plan
+            case planSource = "plan_source"
+            case status
+            case used
+            case unit
+            case buckets
+            case message
+        }
     }
 
     let summary: Summary
@@ -143,7 +153,7 @@ extension UsageSnapshot {
                         UsageMetric(label: "5h", value: result.buckets?["5h"] ?? "-"),
                         UsageMetric(label: "7d", value: result.buckets?["7d"] ?? "-"),
                     ],
-                    message: result.message
+                    message: composedMessage(for: result)
                 )
             },
             note: status == .error ? "One or more providers need attention." : "Data comes from oct usage --json without submitting prompts."
@@ -215,6 +225,20 @@ extension UsageSnapshot {
 
     private static func hasPartialSignal(_ message: String) -> Bool {
         message.hasPrefix("partial:") || message.contains("partial data")
+    }
+
+    private static func composedMessage(for result: UsageResponse.Result) -> String? {
+        let trimmedMessage = result.message?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedPlan = result.plan?.trimmingCharacters(in: .whitespacesAndNewlines)
+
+        if let trimmedPlan, !trimmedPlan.isEmpty, trimmedPlan.lowercased() != "unknown" {
+            if let trimmedMessage, !trimmedMessage.isEmpty {
+                return "Plan: \(trimmedPlan) · \(trimmedMessage)"
+            }
+            return "Plan: \(trimmedPlan)"
+        }
+
+        return trimmedMessage?.isEmpty == false ? trimmedMessage : nil
     }
 }
 

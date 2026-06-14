@@ -10,13 +10,15 @@ import (
 
 func FetchAntigravityLocalUsage() UsageResult {
 	result := UsageResult{
-		Provider: "antigravity",
-		Period:   "local",
-		Used:     "0",
-		Limit:    "n/a",
-		Unit:     "sessions",
-		Source:   "local",
-		Status:   "ok",
+		Provider:   "antigravity",
+		Plan:       "unknown",
+		PlanSource: "antigravity cli does not expose tier; see app settings",
+		Period:     "local",
+		Used:       "0",
+		Limit:      "n/a",
+		Unit:       "sessions",
+		Source:     "local",
+		Status:     "ok",
 	}
 
 	home, err := os.UserHomeDir()
@@ -42,11 +44,11 @@ func FetchAntigravityLocalUsage() UsageResult {
 }
 
 func FetchAntigravityUsage() UsageResult {
-	return FetchAntigravityLocalUsage()
+	return withPlanDetection(FetchAntigravityLocalUsage(), detectAntigravityPlan)
 }
 
 func FetchGeminiLocalUsage() UsageResult {
-	return FetchAntigravityLocalUsage()
+	return withPlanDetection(FetchAntigravityLocalUsage(), detectAntigravityPlan)
 }
 
 func FetchGeminiUsage() UsageResult {

@@ -16,6 +16,8 @@ import (
 
 type UsageResult struct {
 	Provider     string            `json:"provider"`
+	Plan         string            `json:"plan,omitempty"`
+	PlanSource   string            `json:"plan_source,omitempty"`
 	Period       string            `json:"period"`
 	Used         string            `json:"used"`
 	Limit        string            `json:"limit"`
@@ -92,11 +94,15 @@ func RenderTable(w io.Writer, results []UsageResult) {
 		displayMode = "used"
 	}
 
-	fmt.Fprintf(w, "%-16s %-12s %-8s %-8s %-12s %-12s %-10s %-8s %-8s %s\n",
-		"provider", "period", "5h", "1w", "used", "limit", "unit", "source", "status", "message")
+	fmt.Fprintf(w, "%-16s %-12s %-12s %-8s %-8s %-12s %-12s %-10s %-8s %-8s %s\n",
+		"provider", "plan", "period", "5h", "1w", "used", "limit", "unit", "source", "status", "message")
 	for _, r := range results {
 		providerLabel := providerDisplayLabel(r.Provider)
 		paddedProvider := colorizeProvider(padRightRunes(providerLabel, 16), r.Provider)
+		planLabel := r.Plan
+		if strings.TrimSpace(planLabel) == "" {
+			planLabel = "unknown"
+		}
 
 		fiveHour := "-"
 		oneWeek := "-"
@@ -124,8 +130,8 @@ func RenderTable(w io.Writer, results []UsageResult) {
 		statusLabel := colorizeStatus(fmt.Sprintf("%-8s", r.Status), r.Status)
 		message := colorizeMessage(truncateText(r.Message, messageWidth), r.Status)
 
-		fmt.Fprintf(w, "%s %-12s %-8s %-8s %-12s %-12s %-10s %-8s %s %s\n",
-			paddedProvider, r.Period, fiveHour, oneWeek, displayUsed, r.Limit, r.Unit, r.Source, statusLabel, message)
+		fmt.Fprintf(w, "%s %-12s %-12s %-8s %-8s %-12s %-12s %-10s %-8s %s %s\n",
+			paddedProvider, planLabel, r.Period, fiveHour, oneWeek, displayUsed, r.Limit, r.Unit, r.Source, statusLabel, message)
 	}
 }
 
@@ -294,12 +300,14 @@ func remainingFromUsed(used string) (string, bool) {
 
 func PrintJSON(results []UsageResult) error {
 	type UsageResultCompact struct {
-		Provider string            `json:"provider"`
-		Status   string            `json:"status"`
-		Used     string            `json:"used"`
-		Unit     string            `json:"unit"`
-		Buckets  map[string]string `json:"buckets,omitempty"`
-		Message  string            `json:"message,omitempty"`
+		Provider   string            `json:"provider"`
+		Plan       string            `json:"plan,omitempty"`
+		PlanSource string            `json:"plan_source,omitempty"`
+		Status     string            `json:"status"`
+		Used       string            `json:"used"`
+		Unit       string            `json:"unit"`
+		Buckets    map[string]string `json:"buckets,omitempty"`
+		Message    string            `json:"message,omitempty"`
 	}
 	type UsageSummary struct {
 		Total int `json:"total"`
@@ -317,12 +325,14 @@ func PrintJSON(results []UsageResult) error {
 
 	for _, r := range results {
 		payload.Results = append(payload.Results, UsageResultCompact{
-			Provider: r.Provider,
-			Status:   r.Status,
-			Used:     r.Used,
-			Unit:     r.Unit,
-			Buckets:  r.Buckets,
-			Message:  truncateText(r.Message, 48),
+			Provider:   r.Provider,
+			Plan:       r.Plan,
+			PlanSource: r.PlanSource,
+			Status:     r.Status,
+			Used:       r.Used,
+			Unit:       r.Unit,
+			Buckets:    r.Buckets,
+			Message:    truncateText(r.Message, 48),
 		})
 
 		switch classifySummaryStatus(r) {

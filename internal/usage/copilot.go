@@ -16,14 +16,18 @@ import (
 
 func FetchCopilotLocalUsage() UsageResult {
 	result := UsageResult{
-		Provider: "copilot",
-		Period:   "local",
-		Used:     "0",
-		Limit:    "n/a",
-		Unit:     "msgs",
-		Source:   "local",
-		Status:   "ok",
+		Provider:   "copilot",
+		Plan:       "unknown",
+		PlanSource: "github copilot plan not exposed by current api integration",
+		Period:     "local",
+		Used:       "0",
+		Limit:      "n/a",
+		Unit:       "msgs",
+		Source:     "local",
+		Status:     "ok",
 	}
+
+	result = withPlanDetection(result, detectCopilotPlan)
 
 	home, _ := os.UserHomeDir()
 	sessionDir := filepath.Join(home, ".copilot", "session-state")
@@ -84,14 +88,18 @@ func FetchCopilotLocalUsage() UsageResult {
 
 func FetchCopilotUsage() UsageResult {
 	result := UsageResult{
-		Provider: "copilot",
-		Period:   "current",
-		Used:     "n/a",
-		Limit:    "n/a",
-		Unit:     "requests",
-		Source:   "api",
-		Status:   "error",
+		Provider:   "copilot",
+		Plan:       "unknown",
+		PlanSource: "github copilot plan not exposed by current api integration",
+		Period:     "current",
+		Used:       "n/a",
+		Limit:      "n/a",
+		Unit:       "requests",
+		Source:     "api",
+		Status:     "error",
 	}
+
+	result = withPlanDetection(result, detectCopilotPlan)
 
 	token := viper.GetString("github_api_token")
 	if token == "" {

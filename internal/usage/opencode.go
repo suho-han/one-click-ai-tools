@@ -15,15 +15,19 @@ var userHomeDir = os.UserHomeDir
 
 func FetchOpenCodeUsage() UsageResult {
 	result := UsageResult{
-		Provider: "opencode",
-		Period:   "current",
-		Used:     "0",
-		Limit:    "100",
-		Unit:     "percent",
-		Source:   "local",
-		Status:   "warn",
-		Message:  "No data: No local OpenCode session logs found",
+		Provider:   "opencode",
+		Plan:       "unknown",
+		PlanSource: "local opencode session logs do not expose plan",
+		Period:     "current",
+		Used:       "0",
+		Limit:      "100",
+		Unit:       "percent",
+		Source:     "local",
+		Status:     "warn",
+		Message:    "No data: No local OpenCode session logs found",
 	}
+
+	result = withPlanDetection(result, detectOpenCodePlan)
 
 	logFiles := collectOpenCodeLogFiles()
 	if len(logFiles) == 0 {

@@ -132,6 +132,9 @@ func menubarProviderLine(result usage.UsageResult) string {
 	if provider == "" {
 		provider = "Unknown"
 	}
+	if plan := strings.TrimSpace(result.Plan); plan != "" && !strings.EqualFold(plan, "unknown") {
+		provider += " (" + plan + ")"
+	}
 	five := bucketVal(result, "5h", "used")
 	seven := bucketVal(result, "7d", "used")
 	status := classifyMenubarStatus(result.Status)
@@ -156,6 +159,12 @@ func menubarProviderDetails(result usage.UsageResult) []string {
 		"Status: " + classifyMenubarStatus(result.Status),
 		"5h: " + bucketVal(result, "5h", "used"),
 		"7d: " + bucketVal(result, "7d", "used"),
+	}
+	if plan := strings.TrimSpace(result.Plan); plan != "" {
+		details = append(details, "Plan: "+plan)
+	}
+	if source := strings.TrimSpace(result.PlanSource); source != "" {
+		details = append(details, "Plan source: "+truncateMenubarText(source, 48))
 	}
 	if used := strings.TrimSpace(result.Used); used != "" {
 		details = append(details, "Used: "+used)
