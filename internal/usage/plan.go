@@ -5,11 +5,15 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/suho-han/one-click-tools/internal/netclient"
 )
 
 var usageCommandOutput = defaultUsageCommandOutput
@@ -83,10 +87,16 @@ func detectClaudePlan(token string) (string, string) {
 	if plan := detectPlanFromJWTToken(token); plan != "" {
 		return plan, "claude oauth token claim"
 	}
+	if plan, source := detectClaudeLocalConfigPlan(); plan != "" || source != "" {
+		return plan, source
+	}
 	return "unknown", "claude plan not exposed"
 }
 
 func detectCopilotPlan() (string, string) {
+	if source := detectCopilotBillingPlanSource(); source != "" {
+		return "unknown", source
+	}
 	return "unknown", "github copilot plan not exposed by current api integration"
 }
 
@@ -129,6 +139,86 @@ func parseCursorAboutPlan(output string) string {
 		return normalizePlanLabel(strings.Join(fields[2:], " "))
 	}
 	return ""
+}
+
+func detectClaudeLocalConfigPlan() (string, string) {
+	home, err := os.UserHomeDir()
+	if err != nil || strings.TrimSpace(home) == "" {
+		return "", ""
+	}
+	path := filepath.Join(home, ".claude.json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", ""
+	}
+	var cfg struct {
+		OpusProMigrationComplete    bool `json:"opusProMigrationComplete"`
+		Sonnet1m45MigrationComplete bool `json:"sonnet1m45MigrationComplete"`
+	}
+	if err := json.Unmarshal(data, &cfg); err != nil {
+		return "", ""
+	}
+	if cfg.OpusProMigrationComplete {
+		return "pro", "claude local config heuristic (.claude.json opusProMigrationComplete=true)"
+	}
+	if cfg.Sonnet1m45MigrationComplete {
+		return "unknown", "claude local config heuristic (.claude.json sonnet1m45MigrationComplete=true)"
+	}
+	return "", ""
+}
+
+func detectCopilotBillingPlanSource() string {
+	token, source := resolveCopilotAuthTokenForPlan()
+	if strings.TrimSpace(token) == "" {
+		return "github copilot auth token unavailable for plan lookup"
+	}
+	req, _ := http.NewRequest("GET", "https://api.github.com/user", nil)
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("Authorization", "Bearer "+token)
+	resp, err := netclient.DefaultClient.DoWithRetry(req)
+	if err != nil {
+		return fmt.Sprintf("copilot plan lookup failed via %s: %s", source, netclient.FormatError(resp, err))
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	var userData struct {
+		Login string `json:"login"`
+	}
+	if resp.StatusCode != http.StatusOK || json.Unmarshal(body, &userData) != nil || strings.TrimSpace(userData.Login) == "" {
+		return fmt.Sprintf("copilot plan lookup failed via %s: github /user unavailable", source)
+	}
+	billingReq, _ := http.NewRequest("GET", fmt.Sprintf("https://api.github.com/users/%s/settings/billing/premium_request/usage", userData.Login), nil)
+	billingReq.Header.Set("Accept", "application/vnd.github+json")
+	billingReq.Header.Set("Authorization", "Bearer "+token)
+	billingReq.Header.Set("X-GitHub-Api-Version", "2026-03-10")
+	billingResp, billingErr := netclient.DefaultClient.DoWithRetry(billingReq)
+	if billingErr != nil {
+		return fmt.Sprintf("copilot billing api unreachable via %s: %s", source, netclient.FormatError(billingResp, billingErr))
+	}
+	defer billingResp.Body.Close()
+	if billingResp.StatusCode == http.StatusNotFound {
+		return fmt.Sprintf("copilot billing api returned 404 via %s (no public plan field)", source)
+	}
+	if billingResp.StatusCode == http.StatusForbidden {
+		return fmt.Sprintf("copilot billing api returned 403 via %s (missing scope or no seat visibility)", source)
+	}
+	return fmt.Sprintf("copilot billing api via %s exposes usage only, not plan", source)
+}
+
+func resolveCopilotAuthTokenForPlan() (string, string) {
+	if token := strings.TrimSpace(os.Getenv("COPILOT_GITHUB_TOKEN")); token != "" {
+		return token, "COPILOT_GITHUB_TOKEN"
+	}
+	if token := strings.TrimSpace(os.Getenv("GH_TOKEN")); token != "" {
+		return token, "GH_TOKEN"
+	}
+	if token := strings.TrimSpace(os.Getenv("GITHUB_TOKEN")); token != "" {
+		return token, "GITHUB_TOKEN"
+	}
+	if token, err := usageCommandOutput(3*time.Second, "gh", "auth", "token"); err == nil && strings.TrimSpace(token) != "" {
+		return strings.TrimSpace(token), "gh auth token"
+	}
+	return "", ""
 }
 
 func detectPlanFromJWTToken(token string) string {

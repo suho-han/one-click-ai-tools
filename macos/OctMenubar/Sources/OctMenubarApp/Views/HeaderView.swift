@@ -5,34 +5,34 @@ struct HeaderView: View {
     let isRefreshing: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(snapshot.title)
-                        .font(.system(size: 20, weight: .semibold))
+                        .font(.system(size: 19, weight: .semibold))
                     Text(snapshot.summaryLine)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
                 statusPill
             }
 
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 metaCard(label: "Last refresh", value: snapshot.lastRefreshLabel)
                 metaCard(label: "Next refresh", value: snapshot.nextRefreshLabel)
             }
 
             HStack {
                 Label(snapshot.autoRefreshLabel, systemImage: isRefreshing ? "arrow.triangle.2.circlepath.circle.fill" : "clock")
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(isRefreshing ? Color.accentColor : .secondary)
                 Spacer()
             }
 
             if let note = snapshot.note {
                 Text(note)
-                    .font(.system(size: 12))
+                    .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .lineLimit(2)
             }
@@ -52,16 +52,18 @@ struct HeaderView: View {
     }
 
     private func metaCard(label: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(label)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
             Text(value)
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .foregroundStyle(.primary)
+            Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .fill(Color(nsColor: .controlBackgroundColor))

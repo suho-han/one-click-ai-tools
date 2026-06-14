@@ -3,6 +3,10 @@ import SwiftUI
 struct PopoverView: View {
     @ObservedObject var viewModel: UsageViewModel
 
+    private let providerColumns = [
+        GridItem(.adaptive(minimum: 180, maximum: 220), spacing: 10, alignment: .top),
+    ]
+
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HeaderView(snapshot: viewModel.snapshot, isRefreshing: viewModel.isRefreshing)
@@ -24,8 +28,10 @@ struct PopoverView: View {
                             )
                     }
 
-                    ForEach(viewModel.snapshot.providers) { provider in
-                        ProviderCardView(provider: provider)
+                    LazyVGrid(columns: providerColumns, alignment: .leading, spacing: 10) {
+                        ForEach(viewModel.snapshot.providers) { provider in
+                            ProviderCardView(provider: provider)
+                        }
                     }
                 }
             }
@@ -37,7 +43,7 @@ struct PopoverView: View {
             )
         }
         .padding(16)
-        .frame(width: 388, height: 560, alignment: .topLeading)
+        .frame(width: 640, height: 720, alignment: .topLeading)
         .background(
             LinearGradient(
                 colors: [

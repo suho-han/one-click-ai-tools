@@ -44,13 +44,17 @@ struct UsageSnapshot: Equatable {
 struct ProviderCard: Equatable, Identifiable {
     let id: String
     let name: String
+    let plan: String
+    let planSource: String?
     let status: ProviderStatus
     let metrics: [UsageMetric]
     let message: String?
 
-    init(name: String, status: ProviderStatus, metrics: [UsageMetric], message: String?) {
+    init(name: String, plan: String = "unknown", planSource: String? = nil, status: ProviderStatus, metrics: [UsageMetric], message: String?) {
         self.id = name
         self.name = name
+        self.plan = plan
+        self.planSource = planSource
         self.status = status
         self.metrics = metrics
         self.message = message
@@ -148,6 +152,8 @@ extension UsageSnapshot {
             providers: response.results.map { result in
                 ProviderCard(
                     name: result.provider,
+                    plan: normalizedPlan(result.plan),
+                    planSource: normalizedPlanSource(result.planSource),
                     status: effectiveStatus(for: result),
                     metrics: [
                         UsageMetric(label: "5h", value: result.buckets?["5h"] ?? "-"),
@@ -229,16 +235,30 @@ extension UsageSnapshot {
 
     private static func composedMessage(for result: UsageResponse.Result) -> String? {
         let trimmedMessage = result.message?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedPlan = result.plan?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedPlan = normalizedPlan(result.plan)
+        let trimmedPlanSource = normalizedPlanSource(result.planSource)
 
-        if let trimmedPlan, !trimmedPlan.isEmpty, trimmedPlan.lowercased() != "unknown" {
-            if let trimmedMessage, !trimmedMessage.isEmpty {
-                return "Plan: \(trimmedPlan) · \(trimmedMessage)"
-            }
-            return "Plan: \(trimmedPlan)"
+        var components: [String] = []
+        if trimmedPlan.lowercased() != "unknown" {
+            components.append("Plan: \(trimmedPlan)")
         }
+        if let trimmedMessage, !trimmedMessage.isEmpty {
+            components.append(trimmedMessage)
+        }
+        if components.isEmpty, let trimmedPlanSource, !trimmedPlanSource.isEmpty {
+            components.append("Plan source: \(trimmedPlanSource)")
+        }
+        return components.isEmpty ? nil : components.joined(separator: " · ")
+    }
 
-        return trimmedMessage?.isEmpty == false ? trimmedMessage : nil
+    private static func normalizedPlan(_ raw: String?) -> String {
+        let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? "unknown" : trimmed
+    }
+
+    private static func normalizedPlanSource(_ raw: String?) -> String? {
+        let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
 
