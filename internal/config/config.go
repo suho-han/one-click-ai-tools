@@ -60,13 +60,16 @@ func MigrateLegacyConfig() error {
 	viper.Set("enabled_tools", enabledTools)
 
 	// Create directory if not exists
-	err = os.MkdirAll(filepath.Dir(newPath), 0755)
+	err = os.MkdirAll(filepath.Dir(newPath), 0o700)
 	if err != nil {
 		return err
 	}
 
 	err = viper.WriteConfigAs(newPath)
 	if err != nil {
+		return err
+	}
+	if err := os.Chmod(newPath, 0o600); err != nil {
 		return err
 	}
 

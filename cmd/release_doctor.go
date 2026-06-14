@@ -129,7 +129,7 @@ func firstNonEmptyLine(value string) string {
 
 func runDoctorCommand(name string, args ...string) string {
 	out, err := execenv.Command(name, args...).CombinedOutput()
-	if err != nil && len(out) == 0 {
+	if err != nil {
 		return ""
 	}
 	return strings.TrimSpace(string(out))

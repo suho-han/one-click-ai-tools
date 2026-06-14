@@ -227,12 +227,15 @@ func writeConfig() error {
 		configPath = filepath.Join(home, ".oct", "config.yaml")
 	}
 
-	err := os.MkdirAll(filepath.Dir(configPath), 0755)
+	err := os.MkdirAll(filepath.Dir(configPath), 0o700)
 	if err != nil {
 		return err
 	}
 
-	return viper.WriteConfigAs(configPath)
+	if err := viper.WriteConfigAs(configPath); err != nil {
+		return err
+	}
+	return os.Chmod(configPath, 0o600)
 }
 
 func runInteractiveConfig() ([]string, []string, string, bool, error) {

@@ -25,7 +25,7 @@ type usageModel struct {
 func (m usageModel) Init() tea.Cmd {
 	return tea.Batch(
 		func() tea.Msg {
-			res, err := usage.GetUsage()
+			res, err := usageFetcher()
 			if err != nil {
 				return err
 			}
@@ -69,6 +69,8 @@ func (m usageModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 type spinnerMsg struct{}
 type switchProviderMsg struct{}
+
+var usageFetcher = usage.GetUsage
 
 func shouldAutoJSONFallback(jsonMode bool, isTTY bool) bool {
 	return !jsonMode && !isTTY
@@ -127,7 +129,7 @@ To properly fetch usage, ensure you are authenticated:
   - Codex:   Automatically reads from local session logs
 
 Legacy aliases 'gemini' and 'gemini-cli' still map to 'agy' for compatibility.`,
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		jsonMode, _ := cmd.Flags().GetBool("json")
 		notifyMode, _ := cmd.Flags().GetBool("notify")
 
@@ -143,14 +145,15 @@ Legacy aliases 'gemini' and 'gemini-cli' still map to 'agy' for compatibility.`,
 		}
 
 		if jsonMode {
-			results, err := usage.GetUsage()
+			results, err := usageFetcher()
 			if err != nil {
-				fmt.Printf("Error fetching usage: %v\n", err)
-				return
+				return fmt.Errorf("fetch usage: %w", err)
 			}
 			maybeSendUsageAlerts(results, notifyMode)
-			_ = usage.PrintJSON(results)
-			return
+			if err := usage.PrintJSON(results); err != nil {
+				return fmt.Errorf("print usage json: %w", err)
+			}
+			return nil
 		}
 
 		selectedTools := usageOrderedTools()
@@ -168,14 +171,12 @@ Legacy aliases 'gemini' and 'gemini-cli' still map to 'agy' for compatibility.`,
 
 		finalModel, err := p.Run()
 		if err != nil {
-			fmt.Printf("Error: %v\n", err)
-			return
+			return fmt.Errorf("run usage ui: %w", err)
 		}
 
 		fm := finalModel.(usageModel)
 		if fm.err != nil {
-			fmt.Printf("Error fetching usage: %v\n", fm.err)
-			return
+			return fmt.Errorf("fetch usage: %w", fm.err)
 		}
 
 		if len(fm.results) > 0 {
@@ -183,6 +184,7 @@ Legacy aliases 'gemini' and 'gemini-cli' still map to 'agy' for compatibility.`,
 			usage.PrintTable(fm.results)
 			fmt.Println("\nTip: Run 'oct usage --help' for authentication instructions.")
 		}
+		return nil
 	},
 }
 

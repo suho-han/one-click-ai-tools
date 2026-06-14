@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -106,11 +107,29 @@ func initConfig() {
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err == nil {
-		// fmt.Println("Using config file:", viper.ConfigFileUsed())
+		return
 	} else {
-		// Try to migrate if config not found
-		if err := config.MigrateLegacyConfig(); err != nil {
-			// fmt.Printf("Migration failed: %v\n", err)
+		var notFound viper.ConfigFileNotFoundError
+		if errors.As(err, &notFound) {
+			if cfgFile != "" {
+				fmt.Fprintf(os.Stderr, "failed to read config file %q: %v\n", cfgFile, err)
+				os.Exit(1)
+			}
+			if migrateErr := config.MigrateLegacyConfig(); migrateErr != nil {
+				fmt.Fprintf(os.Stderr, "failed to migrate legacy config: %v\n", migrateErr)
+				os.Exit(1)
+			}
+			return
 		}
+
+		configPath := cfgFile
+		if configPath == "" {
+			configPath = viper.ConfigFileUsed()
+		}
+		if configPath == "" {
+			configPath = "$HOME/.oct/config.yaml"
+		}
+		fmt.Fprintf(os.Stderr, "failed to load config %s: %v\n", configPath, err)
+		os.Exit(1)
 	}
 }

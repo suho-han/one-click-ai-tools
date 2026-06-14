@@ -1,9 +1,11 @@
 package cmd
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/spf13/viper"
+	"github.com/suho-han/one-click-tools/internal/usage"
 )
 
 func TestShouldAutoJSONFallback(t *testing.T) {
@@ -55,5 +57,20 @@ func TestUsageHelpUsesAntigravityCanonicalWording(t *testing.T) {
 	}
 	if !contains(got, "Legacy aliases 'gemini' and 'gemini-cli' still map to 'agy' for compatibility.") {
 		t.Fatalf("expected canonical legacy-alias wording, got: %s", got)
+	}
+}
+
+func TestUsageCommandReturnsErrorForJSONFetchFailure(t *testing.T) {
+	orig := usageFetcher
+	usageFetcher = func() ([]usage.UsageResult, error) {
+		return nil, fmt.Errorf("boom")
+	}
+	defer func() { usageFetcher = orig }()
+
+	cmd := *usageCmd
+	cmd.SetArgs([]string{"--json"})
+	err := cmd.RunE(&cmd, nil)
+	if err == nil || !contains(err.Error(), "fetch usage") {
+		t.Fatalf("expected fetch usage error, got %v", err)
 	}
 }
