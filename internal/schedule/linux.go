@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 )
 
@@ -22,7 +23,7 @@ func (l *Linux) Enable(task Task, interval string, hour int) error {
 	os.MkdirAll(path.Dir(logPath), 0o755)
 
 	cronExpr := cronExpression(interval, hour)
-	cronEntry := fmt.Sprintf("%s %s %s >> %s 2>&1  %s", cronExpr, binPath, cfg.Command, logPath, cronMarker(task))
+	cronEntry := fmt.Sprintf("%s %s %s >> %s 2>&1 %s", cronExpr, shellQuote(binPath), shellQuote(cfg.Command), shellQuote(logPath), cronMarker(task))
 
 	out, err := linuxCrontabList()
 	if err != nil {
@@ -106,4 +107,8 @@ func cronExpression(interval string, hour int) string {
 
 func cronMarker(task Task) string {
 	return fmt.Sprintf("# oct-managed:%s", task)
+}
+
+func shellQuote(value string) string {
+	return strconv.Quote(value)
 }

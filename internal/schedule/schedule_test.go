@@ -79,3 +79,34 @@ func TestTaskHelpers(t *testing.T) {
 		t.Fatalf("unexpected launch agent label: %q", got)
 	}
 }
+
+func TestParseInterval(t *testing.T) {
+	if got, err := ParseInterval("daily"); err != nil || got != "daily" {
+		t.Fatalf("ParseInterval(daily) = %q, %v", got, err)
+	}
+	if got, err := ParseInterval("weekly"); err != nil || got != "weekly" {
+		t.Fatalf("ParseInterval(weekly) = %q, %v", got, err)
+	}
+	if _, err := ParseInterval("monthly"); err == nil {
+		t.Fatal("expected ParseInterval to reject unsupported interval")
+	}
+}
+
+func TestParseHour(t *testing.T) {
+	if got, err := ParseHour("9"); err != nil || got != 9 {
+		t.Fatalf("ParseHour(9) = %d, %v", got, err)
+	}
+	for _, raw := range []string{"-1", "24", "abc"} {
+		if _, err := ParseHour(raw); err == nil {
+			t.Fatalf("expected ParseHour to reject %q", raw)
+		}
+	}
+}
+
+func TestWindowsTaskCommandQuotesExecutablePath(t *testing.T) {
+	got := windowsTaskCommand(`C:\Program Files\oct\oct.exe`, "session-refresh")
+	want := `"C:\Program Files\oct\oct.exe" session-refresh`
+	if got != want {
+		t.Fatalf("windowsTaskCommand() = %q, want %q", got, want)
+	}
+}

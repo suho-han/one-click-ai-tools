@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 )
 
@@ -69,6 +70,27 @@ func ParseTask(raw string) (Task, error) {
 	default:
 		return "", fmt.Errorf("unsupported schedule task: %s", raw)
 	}
+}
+
+func ParseInterval(raw string) (string, error) {
+	interval := strings.ToLower(strings.TrimSpace(raw))
+	switch interval {
+	case "daily", "weekly":
+		return interval, nil
+	default:
+		return "", fmt.Errorf("unsupported interval %q (use daily or weekly)", raw)
+	}
+}
+
+func ParseHour(raw string) (int, error) {
+	hour, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return 0, fmt.Errorf("invalid hour %q: must be 0-23", raw)
+	}
+	if hour < 0 || hour > 23 {
+		return 0, fmt.Errorf("invalid hour %q: must be 0-23", raw)
+	}
+	return hour, nil
 }
 
 func taskDetails(task Task) (taskConfig, error) {

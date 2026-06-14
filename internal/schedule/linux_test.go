@@ -48,7 +48,7 @@ func TestLinuxEnableWritesTaskSpecificCronEntryWithoutDuplicates(t *testing.T) {
 	if strings.Count(written, cronMarker(AgentUpdateTask)) != 1 {
 		t.Fatalf("expected exactly one managed entry, got %q", written)
 	}
-	if !strings.Contains(written, "/tmp/oct-under-test agent-update >> /tmp/test-home/.oct/logs/agent-update.log") {
+	if !strings.Contains(written, `"/tmp/oct-under-test" "agent-update" >> "/tmp/test-home/.oct/logs/agent-update.log"`) {
 		t.Fatalf("expected current binary + task log path, got %q", written)
 	}
 	if !strings.Contains(written, "0 3 * * *") {

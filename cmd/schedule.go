@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/spf13/cobra"
 	"github.com/suho-han/one-click-tools/internal/schedule"
@@ -38,9 +37,18 @@ var enableCmd = &cobra.Command{
 			return
 		}
 
-		interval, _ := cmd.Flags().GetString("interval")
+		rawInterval, _ := cmd.Flags().GetString("interval")
+		interval, err := schedule.ParseInterval(rawInterval)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
 		hourStr, _ := cmd.Flags().GetString("hour")
-		hour, _ := strconv.Atoi(hourStr)
+		hour, err := schedule.ParseHour(hourStr)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
 		task, err := selectedScheduleTask(cmd)
 		if err != nil {
 			fmt.Println(err)

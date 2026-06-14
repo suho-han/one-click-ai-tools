@@ -20,7 +20,7 @@ func (w *Windows) Enable(task Task, interval string, hour int) error {
 
 	scheduleType := windowsScheduleType(interval)
 	startTime := fmt.Sprintf("%02d:00", hour)
-	cmd := exec.Command("schtasks", "/Create", "/TN", taskName, "/TR", binPath+" "+cfg.Command, "/SC", scheduleType, "/ST", startTime, "/F")
+	cmd := exec.Command("schtasks", "/Create", "/TN", taskName, "/TR", windowsTaskCommand(binPath, cfg.Command), "/SC", scheduleType, "/ST", startTime, "/F")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("schtasks failed: %v, output: %s", err, string(output))
 	}
@@ -56,4 +56,8 @@ func windowsTaskName(task Task) string {
 		return "OneClickToolsSessionRefresh"
 	}
 	return "OneClickToolsUpdate"
+}
+
+func windowsTaskCommand(binPath, command string) string {
+	return fmt.Sprintf("\"%s\" %s", binPath, command)
 }
