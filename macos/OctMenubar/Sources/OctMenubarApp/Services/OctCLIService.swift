@@ -4,15 +4,18 @@ struct OctCLIService {
     let executableURL: URL
     let searchedPaths: [String]
     var refreshInterval: TimeInterval = 60
+    var processTimeout: TimeInterval = 20
 
     init(
         executableURL: URL? = nil,
         refreshInterval: TimeInterval = 60,
+        processTimeout: TimeInterval = 20,
         environment: [String: String] = ProcessInfo.processInfo.environment,
         currentDirectoryURL: URL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath),
         processExecutableURL: URL = URL(fileURLWithPath: CommandLine.arguments[0])
     ) {
         self.refreshInterval = refreshInterval
+        self.processTimeout = processTimeout
         if let executableURL {
             self.executableURL = executableURL
             self.searchedPaths = [executableURL.path]
@@ -173,7 +176,15 @@ struct OctCLIService {
         } catch {
             throw OctCLIServiceError.launchFailed(path: executableURL.path, underlying: error)
         }
-        process.waitUntilExit()
+
+        let deadline = Date().addingTimeInterval(processTimeout)
+        while process.isRunning {
+            if Date() >= deadline {
+                process.terminate()
+                throw OctCLIServiceError.timeout(path: executableURL.path, timeout: processTimeout)
+            }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
 
         let stdoutData = stdout.fileHandleForReading.readDataToEndOfFile()
         let stderrData = stderr.fileHandleForReading.readDataToEndOfFile()
@@ -205,6 +216,7 @@ enum OctCLIServiceError: LocalizedError {
     case missingExecutable(path: String, searchedPaths: [String])
     case launchFailed(path: String, underlying: Error)
     case nonZeroExit(status: Int32, stderr: String)
+    case timeout(path: String, timeout: TimeInterval)
 
     var errorDescription: String? {
         switch self {
@@ -218,6 +230,8 @@ enum OctCLIServiceError: LocalizedError {
                 return "oct exited with status \(status)"
             }
             return "oct exited with status \(status): \(stderr)"
+        case .timeout(let path, let timeout):
+            return "oct timed out after \(Int(timeout))s while running \(path)"
         }
     }
 }

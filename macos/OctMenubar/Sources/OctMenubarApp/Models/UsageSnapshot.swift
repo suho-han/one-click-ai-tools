@@ -22,7 +22,7 @@ struct UsageSnapshot: Equatable {
             ProviderCard(name: "codex", status: .loading, metrics: [.init(label: "5h", value: "-"), .init(label: "7d", value: "-")], message: "Waiting for first refresh"),
             ProviderCard(name: "claude-code", status: .loading, metrics: [.init(label: "5h", value: "-"), .init(label: "7d", value: "-")], message: "Refresh timer starts after launch"),
         ],
-        note: "Helper reads existing oct usage state only."
+        note: "Data will be loaded from oct usage --json after launch."
     )
 
     static func error(message: String, refreshInterval: TimeInterval = 60) -> UsageSnapshot {
@@ -138,7 +138,7 @@ extension UsageSnapshot {
             providers: response.results.map { result in
                 ProviderCard(
                     name: result.provider,
-                    status: ProviderStatus(rawValue: classifyStatus(result.status)) ?? .error,
+                    status: effectiveStatus(for: result),
                     metrics: [
                         UsageMetric(label: "5h", value: result.buckets?["5h"] ?? "-"),
                         UsageMetric(label: "7d", value: result.buckets?["7d"] ?? "-"),
@@ -184,6 +184,37 @@ extension UsageSnapshot {
         default:
             return "error"
         }
+    }
+
+    private static func effectiveStatus(for result: UsageResponse.Result) -> ProviderStatus {
+        let normalized = classifyStatus(result.status)
+        guard normalized == "ok" else {
+            return ProviderStatus(rawValue: normalized) ?? .error
+        }
+
+        let used = result.used.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if used.isEmpty || used == "n/a" {
+            return .warn
+        }
+
+        let message = result.message?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        if hasNoDataSignal(message) || hasPartialSignal(message) {
+            return .warn
+        }
+
+        return .ok
+    }
+
+    private static func hasNoDataSignal(_ message: String) -> Bool {
+        message.hasPrefix("no data:") ||
+        message.hasPrefix("no ") ||
+        message.contains("not found") ||
+        message.contains("no configured") ||
+        message.contains("no usage metrics")
+    }
+
+    private static func hasPartialSignal(_ message: String) -> Bool {
+        message.hasPrefix("partial:") || message.contains("partial data")
     }
 }
 

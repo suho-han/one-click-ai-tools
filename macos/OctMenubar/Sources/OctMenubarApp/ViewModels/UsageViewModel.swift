@@ -19,12 +19,19 @@ final class UsageViewModel: ObservableObject {
     func refresh(now: Date = Date()) {
         guard !isRefreshing else { return }
         isRefreshing = true
-        defer { isRefreshing = false }
-
-        do {
-            snapshot = try service.fetchUsageSnapshot(now: now)
-        } catch {
-            snapshot = .error(message: error.localizedDescription, refreshInterval: service.refreshInterval)
+        Task.detached(priority: .userInitiated) { [service] in
+            do {
+                let refreshed = try service.fetchUsageSnapshot(now: now)
+                await MainActor.run {
+                    self.snapshot = refreshed
+                    self.isRefreshing = false
+                }
+            } catch {
+                await MainActor.run {
+                    self.snapshot = .error(message: error.localizedDescription, refreshInterval: service.refreshInterval)
+                    self.isRefreshing = false
+                }
+            }
         }
     }
 
