@@ -46,8 +46,8 @@ final class UsageSnapshotTests: XCTestCase {
 
         XCTAssertEqual(snapshot.statusItemTitle, "oct !")
         XCTAssertEqual(snapshot.summaryLine, "2 providers · 1 ok · 1 warn · 0 error")
-        XCTAssertEqual(snapshot.lastRefreshLabel, "15:26:04")
-        XCTAssertEqual(snapshot.nextRefreshLabel, "15:27:04")
+        XCTAssertEqual(snapshot.lastRefreshLabel, "02:12:44")
+        XCTAssertEqual(snapshot.nextRefreshLabel, "02:13:44")
         XCTAssertEqual(snapshot.autoRefreshLabel, "Auto refresh: every 1m")
         XCTAssertEqual(snapshot.providers.count, 2)
         XCTAssertEqual(snapshot.providers[0], ProviderCard(name: "codex", status: .ok, metrics: [.init(label: "5h", value: "63.0"), .init(label: "7d", value: "35.0")], message: "Usage extracted from local Codex session logs"))
