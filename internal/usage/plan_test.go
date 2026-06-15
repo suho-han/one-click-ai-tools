@@ -40,6 +40,7 @@ func TestParseCursorAboutPlan(t *testing.T) {
 func TestDetectClaudeLocalConfigPlan_UsesHeuristicFlag(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	path := filepath.Join(home, ".claude.json")
 	if err := os.WriteFile(path, []byte(`{"opusProMigrationComplete":true}`), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)

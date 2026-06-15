@@ -17,6 +17,9 @@ func resolveMenubarHelperPath(env map[string]string, execPath string, workingDir
 		cleaned := filepath.Clean(candidate)
 		searched = append(searched, cleaned)
 		if info, err := os.Stat(cleaned); err == nil && !info.IsDir() {
+			if runtime.GOOS == "windows" {
+				return cleaned, searched
+			}
 			mode := info.Mode()
 			if mode&0o111 != 0 {
 				return cleaned, searched
