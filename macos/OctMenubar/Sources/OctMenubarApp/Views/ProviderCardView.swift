@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ProviderCardView: View {
     let provider: ProviderCard
+    @AppStorage(MenubarPreferences.useProviderAccentColorsKey) private var useProviderAccentColors = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -15,6 +16,7 @@ struct ProviderCardView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(provider.name)
                             .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(providerAccent)
                             .lineLimit(1)
                     }
                 }
@@ -67,7 +69,7 @@ struct ProviderCardView: View {
                 .padding(.horizontal, 7)
                 .padding(.vertical, 4)
                 .background(
-                    Capsule().fill(Color(nsColor: .windowBackgroundColor).opacity(0.8))
+                    Capsule().fill(accentCapsuleBackground)
                 )
             }
         }
@@ -76,7 +78,7 @@ struct ProviderCardView: View {
     private var planStrip: some View {
         HStack(spacing: 6) {
             Text("PLAN")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(providerAccent)
             Text(provider.plan)
                 .foregroundStyle(provider.plan == "unknown" ? .secondary : .primary)
             Spacer(minLength: 0)
@@ -85,7 +87,17 @@ struct ProviderCardView: View {
         .padding(.horizontal, 7)
         .padding(.vertical, 4)
         .background(
-            Capsule().fill(Color(nsColor: .windowBackgroundColor).opacity(0.8))
+            Capsule().fill(accentCapsuleBackground)
         )
+    }
+
+    private var providerAccent: Color {
+        provider.accentColor(useProviderAccentColors: useProviderAccentColors)
+    }
+
+    private var accentCapsuleBackground: Color {
+        useProviderAccentColors
+            ? providerAccent.opacity(0.14)
+            : Color(nsColor: .windowBackgroundColor).opacity(0.8)
     }
 }

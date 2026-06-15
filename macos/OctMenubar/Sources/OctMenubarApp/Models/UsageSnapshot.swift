@@ -60,6 +60,29 @@ struct ProviderCard: Equatable, Identifiable {
         self.message = message
     }
 
+    func accentColor(useProviderAccentColors: Bool) -> Color {
+        guard useProviderAccentColors else {
+            return .primary
+        }
+
+        switch name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "claude-code":
+            return Color(red: 0.93, green: 0.56, blue: 0.31)
+        case "codex":
+            return Color(red: 0.36, green: 0.71, blue: 0.98)
+        case "antigravity":
+            return Color(red: 0.58, green: 0.49, blue: 0.96)
+        case "copilot":
+            return Color(red: 0.40, green: 0.85, blue: 0.73)
+        case "cursor":
+            return Color(red: 0.99, green: 0.66, blue: 0.25)
+        case "opencode":
+            return Color(red: 0.97, green: 0.44, blue: 0.60)
+        default:
+            return .accentColor
+        }
+    }
+
 }
 
 struct UsageMetric: Equatable {
@@ -141,27 +164,29 @@ extension UsageSnapshot {
         formatter.timeZone = timeZone
         formatter.dateFormat = "HH:mm:ss"
 
-        let status = aggregateStatus(summary: response.summary)
+        let providers = response.results.map { result in
+            ProviderCard(
+                name: result.provider,
+                plan: normalizedPlan(result.plan),
+                planSource: normalizedPlanSource(result.planSource),
+                status: effectiveStatus(for: result),
+                metrics: [
+                    UsageMetric(label: "5h", value: result.buckets?["5h"] ?? "-"),
+                    UsageMetric(label: "7d", value: result.buckets?["7d"] ?? "-"),
+                ],
+                message: composedMessage(for: result)
+            )
+        }
+        let summary = projectedSummary(for: providers)
+        let status = aggregateStatus(summary: summary)
         return UsageSnapshot(
             statusItemTitle: statusItemTitle(for: status),
             title: "Usage Overview",
-            summaryLine: "\(response.summary.total) providers · \(response.summary.ok) ok · \(response.summary.warn) warn · \(response.summary.error) error",
+            summaryLine: "\(summary.total) providers · \(summary.ok) ok · \(summary.warn) warn · \(summary.error) error",
             lastRefreshLabel: formatter.string(from: refreshDate),
             nextRefreshLabel: formatter.string(from: refreshDate.addingTimeInterval(refreshInterval)),
             autoRefreshLabel: "Auto refresh: every \(DurationFormatter.label(for: refreshInterval))",
-            providers: response.results.map { result in
-                ProviderCard(
-                    name: result.provider,
-                    plan: normalizedPlan(result.plan),
-                    planSource: normalizedPlanSource(result.planSource),
-                    status: effectiveStatus(for: result),
-                    metrics: [
-                        UsageMetric(label: "5h", value: result.buckets?["5h"] ?? "-"),
-                        UsageMetric(label: "7d", value: result.buckets?["7d"] ?? "-"),
-                    ],
-                    message: composedMessage(for: result)
-                )
-            },
+            providers: providers,
             note: status == .error ? "One or more providers need attention." : "Data comes from oct usage --json without submitting prompts."
         )
     }
@@ -174,6 +199,15 @@ extension UsageSnapshot {
             return .warn
         }
         return .ok
+    }
+
+    private static func projectedSummary(for providers: [ProviderCard]) -> UsageResponse.Summary {
+        UsageResponse.Summary(
+            total: providers.count,
+            ok: providers.filter { $0.status == .ok }.count,
+            warn: providers.filter { $0.status == .warn }.count,
+            error: providers.filter { $0.status == .error }.count
+        )
     }
 
     private static func statusItemTitle(for status: ProviderStatus) -> String {

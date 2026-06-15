@@ -54,6 +54,46 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.providers[1], ProviderCard(name: "opencode", status: .warn, metrics: [.init(label: "5h", value: "-"), .init(label: "7d", value: "-")], message: "No data: No local OpenCode session logs found"))
     }
 
+    func testUsageSnapshotSummaryUsesProjectedProviderStatuses() throws {
+        let json = #"""
+        {
+          "summary": {
+            "total": 2,
+            "ok": 2,
+            "warn": 0,
+            "error": 0
+          },
+          "results": [
+            {
+              "provider": "claude-code",
+              "status": "ok",
+              "used": "n/a",
+              "unit": "percent",
+              "message": "No Claude OAuth token found"
+            },
+            {
+              "provider": "codex",
+              "status": "ok",
+              "used": "14.0",
+              "unit": "percent",
+              "buckets": {
+                "5h": "14.0",
+                "7d": "13.0"
+              },
+              "message": "Usage extracted from local Codex session logs"
+            }
+          ]
+        }
+        """#
+
+        let response = try JSONDecoder().decode(UsageResponse.self, from: Data(json.utf8))
+        let snapshot = UsageSnapshot.from(response: response, refreshDate: .now, refreshInterval: 60)
+
+        XCTAssertEqual(snapshot.summaryLine, "2 providers · 1 ok · 1 warn · 0 error")
+        XCTAssertEqual(snapshot.statusItemTitle, "oct !")
+        XCTAssertEqual(snapshot.providers.map(\.status), [.warn, .ok])
+    }
+
     func testResolveExecutablePrefersExplicitOverride() throws {
         let temp = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
         let override = temp.appendingPathComponent("custom-oct")

@@ -4,7 +4,7 @@ import SwiftUI
 struct FooterActionsView: View {
     let isRefreshing: Bool
     let onRefresh: () -> Void
-    let onAction: (OctMenubarAction) -> Void
+    let onOpenSettings: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -16,24 +16,12 @@ struct FooterActionsView: View {
                 actionButton(title: isRefreshing ? "Refreshing…" : "Refresh now", systemImage: "arrow.clockwise", emphasized: true, disabled: isRefreshing) {
                     onRefresh()
                 }
-                actionButton(title: "Run alert", systemImage: "bell.badge", emphasized: false) {
-                    onAction(.runAlertCheck)
+                actionButton(title: "Settings", systemImage: "gearshape") {
+                    onOpenSettings()
                 }
             }
 
             HStack(spacing: 10) {
-                actionButton(title: "Open usage", systemImage: "chart.bar") {
-                    onAction(.openUsage)
-                }
-                actionButton(title: "Open monitor", systemImage: "waveform.path.ecg") {
-                    onAction(.openMonitor)
-                }
-            }
-
-            HStack(spacing: 10) {
-                actionButton(title: "Session refresh", systemImage: "key.horizontal") {
-                    onAction(.runSessionRefresh)
-                }
                 actionButton(title: "Quit helper", systemImage: "xmark.circle") {
                     NSApp.terminate(nil)
                 }

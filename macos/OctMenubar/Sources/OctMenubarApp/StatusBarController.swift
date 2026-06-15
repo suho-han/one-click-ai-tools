@@ -26,7 +26,7 @@ final class StatusBarController: NSObject, NSApplicationDelegate {
     private func configurePopover() {
         popover.behavior = .transient
         popover.animates = true
-        popover.contentSize = NSSize(width: 640, height: 720)
+        popover.contentSize = PopoverView.preferredSize(for: UsageSnapshot.placeholder.providers.count)
         popover.contentViewController = NSHostingController(rootView: PopoverView(viewModel: viewModel))
     }
 
@@ -35,6 +35,7 @@ final class StatusBarController: NSObject, NSApplicationDelegate {
             .receive(on: RunLoop.main)
             .sink { [weak self] snapshot in
                 self?.statusItem.button?.title = snapshot.statusItemTitle
+                self?.popover.contentSize = PopoverView.preferredSize(for: snapshot.providers.count)
             }
             .store(in: &cancellables)
     }
