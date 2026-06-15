@@ -13,6 +13,7 @@ This index organizes documents under `CONTEXT/` by purpose.
 ## Dev & Validation Docs
 
 - [en/LOCAL_TEST.md](en/LOCAL_TEST.md): local run/build/test and Windows validation
+- [en/MACBOOK_AIR_SMOKE_TEST.md](en/MACBOOK_AIR_SMOKE_TEST.md): quick smoke-test flow for the primary macOS host (100.73.225.85)
 - [en/PLATFORM_E2E_CHECKLIST.md](en/PLATFORM_E2E_CHECKLIST.md): Linux/Windows E2E checklist
 - [en/MENUBAR_HELPER_OPERATIONS.md](en/MENUBAR_HELPER_OPERATIONS.md): operational guide for macOS menubar helper build/install/remote validation
 

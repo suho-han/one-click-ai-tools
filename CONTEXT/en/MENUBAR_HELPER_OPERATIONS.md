@@ -145,3 +145,4 @@ You cannot validate helper builds on this Linux host.
 - `README.md`: user-facing quick start and command overview
 - `PROJECT_CONTEXT/remote-macos-validation-status.md`: detailed remote validation record
 - `CONTEXT/en/LOCAL_TEST.md`: general local build/test guide
+- `CONTEXT/en/MACBOOK_AIR_SMOKE_TEST.md`: quick smoke-test flow for the primary macOS host

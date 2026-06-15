@@ -145,3 +145,4 @@ Linux 호스트에서는 helper build를 검증할 수 없습니다.
 - `README.md`: 사용자-facing quick start / command overview
 - `PROJECT_CONTEXT/remote-macos-validation-status.md`: 원격 검증 상세 로그와 상태 기록
 - `CONTEXT/ko/LOCAL_TEST.md`: 일반 로컬 빌드/테스트 가이드
+- `CONTEXT/ko/MACBOOK_AIR_SMOKE_TEST.md`: 주 macOS 작업 호스트 기준 빠른 smoke test 절차
