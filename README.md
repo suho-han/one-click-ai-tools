@@ -92,5 +92,35 @@ oct menubar install-helper
 
 ## Release
 - dependency management: `pnpm`
-- official package publish: `npm`
+- official package publish: `npm` via GitHub Actions `goreleaser` workflow
 - local release wrapper: `npm run release:npm`
+
+### Release preflight
+```bash
+# local version vs npm registry
+node -p "require('./package.json').version"
+npm view one-click-tools version --registry=https://registry.npmjs.org/
+
+# local npm auth / registry reachability
+npm whoami
+npm ping --registry=https://registry.npmjs.org/
+
+# release integrity + Go validation
+bash scripts/verify-release-integrity.sh
+GOTOOLCHAIN=auto go test ./...
+GOTOOLCHAIN=auto go build ./...
+```
+
+### Publish lanes
+1. Canonical release path
+   - `npm run release:npm`
+   - the wrapper bumps/tag/pushes locally, then waits for GitHub Actions `goreleaser` to publish with `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}`
+2. Manual CI rerun
+   - GitHub Actions → `goreleaser` → `Run workflow`
+   - `release_mode=release`
+   - `git_ref=vX.Y.Z`
+
+### Notes
+- `npm run release:npm -- --help` is **not** a safe help path; it still enters the release wrapper.
+- Local `npm whoami` can still be useful as preflight, but the package publish itself is CI-driven.
+- If local npm auth is broken, separate `E401` (local auth failure) from CI publish wiring.

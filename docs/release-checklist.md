@@ -6,9 +6,15 @@
 ## Preflight (로컬)
 1. 워킹트리 clean 확인
    - `git status --short`
-2. 버전 정합성 + 패키징 점검
+2. 버전 비교
+   - `node -p "require('./package.json').version"`
+   - `npm view one-click-tools version --registry=https://registry.npmjs.org/`
+3. npm auth / registry reachability
+   - `npm whoami`
+   - `npm ping --registry=https://registry.npmjs.org/`
+4. 버전 정합성 + 패키징 점검
    - `bash scripts/verify-release-integrity.sh`
-3. 빌드/테스트
+5. 빌드/테스트
    - `go test ./...`
    - `go build ./...`
 
@@ -24,18 +30,29 @@
 - `go build ./...`
 - publish dry-run 실행
 - `git push --follow-tags`
-- npm으로 publish 실행
+- GitHub Actions `goreleaser` workflow의 npm publish 완료까지 대기
+- npm registry version 검증
 
 호환성 wrapper:
 - `bash scripts/publish.sh` 는 계속 npm release wrapper로 동작
 
 ## CI Release Guard (`.github/workflows/release.yml`)
 CI release job는 계속 `npm publish`를 canonical path로 사용합니다.
+트리거:
+- `push` on `v*` tags
+- `workflow_dispatch` with `release_mode` (`snapshot` / `release`) and `git_ref=vX.Y.Z`
+
 `npm-publish` job에서 아래 순서로 검증합니다.
 1. `go build -o oct main.go`
-2. `bash scripts/verify-release-integrity.sh` (`RELEASE_TAG` 주입)
-3. `npm publish --dry-run --access public`
-4. `npm publish --access public`
+2. `bash scripts/verify-release-integrity.sh` (`RELEASE_TAG=${EFFECTIVE_RELEASE_TAG}`)
+3. release asset presence check (`gh release view ... --json assets`)
+4. `npm publish --dry-run --access public`
+5. `npm publish --access public` with `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}`
+
+수동 재실행 경로:
+- GitHub Actions → `goreleaser` → `Run workflow`
+- `release_mode=release`
+- `git_ref=vX.Y.Z` 지정
 
 정리 원칙:
 - dependency management는 `pnpm`을 사용할 수 있음
