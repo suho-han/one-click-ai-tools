@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.4.17](https://github.com/suho-han/one-click-tools/compare/v0.4.16...v0.4.17) (2026-06-17)
+
+
+### Documentation
+
+* **release:** document CI npm publish lane ([6b1bd38](https://github.com/suho-han/one-click-tools/commit/6b1bd387f761315ddc30da22101e737cf44cb27b))
+
 ### [0.4.16](https://github.com/suho-han/one-click-tools/compare/v0.4.15...v0.4.16) (2026-06-17)
 
 
