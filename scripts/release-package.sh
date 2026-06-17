@@ -77,16 +77,59 @@ fi
 git ls-remote --tags origin | grep "refs/tags/${RELEASE_TAG}$"
 
 echo
-echo "--- Step 6: Publishing via npm ---"
-npm publish --access public "${PUBLISH_ARGS[@]}"
+echo "--- Step 6: Waiting for CI npm publish ---"
+if command -v gh >/dev/null 2>&1; then
+  RUN_ID=""
+  for _ in $(seq 1 12); do
+    RUN_ID="$(gh run list --workflow goreleaser --event push --json databaseId,headSha,headBranch,displayTitle,status,conclusion --limit 20 | python3 -c 'import json, sys
+release_tag = sys.argv[1]
+runs = json.load(sys.stdin)
+for run in runs:
+    if run.get("headBranch") == release_tag:
+        print(run["databaseId"])
+        break
+' "$RELEASE_TAG")"
+    if [ -n "$RUN_ID" ]; then
+      break
+    fi
+    sleep 10
+  done
+  if [ -n "$RUN_ID" ]; then
+    gh run watch "$RUN_ID" --exit-status
+  else
+    echo "WARN: could not find matching goreleaser run for ${RELEASE_TAG}"
+    echo "Check manually: gh run list --workflow goreleaser --limit 10"
+  fi
+else
+  echo "WARN: gh not available; skipping workflow watch"
+fi
+
+echo
+PUBLISHED_VERSION=""
+for _ in $(seq 1 18); do
+  PUBLISHED_VERSION="$(npm view one-click-tools version --registry=https://registry.npmjs.org/ 2>/dev/null || true)"
+  if [ "$PUBLISHED_VERSION" = "$PACKAGE_VERSION" ]; then
+    break
+  fi
+  sleep 10
+done
+if [ "$PUBLISHED_VERSION" != "$PACKAGE_VERSION" ]; then
+  echo "ERROR: npm registry version mismatch after CI release"
+  echo "expected: $PACKAGE_VERSION"
+  echo "actual:   ${PUBLISHED_VERSION:-<empty>}"
+  exit 1
+fi
+
+echo "npm registry now reports version $PUBLISHED_VERSION"
 
 echo
 echo "=========================================="
 echo "✅ Release completed successfully"
-echo "manager: npm"
+echo "manager: npm (CI publish)"
 echo "1. Git commit & tag created"
 echo "2. Verified release integrity"
 echo "3. Ran go test ./... and go build ./..."
 echo "4. Pushed to GitHub"
-echo "5. Published package"
+echo "5. Waited for CI npm publish"
+echo "6. Verified npm registry version"
 echo "=========================================="
