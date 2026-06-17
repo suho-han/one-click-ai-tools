@@ -71,6 +71,9 @@ CI release job는 계속 `npm publish`를 canonical path로 사용합니다.
 - `npm run release:npm -- --help` 는 help를 출력하지 않고 실제 release 스크립트를 실행합니다.
   - 이유: `scripts/release-package.sh` 가 `--help` 를 별도 처리하지 않고 추가 publish args로 전달함
   - 따라서 help/preview 용도로 실행하지 말고, 스크립트 파일 내용을 직접 확인하거나 별도 dry-run 경로를 사용해야 함
+- 로컬 `npm whoami` 가 `E401` 으로 실패해도, 태그 기반 GitHub Actions release lane이 정상 wiring 되어 있으면 패키지 배포 자체가 즉시 blocked 는 아닙니다.
+  - 확인 순서: `.github/workflows/release.yml` 의 `npm-publish` job → `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}` 주입 확인 → 로컬 `go test ./...`, `go build ./...`, `npm publish --dry-run --access public` 통과 확인 → 태그 push 후 Actions run 검증
+  - 즉, 로컬 인증 장애와 canonical CI publish lane 장애를 구분해서 판단합니다.
 - 버전 불일치 실패 시
   - `cmd/root.go`의 `Version`과 `package.json`의 `version`을 동일하게 수정
   - 재커밋 후 태그 재생성
