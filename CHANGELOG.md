@@ -2,6 +2,38 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.4.16](https://github.com/suho-han/one-click-tools/compare/v0.4.15...v0.4.16) (2026-06-17)
+
+
+### Features
+
+* add menubar helper diagnostics and install flow ([1f4f15a](https://github.com/suho-han/one-click-tools/commit/1f4f15a6bde739983e0c8af3ccf192104c3daf09))
+* add release doctor and remote tag fallback ([fad7c16](https://github.com/suho-han/one-click-tools/commit/fad7c1670a6ff88894404896ae7fa77fca604ee1))
+* compact doctor command output ([ed41751](https://github.com/suho-han/one-click-tools/commit/ed417516789ccd886ee5ab8d46c905e85e7488b4))
+* detect provider plans in usage output ([ad62c32](https://github.com/suho-han/one-click-tools/commit/ad62c32bc511b31a2c9c1e66ea49102dbdb045b7))
+* explain update plans and shell/session diagnostics ([c5a03d8](https://github.com/suho-han/one-click-tools/commit/c5a03d8c3d8deda54be572b9ce222cdec0226158))
+* **menubar:** move cli actions into settings ([e8c15e9](https://github.com/suho-han/one-click-tools/commit/e8c15e9c27f3b3f5eed697b0349740184aa751e2))
+* **menubar:** surface provider plans ([6ecbd60](https://github.com/suho-han/one-click-tools/commit/6ecbd6079e782c99d68e7b0a2cb33afc78dc7213))
+
+
+### Bug Fixes
+
+* **ci:** unbreak windows smoke-matrix tests ([102ce7c](https://github.com/suho-han/one-click-tools/commit/102ce7c9de867c1b29ffb808f44fcffef8d8cff9))
+* harden config and usage error handling ([52ebf82](https://github.com/suho-han/one-click-tools/commit/52ebf827cb5ad86963cc4292582910408b2c85b5))
+* keep menubar usage refresh responsive ([eda4767](https://github.com/suho-han/one-click-tools/commit/eda476761a762e269c400645d328bae178137d4d))
+* **usage:** isolate cursor remote usage test from local state ([abdcfd5](https://github.com/suho-han/one-click-tools/commit/abdcfd5f2ae185e626f4f049acf28361b22c73d5))
+* validate and quote scheduled task commands ([23bd184](https://github.com/suho-han/one-click-tools/commit/23bd18479d22952adb0020b0600d3a7b66dca54d))
+
+
+### Documentation
+
+* add oct improvement phase plan ([4754682](https://github.com/suho-han/one-click-tools/commit/4754682971ea53d84a77f0ed8edccf434e1f19d8))
+* **context:** add macbook air smoke test guide ([d2eb6f1](https://github.com/suho-han/one-click-tools/commit/d2eb6f1d27794328cd71da5dfd209cc5788c18a1))
+* **project-context:** mark macbook air as primary macOS host ([340f164](https://github.com/suho-han/one-click-tools/commit/340f1641d52d2e85c355603eeff259e5402685db))
+* promote menubar helper operations guide ([d64ed16](https://github.com/suho-han/one-click-tools/commit/d64ed161662ac0dfe2d245d3e1cc7b01a3fe442c))
+* refresh diagnostics and macOS validation notes ([a1dd91d](https://github.com/suho-han/one-click-tools/commit/a1dd91d24c10a3b6f635647e8efb92d63de35d3f))
+* **release:** document CI fallback when local npm auth fails ([226ebc7](https://github.com/suho-han/one-click-tools/commit/226ebc7ccdcf97616ea14cb20f79ea4231f5bf89))
+
 ### [0.4.15](https://github.com/suho-han/one-click-tools/compare/v0.4.14...v0.4.15) (2026-06-13)
 
 
