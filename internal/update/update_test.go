@@ -1,6 +1,7 @@
 package update
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -68,6 +69,74 @@ func TestToolFilteringEmpty(t *testing.T) {
 	result := GetFilteredTools([]string{}, ordered)
 	if len(result) != len(Tools) {
 		t.Fatalf("expected all %d tools when enabled is empty, got %d", len(Tools), len(result))
+	}
+}
+
+func TestPlanIsInstalled(t *testing.T) {
+	tests := []struct {
+		name string
+		plan Plan
+		want bool
+	}{
+		{name: "active path", plan: Plan{ActivePath: "/tmp/codex", Reason: "default fallback"}, want: true},
+		{name: "version", plan: Plan{VersionBefore: "1.2.3", Reason: "default fallback"}, want: true},
+		{name: "installed package lookup", plan: Plan{Reason: "installed package lookup"}, want: true},
+		{name: "missing default fallback", plan: Plan{Reason: "default fallback"}, want: false},
+	}
+
+	for _, tc := range tests {
+		if got := tc.plan.IsInstalled(); got != tc.want {
+			t.Fatalf("%s: IsInstalled() = %v, want %v", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestConfirmMissingToolInstalls(t *testing.T) {
+	origPrompt := confirmInstallPrompt
+	defer func() { confirmInstallPrompt = origPrompt }()
+
+	prompted := []string{}
+	confirmInstallPrompt = func(_ io.Reader, _ io.Writer, plan Plan) (bool, error) {
+		prompted = append(prompted, plan.Tool.Name)
+		return plan.Tool.Name == "OpenAI Codex", nil
+	}
+
+	tools := []Tool{
+		{Name: "OpenAI Codex", BinaryName: "codex"},
+		{Name: "Claude Code", BinaryName: "claude"},
+	}
+	plans := []Plan{
+		{Tool: tools[0], Reason: "default fallback", InstallCommand: []string{"npm", "install", "-g", "@openai/codex"}},
+		{Tool: tools[1], Reason: "active binary path", ActivePath: "/tmp/claude"},
+	}
+
+	confirmedTools, confirmedPlans, err := confirmMissingToolInstalls(strings.NewReader(""), io.Discard, tools, plans)
+	if err != nil {
+		t.Fatalf("confirmMissingToolInstalls() error = %v", err)
+	}
+	if len(prompted) != 1 || prompted[0] != "OpenAI Codex" {
+		t.Fatalf("prompted = %v, want [OpenAI Codex]", prompted)
+	}
+	if len(confirmedTools) != 2 || len(confirmedPlans) != 2 {
+		t.Fatalf("confirmed lens = (%d,%d), want (2,2)", len(confirmedTools), len(confirmedPlans))
+	}
+}
+
+func TestDefaultConfirmInstallPrompt(t *testing.T) {
+	out := &strings.Builder{}
+	ok, err := defaultConfirmInstallPrompt(strings.NewReader("n\n"), out, Plan{
+		Tool:           Tool{Name: "OpenAI Codex"},
+		Manager:        Npm,
+		InstallCommand: []string{"npm", "install", "-g", "@openai/codex"},
+	})
+	if err != nil {
+		t.Fatalf("defaultConfirmInstallPrompt() error = %v", err)
+	}
+	if ok {
+		t.Fatal("expected negative answer to decline install")
+	}
+	if !strings.Contains(out.String(), "OpenAI Codex is not installed") || !strings.Contains(out.String(), "npm install -g @openai/codex") {
+		t.Fatalf("unexpected prompt output: %q", out.String())
 	}
 }
 

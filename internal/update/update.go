@@ -1,6 +1,7 @@
 package update
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -22,6 +23,7 @@ var brewInstallMu sync.Mutex
 type Options struct {
 	DryRun  bool
 	Explain bool
+	Input   io.Reader
 	Output  io.Writer
 }
 
@@ -35,6 +37,8 @@ type Plan struct {
 	InstallCommand []string
 }
 
+var confirmInstallPrompt = defaultConfirmInstallPrompt
+
 func Run(opts ...Options) error {
 	config := Options{}
 	if len(opts) > 0 {
@@ -43,6 +47,10 @@ func Run(opts ...Options) error {
 	out := config.Output
 	if out == nil {
 		out = os.Stdout
+	}
+	in := config.Input
+	if in == nil {
+		in = os.Stdin
 	}
 
 	enabledTools := viper.GetStringSlice("enabled_tools")
@@ -62,6 +70,17 @@ func Run(opts ...Options) error {
 	}
 	if config.DryRun {
 		fmt.Fprintf(out, "\nDry-run complete: %d tool(s) planned, 0 executed.\n", len(plans))
+		return nil
+	}
+
+	confirmedTools, confirmedPlans, err := confirmMissingToolInstalls(in, out, toolsToUpdate, plans)
+	if err != nil {
+		return err
+	}
+	toolsToUpdate = confirmedTools
+	plans = confirmedPlans
+	if len(toolsToUpdate) == 0 {
+		fmt.Fprintln(out, "No tools selected for update.")
 		return nil
 	}
 
@@ -142,6 +161,58 @@ func Run(opts ...Options) error {
 		return nil
 	}
 	return fmt.Errorf("%w: %d tool(s) failed", errors.New("update failed"), failureCount)
+}
+
+func (p Plan) IsInstalled() bool {
+	if strings.TrimSpace(p.ActivePath) != "" {
+		return true
+	}
+	if strings.TrimSpace(p.VersionBefore) != "" {
+		return true
+	}
+	return p.Reason == "active binary path" || p.Reason == "installed package lookup"
+}
+
+func confirmMissingToolInstalls(in io.Reader, out io.Writer, tools []Tool, plans []Plan) ([]Tool, []Plan, error) {
+	confirmedTools := make([]Tool, 0, len(tools))
+	confirmedPlans := make([]Plan, 0, len(plans))
+
+	for i, plan := range plans {
+		if plan.IsInstalled() {
+			confirmedTools = append(confirmedTools, tools[i])
+			confirmedPlans = append(confirmedPlans, plan)
+			continue
+		}
+
+		install, err := confirmInstallPrompt(in, out, plan)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !install {
+			fmt.Fprintf(out, "Skipping %s (not installed).\n", plan.Tool.Name)
+			continue
+		}
+		confirmedTools = append(confirmedTools, tools[i])
+		confirmedPlans = append(confirmedPlans, plan)
+	}
+
+	return confirmedTools, confirmedPlans, nil
+}
+
+func defaultConfirmInstallPrompt(in io.Reader, out io.Writer, plan Plan) (bool, error) {
+	cmd := strings.Join(plan.InstallCommand, " ")
+	if cmd == "" {
+		cmd = string(plan.Manager)
+	}
+	fmt.Fprintf(out, "%s is not installed. Install now?\nCommand: %s\n[Y/n]: ", plan.Tool.Name, cmd)
+
+	reader := bufio.NewReader(in)
+	answer, err := reader.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return false, err
+	}
+	answer = strings.ToLower(strings.TrimSpace(answer))
+	return answer == "" || answer == "y" || answer == "yes", nil
 }
 
 func ExplainPlans(tools []Tool) []Plan {
