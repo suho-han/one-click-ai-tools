@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.4.18](https://github.com/suho-han/one-click-tools/compare/v0.4.17...v0.4.18) (2026-06-18)
+
+
+### Features
+
+* **agent-update:** prompt before installing missing tools ([21e1571](https://github.com/suho-han/one-click-tools/commit/21e157160d7fe5821bb75bfd1201f39eeb4a8300))
+
+
+### Bug Fixes
+
+* **agent-update:** detect npm-owned symlinked binaries correctly ([e169ed3](https://github.com/suho-han/one-click-tools/commit/e169ed34ab97fcb9c23fee778e8de3cc22ce04c0))
+
 ### [0.4.17](https://github.com/suho-han/one-click-tools/compare/v0.4.16...v0.4.17) (2026-06-17)
 
 
