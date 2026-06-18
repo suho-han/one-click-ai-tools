@@ -2,6 +2,7 @@ package update
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -172,6 +173,46 @@ func TestDetectManagerUsesPnpmPrefixOwnership(t *testing.T) {
 	got := DetectManager(Tool{Package: "@anthropic-ai/claude-code", BinaryName: "claude"})
 	if got != Pnpm {
 		t.Fatalf("DetectManager() = %q, want %q", got, Pnpm)
+	}
+}
+
+func TestDetectManagerUsesNpmNodeModulesSymlinkOwnership(t *testing.T) {
+	reset := stubManagerDetection(t)
+	defer reset()
+
+	home := t.TempDir()
+	binDir := filepath.Join(home, ".local", "bin")
+	targetDir := filepath.Join(home, ".local", "lib", "node_modules", "@openai", "codex", "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(binDir) error = %v", err)
+	}
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(targetDir) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(targetDir, "codex.js"), []byte("#!/usr/bin/env node\n"), 0o755); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	linkPath := filepath.Join(binDir, "codex")
+	if err := os.Symlink(filepath.Join("..", "lib", "node_modules", "@openai", "codex", "bin", "codex.js"), linkPath); err != nil {
+		t.Fatalf("Symlink() error = %v", err)
+	}
+
+	binaryLookup = func(name string) (string, error) {
+		if name == "codex" {
+			return linkPath, nil
+		}
+		return "", errExecutableNotFound
+	}
+	commandOutput = func(name string, args ...string) ([]byte, error) {
+		if name == "python3" && len(args) >= 3 && args[0] == "-m" && args[1] == "site" && args[2] == "--user-base" {
+			return []byte(filepath.Join(home, ".local") + "\n"), nil
+		}
+		return nil, errExecutableNotFound
+	}
+
+	got := DetectManager(Tool{Package: "@openai/codex", BinaryName: "codex"})
+	if got != Npm {
+		t.Fatalf("DetectManager() = %q, want %q", got, Npm)
 	}
 }
 

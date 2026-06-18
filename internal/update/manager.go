@@ -180,6 +180,7 @@ func detectManagerFromBinaryPath(t Tool) (Manager, bool) {
 			continue
 		}
 		candidates := classifyManagersFromBinaryPath(path)
+		candidates = appendManagerIfMissing(candidates, detectNodePackageManagerFromInstalledBinary(path))
 		if len(candidates) == 0 {
 			continue
 		}
@@ -354,6 +355,19 @@ func npmGlobalBinaryPrefixes() []string {
 	}
 	prefix = filepath.Clean(prefix)
 	return []string{filepath.Join(prefix, "bin"), prefix}
+}
+
+func detectNodePackageManagerFromInstalledBinary(path string) Manager {
+	resolved, err := filepath.EvalSymlinks(strings.TrimSpace(path))
+	if err != nil || strings.TrimSpace(resolved) == "" {
+		return Unknown
+	}
+	resolved = filepath.Clean(resolved)
+	libNodeModules := string(os.PathSeparator) + filepath.Join("lib", "node_modules") + string(os.PathSeparator)
+	if strings.Contains(resolved, libNodeModules) {
+		return Npm
+	}
+	return Unknown
 }
 
 func cargoBinaryPrefixes() []string {
