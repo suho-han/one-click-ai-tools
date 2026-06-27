@@ -11,3 +11,7 @@ func runMenubar() error {
 func startMenubarDetached() error {
 	return fmt.Errorf("menubar daemon is currently supported only on macOS")
 }
+
+func stopMenubarInstances() (menubarStopResult, error) {
+	return menubarStopResult{}, fmt.Errorf("menubar stop is currently supported only on macOS")
+}

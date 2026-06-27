@@ -13,6 +13,11 @@ import (
 var menubarDaemon bool
 var menubarLegacy bool
 
+var (
+	runMenubarCommand           = runMenubar
+	startMenubarDetachedCommand = startMenubarDetached
+)
+
 type menubarDoctorReport struct {
 	GOOS          string   `json:"goos"`
 	ExecPath      string   `json:"exec_path"`
@@ -24,22 +29,23 @@ type menubarDoctorReport struct {
 }
 
 var menubarCmd = &cobra.Command{
-	Use:     "menubar",
-	GroupID: "core",
-	Short:   "Run macOS menu bar app (status item)",
-	Run: func(cmd *cobra.Command, args []string) {
+	Use:          "menubar",
+	GroupID:      "core",
+	Short:        "Run macOS menu bar app (status item)",
+	SilenceUsage: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
 		if menubarDaemon {
-			if err := startMenubarDetached(); err != nil {
-				fmt.Printf("menubar daemon start failed: %v\n", err)
-				return
+			if err := startMenubarDetachedCommand(); err != nil {
+				return fmt.Errorf("menubar daemon start failed: %w", err)
 			}
-			fmt.Println("menubar daemon started")
-			return
+			fmt.Fprintln(cmd.OutOrStdout(), "menubar daemon started")
+			return nil
 		}
 
-		if err := runMenubar(); err != nil {
-			fmt.Printf("menubar failed: %v\n", err)
+		if err := runMenubarCommand(); err != nil {
+			return fmt.Errorf("menubar failed: %w", err)
 		}
+		return nil
 	},
 }
 
@@ -109,6 +115,23 @@ var menubarInstallHelperCmd = &cobra.Command{
 	},
 }
 
+var menubarStopCmd = &cobra.Command{
+	Use:   "stop",
+	Short: "Stop all running menubar helper instances",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		result, err := stopMenubarInstances()
+		if err != nil {
+			return err
+		}
+		if result.Stopped == 0 {
+			fmt.Fprintln(cmd.OutOrStdout(), "no menubar instances found")
+			return nil
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "stopped %d menubar instance(s): %s\n", result.Stopped, strings.Join(result.PIDs, ", "))
+		return nil
+	},
+}
+
 func collectMenubarDoctorReport() (menubarDoctorReport, error) {
 	execPath, err := os.Executable()
 	if err != nil {
@@ -123,13 +146,21 @@ func collectMenubarDoctorReport() (menubarDoctorReport, error) {
 		}
 	}
 	helperPath, searched := resolveMenubarHelperPath(env, execPath, workingDir)
+	helperLaunch, launchSearched := resolveMenubarHelperLaunch(env, execPath, workingDir)
+	searched = append(searched, launchSearched...)
 	projectDir, projectSearched, _ := resolveMenubarProjectDir(execPath, workingDir)
 	searched = append(searched, projectSearched...)
 	launchMode := "legacy-fallback"
 	if menubarLegacy {
 		launchMode = "legacy-forced"
-	} else if helperPath != "" {
-		launchMode = "swift-helper"
+	} else if helperLaunch.Executable != "" {
+		launchMode = helperLaunch.Mode
+		if helperLaunch.Mode == "swift-helper" && helperPath == "" {
+			helperPath = helperLaunch.Executable
+		}
+		if projectDir == "" {
+			projectDir = helperLaunch.ProjectDir
+		}
 	}
 	return menubarDoctorReport{
 		GOOS:          runtime.GOOS,
@@ -210,5 +241,6 @@ func init() {
 	menubarCmd.AddCommand(menubarDoctorCmd)
 	menubarCmd.AddCommand(menubarBuildHelperCmd)
 	menubarCmd.AddCommand(menubarInstallHelperCmd)
+	menubarCmd.AddCommand(menubarStopCmd)
 	rootCmd.AddCommand(menubarCmd)
 }

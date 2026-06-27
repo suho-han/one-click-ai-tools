@@ -14,6 +14,7 @@ final class StatusBarController: NSObject, NSApplicationDelegate {
         configureStatusItem()
         configurePopover()
         bindSnapshot()
+        signalReadyIfRequested()
     }
 
     private func configureStatusItem() {
@@ -38,6 +39,15 @@ final class StatusBarController: NSObject, NSApplicationDelegate {
                 self?.popover.contentSize = PopoverView.preferredSize(for: snapshot.providers.count)
             }
             .store(in: &cancellables)
+    }
+
+    private func signalReadyIfRequested() {
+        guard let path = ProcessInfo.processInfo.environment["OCT_MENUBAR_READY_FILE"],
+              !path.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        else {
+            return
+        }
+        try? "ready\n".write(toFile: path, atomically: true, encoding: .utf8)
     }
 
     @objc

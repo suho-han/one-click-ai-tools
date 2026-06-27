@@ -10,6 +10,42 @@ import (
 	"strings"
 )
 
+type menubarHelperLaunch struct {
+	Executable string
+	Args       []string
+	ProjectDir string
+	Mode       string
+}
+
+type menubarStopResult struct {
+	Stopped int
+	PIDs    []string
+}
+
+func resolveMenubarHelperLaunch(env map[string]string, execPath string, workingDir string) (menubarHelperLaunch, []string) {
+	helperPath, searched := resolveMenubarHelperPath(env, execPath, workingDir)
+	if helperPath != "" {
+		return menubarHelperLaunch{Executable: helperPath, Mode: "swift-helper"}, searched
+	}
+
+	projectDir, projectSearched, err := resolveMenubarProjectDir(execPath, workingDir)
+	searched = append(searched, projectSearched...)
+	if err != nil {
+		return menubarHelperLaunch{}, searched
+	}
+	swiftPath, swiftSearched := resolveSwiftExecutablePath(env)
+	searched = append(searched, swiftSearched...)
+	if swiftPath == "" {
+		return menubarHelperLaunch{}, searched
+	}
+	return menubarHelperLaunch{
+		Executable: swiftPath,
+		Args:       menubarSwiftRunArgs(projectDir),
+		ProjectDir: projectDir,
+		Mode:       "swift-package",
+	}, searched
+}
+
 func resolveMenubarHelperPath(env map[string]string, execPath string, workingDir string) (string, []string) {
 	candidates := menubarHelperCandidates(env, execPath, workingDir)
 	searched := make([]string, 0, len(candidates))
@@ -84,6 +120,113 @@ func menubarHelperCandidates(env map[string]string, execPath string, workingDir 
 	}
 
 	return candidates
+}
+
+func resolveSwiftExecutablePath(env map[string]string) (string, []string) {
+	candidates := swiftExecutableCandidates(env)
+	searched := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		cleaned := filepath.Clean(candidate)
+		searched = append(searched, cleaned)
+		if info, err := os.Stat(cleaned); err == nil && !info.IsDir() {
+			if runtime.GOOS == "windows" || info.Mode()&0o111 != 0 {
+				return cleaned, searched
+			}
+		}
+	}
+	return "", searched
+}
+
+func swiftExecutableCandidates(env map[string]string) []string {
+	var candidates []string
+	seen := map[string]struct{}{}
+	appendCandidate := func(path string) {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			return
+		}
+		cleaned := filepath.Clean(path)
+		if _, ok := seen[cleaned]; ok {
+			return
+		}
+		seen[cleaned] = struct{}{}
+		candidates = append(candidates, cleaned)
+	}
+
+	if explicit := strings.TrimSpace(env["OCT_MENUBAR_SWIFT_PATH"]); explicit != "" {
+		appendCandidate(explicit)
+	}
+	if rawPath := strings.TrimSpace(env["PATH"]); rawPath != "" {
+		for _, dir := range filepath.SplitList(rawPath) {
+			if strings.TrimSpace(dir) == "" {
+				continue
+			}
+			appendCandidate(filepath.Join(dir, "swift"))
+		}
+	}
+	appendCandidate("/usr/bin/swift")
+	return candidates
+}
+
+func menubarSwiftRunArgs(projectDir string) []string {
+	args := []string{"run", "--package-path", projectDir}
+	if cacheDir, err := os.UserCacheDir(); err == nil && strings.TrimSpace(cacheDir) != "" {
+		args = append(args, "--scratch-path", filepath.Join(cacheDir, "one-click-tools", "OctMenubar"))
+	}
+	return append(args, "OctMenubarApp")
+}
+
+func isMenubarStopTarget(pid int, currentPID int, command string) bool {
+	if pid == 0 || pid == currentPID {
+		return false
+	}
+	command = strings.TrimSpace(command)
+	if command == "" || strings.Contains(command, " menubar stop") {
+		return false
+	}
+
+	fields := strings.Fields(command)
+	if len(fields) == 0 {
+		return false
+	}
+
+	executableName := filepath.Base(fields[0])
+	if executableName == "OctMenubarApp" {
+		return true
+	}
+	if strings.Contains(fields[0], "/OctMenubarApp") {
+		return true
+	}
+	if executableName == "swift" && len(fields) >= 2 && fields[1] == "run" && fields[len(fields)-1] == "OctMenubarApp" {
+		return true
+	}
+	if !containsMenubarArgument(fields) {
+		return false
+	}
+	return commandLooksLikeOctProcess(fields)
+}
+
+func containsMenubarArgument(fields []string) bool {
+	for _, field := range fields {
+		if field == "menubar" {
+			return true
+		}
+	}
+	return false
+}
+
+func commandLooksLikeOctProcess(fields []string) bool {
+	for _, field := range fields {
+		base := filepath.Base(field)
+		switch base {
+		case "oct", "one-click-tools", "main.go":
+			return true
+		}
+		if strings.Contains(field, "one-click-tools") || strings.Contains(field, "oct-wrapper.js") {
+			return true
+		}
+	}
+	return false
 }
 
 func buildMenubarHelper(projectDir string) error {
