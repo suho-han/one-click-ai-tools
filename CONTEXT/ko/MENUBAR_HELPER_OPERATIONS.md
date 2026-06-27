@@ -27,12 +27,14 @@ oct menubar install-helper
 ### 1. helper 미설치 상태
 
 `oct menubar doctor` 예시:
-- `launch mode: legacy-fallback`
+- `launch mode: swift-package`
 - helper 미발견
 - helper project는 `macos/OctMenubar`로 탐지됨
 
 의미:
-- Swift helper가 아직 build/install 되지 않았고 기존 fallback 실행 경로를 사용할 상태
+- Swift helper가 아직 build/install 되지 않았지만, Swift package 소스를 직접 실행해 새 popover UI로 진입할 상태
+
+Swift toolchain 또는 helper project가 없으면 `launch mode: legacy-fallback`으로 기존 NSMenu 실행 경로를 사용합니다.
 
 ### 2. repo 내부에서 build 직후
 

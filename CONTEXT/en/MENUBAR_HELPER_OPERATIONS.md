@@ -27,12 +27,14 @@ What each command does:
 ### 1. Before helper installation
 
 Example `oct menubar doctor` result:
-- `launch mode: legacy-fallback`
+- `launch mode: swift-package`
 - helper not found
 - helper project detected at `macos/OctMenubar`
 
 Meaning:
-- the Swift helper has not been built/installed yet, so the command will fall back to the legacy launch path
+- the Swift helper has not been built/installed yet, but the command can run the Swift package source directly and open the new popover UI
+
+If the Swift toolchain or helper project is unavailable, `launch mode: legacy-fallback` still uses the legacy NSMenu path.
 
 ### 2. Immediately after repo-local build
 
