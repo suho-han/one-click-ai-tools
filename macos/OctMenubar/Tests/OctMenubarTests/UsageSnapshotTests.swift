@@ -94,6 +94,90 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.providers.map(\.status), [.warn, .ok])
     }
 
+    func testConfigurationSnapshotDecodesConfigListJSON() throws {
+        let json = #"""
+        {
+          "config_file": "/Users/me/.oct/config.yaml",
+          "usage_display_mode": "remaining",
+          "session_refresh_enabled": true,
+          "session_refresh_interval": "weekly",
+          "session_refresh_hour": 9,
+          "tools": [
+            {
+              "name": "OpenAI Codex",
+              "binary_name": "codex",
+              "enabled": true
+            },
+            {
+              "name": "Claude Code",
+              "binary_name": "claude",
+              "enabled": false
+            }
+          ]
+        }
+        """#
+
+        let snapshot = try JSONDecoder().decode(ConfigurationSnapshot.self, from: Data(json.utf8))
+
+        XCTAssertEqual(snapshot.configFile, "/Users/me/.oct/config.yaml")
+        XCTAssertEqual(snapshot.usageDisplayMode, .remaining)
+        XCTAssertTrue(snapshot.sessionRefreshEnabled)
+        XCTAssertEqual(snapshot.sessionRefreshInterval, "weekly")
+        XCTAssertEqual(snapshot.sessionRefreshHour, 9)
+        XCTAssertEqual(snapshot.tools.map(\.binaryName), ["codex", "claude"])
+        XCTAssertEqual(snapshot.tools.map(\.enabled), [true, false])
+    }
+
+    func testConfigurationDraftBuildsUpdatePayloadAfterEdits() throws {
+        let snapshot = ConfigurationSnapshot(
+            configFile: "/tmp/config.yaml",
+            usageDisplayMode: .remaining,
+            sessionRefreshEnabled: false,
+            sessionRefreshInterval: "daily",
+            sessionRefreshHour: 9,
+            tools: [
+                ConfigTool(name: "OpenAI Codex", binaryName: "codex", enabled: true),
+                ConfigTool(name: "Claude Code", binaryName: "claude", enabled: false),
+            ]
+        )
+        var draft = ConfigurationDraft(snapshot: snapshot)
+
+        draft.setTool("claude", enabled: true)
+        draft.usageDisplayMode = .used
+        draft.sessionRefreshEnabled = true
+        draft.sessionRefreshInterval = "weekly"
+        draft.sessionRefreshHour = 22
+
+        let payload = draft.updatePayload()
+
+        XCTAssertEqual(payload.enabledTools, ["codex", "claude"])
+        XCTAssertEqual(payload.usageDisplayMode, .used)
+        XCTAssertTrue(payload.sessionRefreshEnabled)
+        XCTAssertEqual(payload.sessionRefreshInterval, "weekly")
+        XCTAssertEqual(payload.sessionRefreshHour, 22)
+    }
+
+    func testConfigurationDraftRevertsToLoadedSnapshot() {
+        let snapshot = ConfigurationSnapshot(
+            configFile: "/tmp/config.yaml",
+            usageDisplayMode: .remaining,
+            sessionRefreshEnabled: false,
+            sessionRefreshInterval: "daily",
+            sessionRefreshHour: 9,
+            tools: [
+                ConfigTool(name: "OpenAI Codex", binaryName: "codex", enabled: true),
+            ]
+        )
+        var draft = ConfigurationDraft(snapshot: snapshot)
+        draft.usageDisplayMode = .used
+        draft.setTool("codex", enabled: false)
+
+        draft.revert(to: snapshot)
+
+        XCTAssertEqual(draft.usageDisplayMode, .remaining)
+        XCTAssertEqual(draft.tools.map(\.enabled), [true])
+    }
+
     func testResolveExecutablePrefersExplicitOverride() throws {
         let temp = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
         let override = temp.appendingPathComponent("custom-oct")

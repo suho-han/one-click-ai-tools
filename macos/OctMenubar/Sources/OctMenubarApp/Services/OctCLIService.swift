@@ -37,6 +37,20 @@ struct OctCLIService {
         return UsageSnapshot.from(response: response, refreshDate: now, refreshInterval: refreshInterval)
     }
 
+    func fetchConfigurationSnapshot() throws -> ConfigurationSnapshot {
+        let output = try runAndCapture(arguments: ["config", "list", "--json"])
+        let data = Data(output.utf8)
+        return try JSONDecoder().decode(ConfigurationSnapshot.self, from: data)
+    }
+
+    func saveConfiguration(_ payload: ConfigurationUpdatePayload) throws {
+        let data = try JSONEncoder().encode(payload)
+        guard let json = String(data: data, encoding: .utf8) else {
+            throw OctCLIServiceError.encodingFailed
+        }
+        _ = try runProcess(executableURL: executableURL, arguments: ["config", "update", "--json", json])
+    }
+
     func run(action: OctMenubarAction) throws {
         switch action {
         case .openUsage:
@@ -217,6 +231,7 @@ enum OctCLIServiceError: LocalizedError {
     case launchFailed(path: String, underlying: Error)
     case nonZeroExit(status: Int32, stderr: String)
     case timeout(path: String, timeout: TimeInterval)
+    case encodingFailed
 
     var errorDescription: String? {
         switch self {
@@ -232,6 +247,8 @@ enum OctCLIServiceError: LocalizedError {
             return "oct exited with status \(status): \(stderr)"
         case .timeout(let path, let timeout):
             return "oct timed out after \(Int(timeout))s while running \(path)"
+        case .encodingFailed:
+            return "failed to encode configuration payload"
         }
     }
 }
