@@ -15,6 +15,7 @@
     "files": [
         "cmd/",
         "internal/",
+        "macos/",
         "scripts/",
         "main.go",
         "go.mod",
