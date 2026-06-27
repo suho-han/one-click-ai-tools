@@ -18,18 +18,6 @@ struct HeaderView: View {
                 statusPill
             }
 
-            HStack(spacing: 8) {
-                metaCard(label: "Last refresh", value: snapshot.lastRefreshLabel)
-                metaCard(label: "Next refresh", value: snapshot.nextRefreshLabel)
-            }
-
-            HStack {
-                Label(snapshot.autoRefreshLabel, systemImage: isRefreshing ? "arrow.triangle.2.circlepath.circle.fill" : "clock")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(isRefreshing ? Color.accentColor : .secondary)
-                Spacer()
-            }
-
             if let note = snapshot.note {
                 Text(note)
                     .font(.system(size: 11))
@@ -51,22 +39,4 @@ struct HeaderView: View {
             .opacity(snapshot.statusItemTitle == "oct" ? 0 : 1)
     }
 
-    private func metaCard(label: String, value: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(label)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.system(size: 13, weight: .semibold, design: .rounded))
-                .foregroundStyle(.primary)
-            Spacer(minLength: 0)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
-    }
 }

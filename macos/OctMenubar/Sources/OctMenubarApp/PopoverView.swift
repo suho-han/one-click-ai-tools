@@ -6,6 +6,7 @@ struct PopoverView: View {
     @ObservedObject var viewModel: UsageViewModel
 
     private static let popoverWidth: CGFloat = 640
+    private static let popoverMaxHeight: CGFloat = 620
     private static let estimatedChromeHeight: CGFloat = 294
     private static let estimatedProviderRowHeight: CGFloat = 122
 
@@ -18,38 +19,31 @@ struct PopoverView: View {
         let normalizedCount = max(providerCount, 1)
         let rows = Int(ceil(Double(normalizedCount) / 2.0))
         let height = estimatedChromeHeight + (CGFloat(rows) * estimatedProviderRowHeight)
-        return CGSize(width: popoverWidth, height: height)
+        return CGSize(width: popoverWidth, height: min(height, popoverMaxHeight))
     }
 
     var body: some View {
         let preferredSize = Self.preferredSize(for: viewModel.snapshot.providers.count)
 
-        VStack(alignment: .leading, spacing: 16) {
-            HeaderView(snapshot: viewModel.snapshot, isRefreshing: viewModel.isRefreshing)
-            Divider()
-            providerSection
-            Divider()
-            FooterActionsView(
-                isRefreshing: viewModel.isRefreshing,
-                onRefresh: { viewModel.refresh() },
-                onOpenSettings: {
-                    NSApp.activate(ignoringOtherApps: true)
-                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                }
-            )
+        ScrollView(.vertical) {
+            VStack(alignment: .leading, spacing: 16) {
+                HeaderView(snapshot: viewModel.snapshot, isRefreshing: viewModel.isRefreshing)
+                Divider()
+                providerSection
+                Divider()
+                refreshMetadataSection
+                Divider()
+                FooterActionsView(
+                    isRefreshing: viewModel.isRefreshing,
+                    onRefresh: { viewModel.refresh() }
+                )
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
         }
-        .padding(16)
         .frame(width: preferredSize.width, height: preferredSize.height, alignment: .topLeading)
-        .background(
-            LinearGradient(
-                colors: [
-                    Color(nsColor: .windowBackgroundColor),
-                    Color(nsColor: .underPageBackgroundColor),
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
+        .background(Color(nsColor: .windowBackgroundColor))
+        .scrollIndicators(.visible)
     }
 
     private var providerSection: some View {
@@ -75,5 +69,43 @@ struct PopoverView: View {
                 }
             }
         }
+    }
+
+    private var refreshMetadataSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                metadataCard(label: "Last refresh", value: viewModel.snapshot.lastRefreshLabel)
+                metadataCard(label: "Next refresh", value: viewModel.snapshot.nextRefreshLabel)
+            }
+
+            HStack {
+                Label(
+                    viewModel.snapshot.autoRefreshLabel,
+                    systemImage: viewModel.isRefreshing ? "arrow.triangle.2.circlepath.circle.fill" : "clock"
+                )
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(viewModel.isRefreshing ? Color.accentColor : .secondary)
+                Spacer()
+            }
+        }
+    }
+
+    private func metadataCard(label: String, value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(label)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundStyle(.primary)
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color(nsColor: .controlBackgroundColor))
+        )
     }
 }

@@ -13,10 +13,15 @@ struct ProviderCardView: View {
                         .frame(width: 8, height: 8)
                         .padding(.top, 4)
 
-                    VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: 4) {
                         Text(provider.name)
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(providerAccent)
+                            .lineLimit(1)
+
+                        Text("· \(provider.plan)")
+                            .font(.system(size: 10, weight: .semibold, design: .rounded))
+                            .foregroundStyle(provider.plan == "unknown" ? .secondary : .primary)
                             .lineLimit(1)
                     }
                 }
@@ -34,8 +39,6 @@ struct ProviderCardView: View {
             }
 
             metricStrip
-
-            planStrip
 
             if let message = provider.message, !message.isEmpty {
                 Text(message)
@@ -73,22 +76,6 @@ struct ProviderCardView: View {
                 )
             }
         }
-    }
-
-    private var planStrip: some View {
-        HStack(spacing: 6) {
-            Text("PLAN")
-                .foregroundStyle(providerAccent)
-            Text(provider.plan)
-                .foregroundStyle(provider.plan == "unknown" ? .secondary : .primary)
-            Spacer(minLength: 0)
-        }
-        .font(.system(size: 9, weight: .semibold, design: .rounded))
-        .padding(.horizontal, 7)
-        .padding(.vertical, 4)
-        .background(
-            Capsule().fill(accentCapsuleBackground)
-        )
     }
 
     private var providerAccent: Color {

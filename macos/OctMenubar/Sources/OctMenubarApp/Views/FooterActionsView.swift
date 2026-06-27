@@ -4,7 +4,6 @@ import SwiftUI
 struct FooterActionsView: View {
     let isRefreshing: Bool
     let onRefresh: () -> Void
-    let onOpenSettings: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -16,9 +15,10 @@ struct FooterActionsView: View {
                 actionButton(title: isRefreshing ? "Refreshing…" : "Refresh now", systemImage: "arrow.clockwise", emphasized: true, disabled: isRefreshing) {
                     onRefresh()
                 }
-                actionButton(title: "Settings", systemImage: "gearshape") {
-                    onOpenSettings()
+                SettingsLink {
+                    actionLabel(title: "Settings", systemImage: "gearshape", emphasized: false)
                 }
+                .buttonStyle(.plain)
             }
 
             HStack(spacing: 10) {
@@ -37,18 +37,22 @@ struct FooterActionsView: View {
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            Label(title, systemImage: systemImage)
-                .font(.system(size: 12, weight: .semibold))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(emphasized ? Color.accentColor.opacity(0.15) : Color(nsColor: .controlBackgroundColor))
-                )
+            actionLabel(title: title, systemImage: systemImage, emphasized: emphasized)
         }
         .buttonStyle(.plain)
         .disabled(disabled)
         .opacity(disabled ? 0.6 : 1)
+    }
+
+    private func actionLabel(title: String, systemImage: String, emphasized: Bool) -> some View {
+        Label(title, systemImage: systemImage)
+            .font(.system(size: 12, weight: .semibold))
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(emphasized ? Color.accentColor.opacity(0.15) : Color(nsColor: .controlBackgroundColor))
+            )
     }
 }

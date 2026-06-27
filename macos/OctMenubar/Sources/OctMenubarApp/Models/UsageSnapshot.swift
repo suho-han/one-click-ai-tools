@@ -269,20 +269,10 @@ extension UsageSnapshot {
 
     private static func composedMessage(for result: UsageResponse.Result) -> String? {
         let trimmedMessage = result.message?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let trimmedPlan = normalizedPlan(result.plan)
-        let trimmedPlanSource = normalizedPlanSource(result.planSource)
-
-        var components: [String] = []
-        if trimmedPlan.lowercased() != "unknown" {
-            components.append("Plan: \(trimmedPlan)")
-        }
         if let trimmedMessage, !trimmedMessage.isEmpty {
-            components.append(trimmedMessage)
+            return trimmedMessage
         }
-        if components.isEmpty, let trimmedPlanSource, !trimmedPlanSource.isEmpty {
-            components.append("Plan source: \(trimmedPlanSource)")
-        }
-        return components.isEmpty ? nil : components.joined(separator: " · ")
+        return nil
     }
 
     private static func normalizedPlan(_ raw: String?) -> String {
