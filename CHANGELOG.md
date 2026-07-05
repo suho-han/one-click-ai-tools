@@ -2,6 +2,23 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.4.19](https://github.com/suho-han/one-click-tools/compare/v0.4.18...v0.4.19) (2026-07-05)
+
+
+### Features
+
+* **config:** add json config update api ([7f3a1d6](https://github.com/suho-han/one-click-tools/commit/7f3a1d68ec0c37703c6ef3c51bf75d5bcc134ee1))
+* **menubar:** add helper readiness and stop command ([8070a70](https://github.com/suho-han/one-click-tools/commit/8070a70f7d73c48deaeea7240272042b66bf81d7))
+* **menubar:** edit config in settings ([535357c](https://github.com/suho-han/one-click-tools/commit/535357c17c69e710ec9721b2847504bf3944642f))
+* **menubar:** update usage popover layout ([ed6fb29](https://github.com/suho-han/one-click-tools/commit/ed6fb296ba4c81109ef4dcdc013b3bacae736455))
+
+
+### Documentation
+
+* **design:** add one-click-tools design system ([ef288f2](https://github.com/suho-han/one-click-tools/commit/ef288f232fc0fa9fd6bdf183544c1c6462f6697d))
+* import AGENTS.md into CLAUDE.md via @ reference ([6cf8c9e](https://github.com/suho-han/one-click-tools/commit/6cf8c9e399101c4e003b988b2a10ab97e5d677eb))
+* **menubar:** document swift package helper fallback ([8f51b1e](https://github.com/suho-han/one-click-tools/commit/8f51b1e1c15ea30e146643fe8269d0e194be8eaa))
+
 ### [0.4.18](https://github.com/suho-han/one-click-tools/compare/v0.4.17...v0.4.18) (2026-06-18)
 
 
