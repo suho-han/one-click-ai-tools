@@ -13,3 +13,4 @@ dist/
 
 # Packaged release artifacts
 *.tgz
+.omo/
