@@ -1,0 +1,64 @@
+import Foundation
+import SwiftUI
+
+@MainActor
+final class UsageViewModel: ObservableObject {
+    @Published private(set) var snapshot: UsageSnapshot
+    @Published private(set) var isRefreshing = false
+
+    private let service: OctCLIService
+    private var refreshTimer: Timer?
+
+    init(service: OctCLIService) {
+        self.service = service
+        self.snapshot = .placeholder
+        scheduleRefreshTimer()
+        refresh()
+    }
+
+    func refresh(now: Date = Date()) {
+        guard !isRefreshing else { return }
+        isRefreshing = true
+        Task.detached(priority: .userInitiated) { [service] in
+            do {
+                let refreshed = try service.fetchUsageSnapshot(now: now)
+                await MainActor.run {
+                    self.snapshot = refreshed
+                    self.isRefreshing = false
+                }
+            } catch {
+                await MainActor.run {
+                    self.snapshot = .error(message: error.localizedDescription, refreshInterval: service.refreshInterval)
+                    self.isRefreshing = false
+                }
+            }
+        }
+    }
+
+    func runAction(_ action: OctMenubarAction) {
+        do {
+            try service.run(action: action)
+        } catch {
+            snapshot = .error(message: error.localizedDescription, refreshInterval: service.refreshInterval)
+        }
+    }
+
+    private func scheduleRefreshTimer() {
+        refreshTimer?.invalidate()
+        refreshTimer = Timer.scheduledTimer(withTimeInterval: service.refreshInterval, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.refresh()
+            }
+        }
+        if let refreshTimer {
+            RunLoop.main.add(refreshTimer, forMode: .common)
+        }
+    }
+}
+
+enum OctMenubarAction {
+    case openUsage
+    case openMonitor
+    case runSessionRefresh
+    case runAlertCheck
+}
