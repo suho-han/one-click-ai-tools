@@ -1,6 +1,6 @@
 {
     "name": "one-click-ai-tools",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "High-performance OS-aware updater for developer AI CLI tools (Go version)",
     "bin": {
         "one-click-ai-tools": "scripts/oct-wrapper.js",
@@ -89,8 +89,5 @@
     },
     "overrides": {
         "handlebars": "4.7.9"
-    },
-    "dependencies": {
-        "one-click-ai-tools": "^0.1.0"
     }
 }
