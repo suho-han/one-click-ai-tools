@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/suho-han/one-click-tools/internal/netclient"
+	"github.com/suho-han/one-click-ai-tools/internal/netclient"
 )
 
 const cursorDefaultAPIURL = "https://api2.cursor.sh/auth/usage"

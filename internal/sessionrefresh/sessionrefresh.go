@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/suho-han/one-click-tools/internal/execenv"
-	"github.com/suho-han/one-click-tools/internal/update"
+	"github.com/suho-han/one-click-ai-tools/internal/execenv"
+	"github.com/suho-han/one-click-ai-tools/internal/update"
 )
 
 type RefreshOptions struct {

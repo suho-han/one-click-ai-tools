@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/spf13/viper"
-	"github.com/suho-han/one-click-tools/internal/usage"
+	"github.com/suho-han/one-click-ai-tools/internal/usage"
 )
 
 func TestShouldAutoJSONFallback(t *testing.T) {

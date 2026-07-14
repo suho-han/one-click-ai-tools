@@ -32,6 +32,7 @@ echo "--- Step 1: Bumping version and tagging ---"
 npx standard-version
 
 PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+PACKAGE_NAME="$(node -p "require('./package.json').name")"
 RELEASE_TAG="v${PACKAGE_VERSION}"
 
 if grep -qE '^[[:space:]]*Version:[[:space:]]*"[^"]+"' cmd/root.go; then
@@ -107,7 +108,7 @@ fi
 echo
 PUBLISHED_VERSION=""
 for _ in $(seq 1 18); do
-  PUBLISHED_VERSION="$(npm view one-click-tools version --registry=https://registry.npmjs.org/ 2>/dev/null || true)"
+  PUBLISHED_VERSION="$(npm view "$PACKAGE_NAME" version --registry=https://registry.npmjs.org/ 2>/dev/null || true)"
   if [ "$PUBLISHED_VERSION" = "$PACKAGE_VERSION" ]; then
     break
   fi

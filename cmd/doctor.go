@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/suho-han/one-click-tools/internal/execenv"
+	"github.com/suho-han/one-click-ai-tools/internal/execenv"
 )
 
 type shellDoctorBinary struct {

@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	"github.com/spf13/viper"
-	"github.com/suho-han/one-click-tools/internal/schedule"
-	"github.com/suho-han/one-click-tools/internal/update"
+	"github.com/suho-han/one-click-ai-tools/internal/schedule"
+	"github.com/suho-han/one-click-ai-tools/internal/update"
 )
 
 type configToolStatus struct {

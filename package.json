@@ -1,9 +1,9 @@
 {
-    "name": "one-click-tools",
-    "version": "0.4.19",
+    "name": "one-click-ai-tools",
+    "version": "0.1.0",
     "description": "High-performance OS-aware updater for developer AI CLI tools (Go version)",
     "bin": {
-        "one-click-tools": "scripts/oct-wrapper.js",
+        "one-click-ai-tools": "scripts/oct-wrapper.js",
         "oct": "scripts/oct-wrapper.js"
     },
     "scripts": {
@@ -75,7 +75,7 @@
     ],
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/suho-han/one-click-tools.git"
+        "url": "git+https://github.com/suho-han/one-click-ai-tools.git"
     },
     "engines": {
         "node": ">=18"
@@ -89,5 +89,8 @@
     },
     "overrides": {
         "handlebars": "4.7.9"
+    },
+    "dependencies": {
+        "one-click-ai-tools": "^0.1.0"
     }
 }

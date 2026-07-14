@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/suho-han/one-click-tools/internal/netclient"
+	"github.com/suho-han/one-click-ai-tools/internal/netclient"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)

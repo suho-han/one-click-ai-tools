@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/getlantern/systray"
-	"github.com/suho-han/one-click-tools/internal/usage"
+	"github.com/suho-han/one-click-ai-tools/internal/usage"
 )
 
 func selectedMenubarToolNames() []string {

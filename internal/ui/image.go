@@ -102,7 +102,7 @@ func InlineIcon(name string, width int) string {
 	if err != nil {
 		return ""
 	}
-	
+
 	if getIconStyle() == "half-block" {
 		return buildHalfBlockInlineIcon(img, width)
 	}
@@ -118,7 +118,7 @@ func InlineIconLines(name string, width, lines int) []string {
 	if err != nil {
 		return nil
 	}
-	
+
 	if getIconStyle() == "half-block" {
 		return buildHalfBlockInlineIconLines(img, width, lines)
 	}
@@ -168,7 +168,7 @@ func printANSIFromPNG(name string, size int) bool {
 	if err != nil {
 		return false
 	}
-	
+
 	if getIconStyle() == "half-block" {
 		printANSIImage(img, size)
 	} else {
@@ -417,7 +417,7 @@ func buildBrailleInlineIcon(img image.Image, targetWidth int) string {
 
 	// Map full image height to 4 dots
 	step := maxInt(h/4, 1)
-	
+
 	// Left-align horizontally
 	offsetX := 0
 	offsetY := 0

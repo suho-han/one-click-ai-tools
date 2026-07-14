@@ -12,8 +12,8 @@ import (
 var updateCmd = &cobra.Command{
 	Use:     "update",
 	GroupID: "maintenance",
-	Short: "Update oct package",
-	Long:  `Update oct (one-click-tools) itself to the latest version.`,
+	Short:   "Update oct package",
+	Long:    `Update oct (one-click-tools) itself to the latest version.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		if err := runSelfUpdate(); err != nil {
 			fmt.Printf("oct update failed: %v\n", err)
@@ -35,7 +35,7 @@ func runSelfUpdate() error {
 		}
 	}
 
-	cmd := exec.Command("go", "install", "github.com/suho-han/one-click-tools@latest")
+	cmd := exec.Command("go", "install", "github.com/suho-han/one-click-ai-tools@latest")
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()

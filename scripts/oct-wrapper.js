@@ -44,7 +44,7 @@ function ensureBinaryInstalled() {
 let actualPath = resolveBinaryPath();
 
 if (!actualPath) {
-  console.error(`Warning: one-click-tools binary not found at ${binPath}`);
+  console.error(`Warning: one-click-ai-tools binary not found at ${binPath}`);
   console.error('Attempting self-heal by running postinstall...');
 
   const healed = ensureBinaryInstalled();
@@ -54,10 +54,10 @@ if (!actualPath) {
 }
 
 if (!actualPath) {
-  console.error(`Error: one-click-tools binary not found.`);
+  console.error(`Error: one-click-ai-tools binary not found.`);
   console.error(`Expected location: ${binPath}`);
   console.error(`Current npm prefix: ${process.env.npm_config_prefix || '(unknown)'}`);
-  console.error(`Please try re-installing: npm install -g one-click-tools`);
+  console.error(`Please try re-installing: npm install -g one-click-ai-tools`);
   console.error(`Dev-only local fallback is disabled by default. Set OCT_WRAPPER_ALLOW_LOCAL_BIN=1 to enable it.`);
   process.exit(1);
 }
@@ -71,11 +71,11 @@ child.on('exit', (code) => {
 });
 
 child.on('error', (err) => {
-  console.error(`Error: Failed to start the one-click-tools binary.`);
+  console.error(`Error: Failed to start the one-click-ai-tools binary.`);
   if (err && err.code === 'ENOEXEC') {
     console.error(`Detected executable format mismatch (ENOEXEC).`);
     console.error(`This usually means a wrong-architecture binary was installed for this OS/CPU.`);
-    console.error(`Try reinstalling: npm uninstall -g one-click-tools && npm install -g one-click-tools`);
+    console.error(`Try reinstalling: npm uninstall -g one-click-ai-tools && npm install -g one-click-ai-tools`);
   }
   console.error(err.message);
   process.exit(1);

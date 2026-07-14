@@ -10,7 +10,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/spf13/viper"
-	"github.com/suho-han/one-click-tools/internal/update"
+	"github.com/suho-han/one-click-ai-tools/internal/update"
 	"golang.org/x/sync/errgroup"
 )
 

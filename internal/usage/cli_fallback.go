@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/suho-han/one-click-tools/internal/execenv"
+	"github.com/suho-han/one-click-ai-tools/internal/execenv"
 )
 
 func commandOutput(timeout time.Duration, name string, args ...string) (string, error) {

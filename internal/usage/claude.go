@@ -3,7 +3,7 @@ package usage
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/suho-han/one-click-tools/internal/netclient"
+	"github.com/suho-han/one-click-ai-tools/internal/netclient"
 	"io"
 	"net/http"
 	"os"

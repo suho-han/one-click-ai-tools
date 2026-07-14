@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
-	"github.com/suho-han/one-click-tools/internal/ui"
+	"github.com/suho-han/one-click-ai-tools/internal/ui"
 	"golang.org/x/sync/errgroup"
 )
 

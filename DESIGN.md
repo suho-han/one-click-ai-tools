@@ -105,3 +105,51 @@ All spacing derives from a base of 4px.
 ### Strategy
 
 Use tonal-shift with system colors. The popover background is `windowBackgroundColor`; inner panels use `controlBackgroundColor`; dividers use system separator color. Avoid decorative gradients and heavy shadows inside the popover.
+
+## 8. Settings workspace
+
+### Brief, personas, and taste constraints
+
+- **Brief**: let a macOS user adjust appearance, persistent `oct` configuration, and terminal-only utility actions without having to scan one long form.
+- **Primary persona**: a developer making a quick, low-risk preference change between work sessions; the selected tab and save state must be immediately clear.
+- **Accessibility persona**: a keyboard and VoiceOver user; native tab controls, real text labels, visible disabled states, and inline outcome messages are required.
+- **Taste constraint**: retain the quiet, factual macOS utility character. Use native controls and tonal system surfaces; no decorative gradients, custom hover effects, or non-semantic motion.
+
+### Layout
+
+- Settings content width: 640px.
+- Settings content minimum height: 480px.
+- Tab content scrolls vertically when needed; the tab selector remains visible.
+- Tab content uses `space-4` outer padding, `space-3` section spacing, and `space-2` control-row spacing.
+
+### Primitives
+
+#### Settings tabs
+- **Structure**: three native SwiftUI button tabs: General, Configuration, and Tools.
+- **Variants**: selected and unselected native system states.
+- **States**: the active tab always exposes its task-specific content; switching tabs never discards an in-progress configuration draft.
+- **Accessibility**: each tab has a text label and SF Symbol, works with native keyboard focus, and announces selection through SwiftUI.
+- **Motion**: native tab transition only.
+
+#### Settings section card
+- **Structure**: section icon, title, optional supporting copy, and grouped controls on `macos-control-background`.
+- **Spacing**: `space-3` inset, `space-2` control rhythm, 10px continuous corner radius.
+- **States**: default, loading, disabled, validation warning, and success/error message.
+- **Accessibility**: all controls retain native SwiftUI semantics; supporting copy and messages remain selectable text rather than image-rendered content.
+
+#### Settings action tile
+- **Structure**: an SF Symbol, title, and plain-language description in a two-column grid.
+- **States**: default, keyboard focus, pressed, and inline launch result. Disabled only when an action cannot be initiated.
+- **Accessibility**: the full visible label is the button label; icon is supplemental.
+
+### Interaction and feedback
+
+- Loading, saving, validation, success, and failure states appear inline in the Configuration tab without moving the active controls.
+- Save is unavailable until at least one provider is enabled; the warning explains the constraint where it occurs.
+- Revert restores the last loaded configuration without leaving the Configuration tab.
+- Terminal actions state that they open Terminal before launch and report the launch result inline.
+
+### Accepted design debt and handoff
+
+- Configuration load and save currently call the CLI synchronously. The existing loading/saving state prevents ambiguous interaction, but a future service-layer async conversion should prevent a slow local executable from briefly blocking the Settings window.
+- Validate keyboard tab traversal, VoiceOver labels, and light/dark rendering after each Settings change. The owner is the macOS menubar surface.

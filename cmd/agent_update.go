@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/suho-han/one-click-tools/internal/update"
+	"github.com/suho-han/one-click-ai-tools/internal/update"
 )
 
 var (

@@ -4,7 +4,7 @@ import (
 	"context"
 	"os/exec"
 
-	"github.com/suho-han/one-click-tools/internal/execenv"
+	"github.com/suho-han/one-click-ai-tools/internal/execenv"
 )
 
 func commandEnv() []string {

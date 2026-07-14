@@ -34,7 +34,7 @@ func (c *Client) DoWithRetry(req *http.Request) (*http.Response, error) {
 		}
 
 		resp, err = c.HTTPClient.Do(req)
-		
+
 		if !c.shouldRetry(resp, err) || i == c.MaxRetries {
 			return resp, err
 		}

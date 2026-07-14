@@ -25,7 +25,7 @@ func TestDoWithRetry(t *testing.T) {
 	}
 
 	// Override sleep for testing to make it fast
-	// In a real scenario we might want to mock time, 
+	// In a real scenario we might want to mock time,
 	// but for simplicity we'll just use a small delay if we could.
 	// Since DoWithRetry uses time.Sleep directly, we'll just wait a bit.
 

@@ -1,12 +1,12 @@
-# one-click-tools (oct)
+# one-click-ai-tools (oct)
 
-[![npm version](https://img.shields.io/npm/v/one-click-tools.svg?style=flat-square)](https://www.npmjs.com/package/one-click-tools)
+[![npm version](https://img.shields.io/npm/v/one-click-ai-tools.svg?style=flat-square)](https://www.npmjs.com/package/one-click-ai-tools)
 [![pnpm](https://img.shields.io/badge/maintained%20with-pnpm-cc00ff.svg?style=flat-square&logo=pnpm)](https://pnpm.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 
 [한국어](README.md)
 
-**one-click-tools (oct)** is a high-performance CLI for installing, updating, and inspecting popular AI developer tools from one command.
+**one-click-ai-tools (oct)** is a high-performance CLI for installing, updating, and inspecting popular AI developer tools from one command.
 
 ## 🚀 Quick Start
 
@@ -14,10 +14,10 @@
 
 ```bash
 # Install via npm
-npm install -g one-click-tools
+npm install -g one-click-ai-tools
 
 # Install via pnpm
-pnpm add -g one-click-tools
+pnpm add -g one-click-ai-tools
 ```
 
 Official package releases are published with `npm publish`.
@@ -25,6 +25,7 @@ Official package releases are published with `npm publish`.
 Install-time note:
 - In interactive terminals, `postinstall` asks whether to enable periodic token-free `session-refresh`.
 - Defaults written to config: disabled, `daily`, `09:00`.
+- Global npm/pnpm installs auto-install shell completion for detected `zsh`, `bash`, or `fish` unless `OCT_INSTALL_COMPLETION=0` is set. Use `OCT_INSTALL_COMPLETION=1` to force it.
 
 ### Core flows
 

@@ -28,7 +28,7 @@ func TestMigrateLegacyConfig(t *testing.T) {
 
 	// Override home dir for the test function (requires some refactoring of the original function or env override)
 	// For this test, we'll simulate the logic inside the test since MigrateLegacyConfig uses os.UserHomeDir()
-	
+
 	// Refactored logic check
 	if _, err := os.Stat(legacyPath); os.IsNotExist(err) {
 		t.Errorf("Legacy config should exist at %s", legacyPath)
@@ -36,7 +36,7 @@ func TestMigrateLegacyConfig(t *testing.T) {
 
 	// Clean up viper for test
 	viper.Reset()
-	
+
 	// Mocking migration logic manually here to verify the parsing
 	value := "claude,gemini"
 	enabledTools := []string{"claude", "gemini"}

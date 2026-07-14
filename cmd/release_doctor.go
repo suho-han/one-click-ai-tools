@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/suho-han/one-click-tools/internal/execenv"
+	"github.com/suho-han/one-click-ai-tools/internal/execenv"
 )
 
 type releaseDoctorReport struct {
@@ -24,6 +24,8 @@ type releaseDoctorReport struct {
 	NPMWhoamiError   string `json:"npm_whoami_error,omitempty"`
 	RepoNPMRC        string `json:"repo_npmrc,omitempty"`
 }
+
+const npmPackageName = "one-click-ai-tools"
 
 var releaseDoctorCmd = &cobra.Command{
 	Use:     "release-doctor",
@@ -52,7 +54,7 @@ func collectReleaseDoctorReport() releaseDoctorReport {
 	}
 	report.Branch = strings.TrimSpace(runDoctorCommand("git", "branch", "--show-current"))
 	report.Remote = strings.TrimSpace(runDoctorCommand("git", "remote", "get-url", "origin"))
-	report.RegistryLatest = strings.TrimSpace(runDoctorCommand("npm", "view", "one-click-tools", "version", "--registry=https://registry.npmjs.org/"))
+	report.RegistryLatest = strings.TrimSpace(runDoctorCommand("npm", "view", npmPackageName, "version", "--registry=https://registry.npmjs.org/"))
 	report.NPMUserConfig = strings.TrimSpace(runDoctorCommand("npm", "config", "get", "userconfig"))
 
 	whoami := execenv.Command("npm", "whoami")

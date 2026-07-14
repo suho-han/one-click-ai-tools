@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
-	"github.com/suho-han/one-click-tools/internal/netclient"
+	"github.com/suho-han/one-click-ai-tools/internal/netclient"
 )
 
 func FetchCopilotLocalUsage() UsageResult {

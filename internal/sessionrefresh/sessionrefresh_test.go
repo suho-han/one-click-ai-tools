@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/suho-han/one-click-tools/internal/update"
+	"github.com/suho-han/one-click-ai-tools/internal/update"
 )
 
 func TestRefreshUnknownProvider(t *testing.T) {

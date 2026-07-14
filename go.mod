@@ -1,4 +1,4 @@
-module github.com/suho-han/one-click-tools
+module github.com/suho-han/one-click-ai-tools
 
 go 1.25.0
 

@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/suho-han/one-click-tools/internal/config"
+	"github.com/suho-han/one-click-ai-tools/internal/config"
 )
 
 var cfgFile string
@@ -17,7 +17,7 @@ var rootCmd = &cobra.Command{
 	Use:     "oct",
 	Short:   "One-Click Tools for AI Engineers",
 	Long:    `A high-performance CLI tool to manage and update AI-related command-line tools across different platforms.`,
-	Version: "0.4.19",
+	Version: "0.1.0",
 }
 
 func Execute() {

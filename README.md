@@ -1,6 +1,6 @@
-# one-click-tools (oct)
+# one-click-ai-tools (oct)
 
-**one-click-tools (oct)** is a CLI utility to bootstrap, update, and inspect popular AI developer tools from one command.
+**one-click-ai-tools (oct)** is a CLI utility to bootstrap, update, and inspect popular AI developer tools from one command.
 
 ## Supported AI Agents
 - **Claude Code** (`@anthropic-ai/claude-code`)
@@ -14,7 +14,7 @@
 
 ### Via npm
 ```bash
-npm install -g one-click-tools
+npm install -g one-click-ai-tools
 ```
 
 공식 패키지 릴리스 경로는 `npm publish` 입니다.
@@ -22,10 +22,11 @@ npm install -g one-click-tools
 Install-time note:
 - In interactive terminals, `postinstall` asks whether to enable periodic token-free `session-refresh`.
 - Defaults written to config: disabled, `daily`, `09:00`.
+- Global npm/pnpm installs auto-install shell completion for detected `zsh`, `bash`, or `fish` unless `OCT_INSTALL_COMPLETION=0` is set. Use `OCT_INSTALL_COMPLETION=1` to force it.
 
 ### Via pnpm
 ```bash
-pnpm add -g one-click-tools
+pnpm add -g one-click-ai-tools
 ```
 
 공식 패키지 릴리스 경로는 `npm publish` 입니다.
@@ -99,7 +100,7 @@ oct menubar install-helper
 ```bash
 # local version vs npm registry
 node -p "require('./package.json').version"
-npm view one-click-tools version --registry=https://registry.npmjs.org/
+npm view one-click-ai-tools version --registry=https://registry.npmjs.org/
 
 # local npm auth / registry reachability
 npm whoami

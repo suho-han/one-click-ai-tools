@@ -11,8 +11,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/suho-han/one-click-tools/internal/ui"
-	"github.com/suho-han/one-click-tools/internal/update"
+	"github.com/suho-han/one-click-ai-tools/internal/ui"
+	"github.com/suho-han/one-click-ai-tools/internal/update"
 )
 
 type toolItem struct {

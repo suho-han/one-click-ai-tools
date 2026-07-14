@@ -89,14 +89,14 @@ jobs:
           mkdir -p dist/tmp/amd64 dist/tmp/arm64
           CGO_ENABLED=1 GOOS=darwin GOARCH=amd64 go build -o dist/tmp/amd64/oct main.go
           CGO_ENABLED=1 GOOS=darwin GOARCH=arm64 go build -o dist/tmp/arm64/oct main.go
-          tar -C dist/tmp/amd64 -czf dist/one-click-tools_darwin_amd64.tar.gz oct
-          tar -C dist/tmp/arm64 -czf dist/one-click-tools_darwin_arm64.tar.gz oct
+          tar -C dist/tmp/amd64 -czf dist/one-click-ai-tools_darwin_amd64.tar.gz oct
+          tar -C dist/tmp/arm64 -czf dist/one-click-ai-tools_darwin_arm64.tar.gz oct
 
       - name: Upload darwin assets to release
         run: |
           gh release upload "$EFFECTIVE_RELEASE_TAG" \
-            dist/one-click-tools_darwin_amd64.tar.gz \
-            dist/one-click-tools_darwin_arm64.tar.gz \
+            dist/one-click-ai-tools_darwin_amd64.tar.gz \
+            dist/one-click-ai-tools_darwin_arm64.tar.gz \
             --clobber
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -152,9 +152,9 @@ jobs:
           set -euo pipefail
           tag="$EFFECTIVE_RELEASE_TAG"
           required=(
-            "one-click-tools_linux_amd64.tar.gz"
-            "one-click-tools_linux_arm64.tar.gz"
-            "one-click-tools_darwin_arm64.tar.gz"
+            "one-click-ai-tools_linux_amd64.tar.gz"
+            "one-click-ai-tools_linux_arm64.tar.gz"
+            "one-click-ai-tools_darwin_arm64.tar.gz"
           )
 
           assets_json="$(gh release view "$tag" --json assets)"

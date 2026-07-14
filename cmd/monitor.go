@@ -11,7 +11,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/suho-han/one-click-tools/internal/usage"
+	"github.com/suho-han/one-click-ai-tools/internal/usage"
 )
 
 var monitorCmd = &cobra.Command{

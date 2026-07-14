@@ -6,8 +6,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/suho-han/one-click-tools/internal/update"
-	"github.com/suho-han/one-click-tools/internal/usage"
+	"github.com/suho-han/one-click-ai-tools/internal/update"
+	"github.com/suho-han/one-click-ai-tools/internal/usage"
 )
 
 type menubarSnapshot struct {

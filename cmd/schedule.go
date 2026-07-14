@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/suho-han/one-click-tools/internal/schedule"
+	"github.com/suho-han/one-click-ai-tools/internal/schedule"
 )
 
 var scheduleCmd = &cobra.Command{

@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/suho-han/one-click-tools/internal/usage"
+	"github.com/suho-han/one-click-ai-tools/internal/usage"
 )
 
 func TestOverThresholdKeys(t *testing.T) {
@@ -223,10 +223,10 @@ func TestMaybeSendUsageAlertsMessageIncludesPriorityLabel(t *testing.T) {
 func TestCleanupExpiredSnooze(t *testing.T) {
 	now := time.Now()
 	st := alertState{SnoozedUntil: map[string]time.Time{
-		"global":               now.Add(-1 * time.Minute),
-		"provider:codex":       now.Add(10 * time.Minute),
-		"window:5h":            now.Add(-2 * time.Minute),
-		"provider:x:window:y":  now.Add(5 * time.Minute),
+		"global":              now.Add(-1 * time.Minute),
+		"provider:codex":      now.Add(10 * time.Minute),
+		"window:5h":           now.Add(-2 * time.Minute),
+		"provider:x:window:y": now.Add(5 * time.Minute),
 	}}
 	changed := cleanupExpiredSnooze(&st, now)
 	if !changed {

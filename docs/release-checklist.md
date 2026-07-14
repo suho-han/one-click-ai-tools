@@ -8,7 +8,7 @@
    - `git status --short`
 2. 버전 비교
    - `node -p "require('./package.json').version"`
-   - `npm view one-click-tools version --registry=https://registry.npmjs.org/`
+   - `npm view one-click-ai-tools version --registry=https://registry.npmjs.org/`
 3. npm auth / registry reachability
    - `npm whoami`
    - `npm ping --registry=https://registry.npmjs.org/`

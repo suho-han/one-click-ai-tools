@@ -8,9 +8,9 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/suho-han/one-click-tools/internal/notify"
-	"github.com/suho-han/one-click-tools/internal/update"
-	"github.com/suho-han/one-click-tools/internal/usage"
+	"github.com/suho-han/one-click-ai-tools/internal/notify"
+	"github.com/suho-han/one-click-ai-tools/internal/update"
+	"github.com/suho-han/one-click-ai-tools/internal/usage"
 )
 
 type usageModel struct {

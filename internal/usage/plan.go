@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/suho-han/one-click-tools/internal/netclient"
+	"github.com/suho-han/one-click-ai-tools/internal/netclient"
 )
 
 var usageCommandOutput = defaultUsageCommandOutput

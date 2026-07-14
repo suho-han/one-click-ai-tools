@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/spf13/viper"
-	"github.com/suho-han/one-click-tools/internal/update"
+	"github.com/suho-han/one-click-ai-tools/internal/update"
 )
 
 func TestBuildConfigSnapshot_enablesAllToolsWhenEnabledToolsUnset(t *testing.T) {
