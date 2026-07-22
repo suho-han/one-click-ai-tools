@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
@@ -118,6 +119,10 @@ func FetchCopilotUsage() UsageResult {
 		}
 	}
 
+	if quotaResult, ok := fetchCopilotQuotaUsage(result, token); ok {
+		return quotaResult
+	}
+
 	user := viper.GetString("github_user")
 	if user == "" {
 		user = os.Getenv("GITHUB_USER")
@@ -210,4 +215,126 @@ func FetchCopilotUsage() UsageResult {
 	result.Unit = unit
 	result.Message = "Usage fetched from GitHub Billing API"
 	return result
+}
+
+type copilotUserResponse struct {
+	Login             string                          `json:"login"`
+	CopilotPlan       string                          `json:"copilot_plan"`
+	TokenBasedBilling bool                            `json:"token_based_billing"`
+	QuotaResetDateUTC string                          `json:"quota_reset_date_utc"`
+	QuotaSnapshots    map[string]copilotQuotaSnapshot `json:"quota_snapshots"`
+}
+
+type copilotQuotaSnapshot struct {
+	EntitlementRequests int      `json:"entitlementRequests"`
+	Entitlement         int      `json:"entitlement"`
+	UsedRequests        int      `json:"usedRequests"`
+	Used                int      `json:"used"`
+	RemainingPercentage *float64 `json:"remainingPercentage"`
+	PercentRemaining    *float64 `json:"percent_remaining"`
+	ResetDate           string   `json:"resetDate"`
+	QuotaResetAt        int64    `json:"quota_reset_at"`
+}
+
+func fetchCopilotQuotaUsage(base UsageResult, token string) (UsageResult, bool) {
+	req, err := http.NewRequest("GET", copilotUserEndpoint(), nil)
+	if err != nil {
+		return base, false
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(token))
+	req.Header.Set("User-Agent", "oct")
+	req.Header.Set("Editor-Version", "oct/0.0.0")
+	req.Header.Set("Editor-Plugin-Version", "oct/0.0.0")
+
+	resp, err := netclient.DefaultClient.DoWithRetry(req)
+	if err != nil || resp == nil {
+		return base, false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return base, false
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	var payload copilotUserResponse
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return base, false
+	}
+
+	snapshot, ok := payload.QuotaSnapshots["premium_interactions"]
+	if !ok {
+		return base, false
+	}
+
+	limit := snapshot.limit()
+	used, ok := snapshot.used()
+	if !ok {
+		return base, false
+	}
+
+	result := base
+	result.Status = "ok"
+	result.Source = "quota"
+	result.Period = "monthly"
+	result.Used = fmt.Sprintf("%.0f", used)
+	result.Unit = "AIC"
+	if limit > 0 {
+		result.Limit = fmt.Sprintf("%d", limit)
+		result.Buckets = map[string]string{"quota": fmt.Sprintf("%.1f", used/float64(limit)*100)}
+	} else {
+		result.Limit = "n/a"
+	}
+	if strings.TrimSpace(payload.CopilotPlan) != "" {
+		result.Plan = strings.TrimSpace(payload.CopilotPlan)
+		result.PlanSource = "github copilot_internal/user"
+	}
+	result.Message = "Usage fetched from GitHub Copilot quota API"
+	if os.Getenv("OCT_USAGE_DEBUG") == "1" {
+		remaining := snapshot.remainingPercent()
+		result.SourceDetail = fmt.Sprintf("premium_interactions_used=%.0f;limit=%d;remaining_percent=%.1f", used, limit, remaining)
+	}
+	return result, true
+}
+
+func (s copilotQuotaSnapshot) limit() int {
+	if s.EntitlementRequests > 0 {
+		return s.EntitlementRequests
+	}
+	return s.Entitlement
+}
+
+func (s copilotQuotaSnapshot) used() (float64, bool) {
+	if s.UsedRequests > 0 {
+		return float64(s.UsedRequests), true
+	}
+	if s.Used > 0 {
+		return float64(s.Used), true
+	}
+	limit := s.limit()
+	if limit <= 0 {
+		return 0, false
+	}
+	remaining := s.remainingPercent()
+	if remaining < 0 {
+		return 0, false
+	}
+	return float64(limit) * (100 - remaining) / 100, true
+}
+
+func (s copilotQuotaSnapshot) remainingPercent() float64 {
+	if s.RemainingPercentage != nil {
+		return *s.RemainingPercentage
+	}
+	if s.PercentRemaining != nil {
+		return *s.PercentRemaining
+	}
+	return -1
+}
+
+func copilotUserEndpoint() string {
+	if endpoint := strings.TrimSpace(os.Getenv("OCT_COPILOT_USER_ENDPOINT")); endpoint != "" {
+		return endpoint
+	}
+	return "https://api.github.com/copilot_internal/user"
 }

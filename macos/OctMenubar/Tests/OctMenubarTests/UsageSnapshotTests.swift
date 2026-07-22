@@ -50,8 +50,8 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.nextRefreshLabel, "02:13:44")
         XCTAssertEqual(snapshot.autoRefreshLabel, "Auto refresh: every 1m")
         XCTAssertEqual(snapshot.providers.count, 2)
-        XCTAssertEqual(snapshot.providers[0], ProviderCard(name: "codex", status: .ok, metrics: [.init(label: "5h", value: "63.0"), .init(label: "7d", value: "35.0")], message: "Usage extracted from local Codex session logs"))
-        XCTAssertEqual(snapshot.providers[1], ProviderCard(name: "opencode", status: .warn, metrics: [.init(label: "5h", value: "-"), .init(label: "7d", value: "-")], message: "No data: No local OpenCode session logs found"))
+        XCTAssertEqual(snapshot.providers[0], ProviderCard(name: "codex", status: .ok, metrics: [.init(label: "7d", value: "35.0")], message: "Usage extracted from local Codex session logs"))
+        XCTAssertEqual(snapshot.providers[1], ProviderCard(name: "opencode", status: .warn, metrics: [], message: "No data: No local OpenCode session logs found"))
     }
 
     func testUsageSnapshotSummaryUsesProjectedProviderStatuses() throws {
@@ -92,6 +92,36 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.summaryLine, "2 providers · 1 ok · 1 warn · 0 error")
         XCTAssertEqual(snapshot.statusItemTitle, "oct !")
         XCTAssertEqual(snapshot.providers.map(\.status), [.warn, .ok])
+    }
+
+    func testUsageSnapshotHidesUnknownMetricBuckets() throws {
+        let json = #"""
+        {
+          "summary": {
+            "total": 1,
+            "ok": 1,
+            "warn": 0,
+            "error": 0
+          },
+          "results": [
+            {
+              "provider": "codex",
+              "status": "ok",
+              "used": "2.0",
+              "unit": "percent",
+              "buckets": {
+                "7d": "2.0"
+              },
+              "message": "Usage fetched from Codex backend API (weekly bucket)"
+            }
+          ]
+        }
+        """#
+
+        let response = try JSONDecoder().decode(UsageResponse.self, from: Data(json.utf8))
+        let snapshot = UsageSnapshot.from(response: response, refreshDate: .now, refreshInterval: 60)
+
+        XCTAssertEqual(snapshot.providers[0].metrics, [.init(label: "7d", value: "2.0")])
     }
 
     func testUsageSnapshotKeepsPlanOutOfProviderMessage() throws {
