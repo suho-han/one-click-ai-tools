@@ -1,8 +1,11 @@
 package usage
 
 import (
+	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -68,6 +71,21 @@ func TestFetchClaudeUsageRateLimitedBuckets(t *testing.T) {
 	oldRetries := netclient.DefaultClient.MaxRetries
 
 	t.Setenv("CLAUDE_API_TOKEN", "dummy-token")
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp)
+	cache := fmt.Sprintf(`{
+		"cachedUsageUtilization": {
+			"fetchedAtMs": 1784687082111,
+			"utilization": {
+				"five_hour": {"utilization": 12, "resets_at": "2026-07-22T06:09:59Z"},
+				"seven_day": {"utilization": 41, "resets_at": "2026-07-24T22:59:59Z"}
+			}
+		}
+	}`)
+	if err := os.WriteFile(filepath.Join(tmp, ".claude.json"), []byte(cache), 0o600); err != nil {
+		t.Fatalf("write cache failed: %v", err)
+	}
 
 	netclient.DefaultClient.HTTPClient = &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
@@ -88,10 +106,16 @@ func TestFetchClaudeUsageRateLimitedBuckets(t *testing.T) {
 	if result.Status != "ok" {
 		t.Fatalf("expected status ok, got %s", result.Status)
 	}
-	if result.Used != "100" {
-		t.Fatalf("expected used=100, got %s", result.Used)
+	if result.Source != "cache" {
+		t.Fatalf("expected cache source, got %s", result.Source)
 	}
-	if got := result.Buckets["5h"]; got != "100.0" {
-		t.Fatalf("expected 5h bucket 100.0, got %s", got)
+	if result.Used != "12.0" {
+		t.Fatalf("expected used=12.0 from cache, got %s", result.Used)
+	}
+	if got := result.Buckets["5h"]; got != "12.0" {
+		t.Fatalf("expected 5h bucket 12.0, got %s", got)
+	}
+	if got := result.Buckets["7d"]; got != "41.0" {
+		t.Fatalf("expected 7d bucket 41.0, got %s", got)
 	}
 }
