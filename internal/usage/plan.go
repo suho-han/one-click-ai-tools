@@ -46,11 +46,11 @@ func normalizePlanSource(source string) string {
 }
 
 func detectCodexPlan() (string, string) {
-	home, err := os.UserHomeDir()
-	if err != nil || strings.TrimSpace(home) == "" {
+	home, ok := codexHomePath()
+	if !ok {
 		return "unknown", "codex auth unavailable"
 	}
-	path := filepath.Join(home, ".codex", "auth.json")
+	path := filepath.Join(home, "auth.json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return "unknown", "codex auth.json missing"
