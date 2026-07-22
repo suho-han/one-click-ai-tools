@@ -2,8 +2,10 @@ package cmd
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
-	"path/filepath"
+	"os/exec"
+	"strings"
 	"testing"
 )
 
@@ -23,61 +25,9 @@ func TestReleaseDoctorJSONTagForNPMUserConfig(t *testing.T) {
 }
 
 func TestCollectReleaseDoctorReportChecksRenamedNPMPackage(t *testing.T) {
-	binDir := t.TempDir()
-	writeExecutable(t, filepath.Join(binDir, "git"), `#!/bin/sh
-case "$1 $2" in
-"status --short")
-	exit 0
-	;;
-"branch --show-current")
-	echo main
-	exit 0
-	;;
-"remote get-url")
-	echo https://example.test/suho-han/one-click-ai-tools.git
-	exit 0
-	;;
-*)
-	echo "unexpected git args: $*" >&2
-	exit 1
-	;;
-esac
-`)
-
-	writeExecutable(t, filepath.Join(binDir, "npm"), `#!/bin/sh
-case "$1" in
-view)
-	if [ "$2" != "one-click-ai-tools" ]; then
-		echo "unexpected package: $2" >&2
-		exit 2
-	fi
-	if [ "$3" != "version" ]; then
-		echo "unexpected npm view field: $3" >&2
-		exit 3
-	fi
-	echo 1.2.3
-	exit 0
-	;;
-config)
-	if [ "$2" = "get" ] && [ "$3" = "userconfig" ]; then
-		echo /tmp/npmrc
-		exit 0
-	fi
-	echo "unexpected npm config args: $*" >&2
-	exit 4
-	;;
-whoami)
-	echo publisher
-	exit 0
-	;;
-*)
-	echo "unexpected npm args: $*" >&2
-	exit 5
-	;;
-esac
-`)
-
-	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	origCommand := releaseDoctorCommand
+	releaseDoctorCommand = fakeReleaseDoctorCommand
+	t.Cleanup(func() { releaseDoctorCommand = origCommand })
 
 	report := collectReleaseDoctorReport()
 	if report.RegistryLatest != "1.2.3" {
@@ -88,9 +38,82 @@ esac
 	}
 }
 
-func writeExecutable(t *testing.T, path string, content string) {
-	t.Helper()
-	if err := os.WriteFile(path, []byte(content), 0o755); err != nil {
-		t.Fatalf("write executable failed: %v", err)
+func fakeReleaseDoctorCommand(name string, args ...string) *exec.Cmd {
+	cmdArgs := []string{"-test.run=TestReleaseDoctorCommandHelper", "--", name}
+	cmdArgs = append(cmdArgs, args...)
+	cmd := exec.Command(os.Args[0], cmdArgs...)
+	cmd.Env = append(os.Environ(), "OCT_RELEASE_DOCTOR_HELPER=1")
+	return cmd
+}
+
+func TestReleaseDoctorCommandHelper(t *testing.T) {
+	if os.Getenv("OCT_RELEASE_DOCTOR_HELPER") != "1" {
+		return
+	}
+	args := os.Args
+	sep := -1
+	for i, arg := range args {
+		if arg == "--" {
+			sep = i
+			break
+		}
+	}
+	if sep < 0 || sep+1 >= len(args) {
+		fmt.Fprintln(os.Stderr, "missing helper command")
+		os.Exit(2)
+	}
+
+	name := args[sep+1]
+	cmdArgs := args[sep+2:]
+	switch name {
+	case "git":
+		handleFakeGit(cmdArgs)
+	case "npm":
+		handleFakeNPM(cmdArgs)
+	default:
+		fmt.Fprintf(os.Stderr, "unexpected command: %s\n", name)
+		os.Exit(2)
+	}
+	os.Exit(0)
+}
+
+func handleFakeGit(args []string) {
+	switch strings.Join(args, " ") {
+	case "status --short":
+		return
+	case "branch --show-current":
+		fmt.Println("main")
+	case "remote get-url origin":
+		fmt.Println("https://example.test/suho-han/one-click-ai-tools.git")
+	default:
+		fmt.Fprintf(os.Stderr, "unexpected git args: %s\n", strings.Join(args, " "))
+		os.Exit(1)
+	}
+}
+
+func handleFakeNPM(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "missing npm args")
+		os.Exit(1)
+	}
+	switch args[0] {
+	case "view":
+		if len(args) < 3 || args[1] != "one-click-ai-tools" || args[2] != "version" {
+			fmt.Fprintf(os.Stderr, "unexpected npm view args: %s\n", strings.Join(args, " "))
+			os.Exit(1)
+		}
+		fmt.Println("1.2.3")
+	case "config":
+		if len(args) == 3 && args[1] == "get" && args[2] == "userconfig" {
+			fmt.Println("/tmp/npmrc")
+			return
+		}
+		fmt.Fprintf(os.Stderr, "unexpected npm config args: %s\n", strings.Join(args, " "))
+		os.Exit(1)
+	case "whoami":
+		fmt.Println("publisher")
+	default:
+		fmt.Fprintf(os.Stderr, "unexpected npm args: %s\n", strings.Join(args, " "))
+		os.Exit(1)
 	}
 }
