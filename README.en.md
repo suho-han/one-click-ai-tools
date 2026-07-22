@@ -1,7 +1,5 @@
 # one-click-ai-tools (oct)
 
-[![npm version](https://img.shields.io/npm/v/one-click-ai-tools.svg?style=flat-square)](https://www.npmjs.com/package/one-click-ai-tools)
-[![pnpm](https://img.shields.io/badge/maintained%20with-pnpm-cc00ff.svg?style=flat-square&logo=pnpm)](https://pnpm.io/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 
 [한국어](README.md)
@@ -12,20 +10,21 @@
 
 ### Installation
 
-```bash
-# Install via npm
-npm install -g one-click-ai-tools
+#### GitHub Releases installer
 
-# Install via pnpm
-pnpm add -g one-click-ai-tools
+```bash
+curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | sh
 ```
 
-Official package releases are published with `npm publish`.
+The installer downloads the matching GitHub Release binary, verifies it when the release checksum entry is present, and installs `oct` to `~/.local/bin` by default.
 
-Install-time note:
-- In interactive terminals, `postinstall` asks whether to enable periodic token-free `session-refresh`.
-- Defaults written to config: disabled, `daily`, `09:00`.
-- Global npm/pnpm installs auto-install shell completion for detected `zsh`, `bash`, or `fish` unless `OCT_INSTALL_COMPLETION=0` is set. Use `OCT_INSTALL_COMPLETION=1` to force it.
+```bash
+# Install a specific version
+curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | OCT_VERSION=v0.1.1 sh
+
+# Install somewhere else
+curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | OCT_INSTALL_DIR=/usr/local/bin sh
+```
 
 ### Core flows
 
@@ -150,17 +149,14 @@ The built-in support matrix is regression-tested in `internal/update/manager_tes
 ## Requirements
 
 - **Runtime users**
-  - **macOS**: Homebrew and Node.js/npm
-  - **Ubuntu/Linux**: Node.js/npm
-  - **Windows**: Node.js/npm (Experimental)
+  - **macOS**: Homebrew for agent update support
 - **Developers (build/test from source)**
   - **Go >= 1.25**
 
 ## Release
 
-- Dependency management: `pnpm`
-- Official package publish: `npm`
-- Local release wrapper: `npm run release:npm`
+- Primary binary distribution: GitHub Releases + `scripts/install.sh`
+- Local release wrapper: `bash scripts/release-package.sh vX.Y.Z`
 
 ## License
 

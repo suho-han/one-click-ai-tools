@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,32 +10,42 @@ import (
 	"testing"
 )
 
-func TestReleaseDoctorJSONTagForNPMUserConfig(t *testing.T) {
-	report := releaseDoctorReport{NPMUserConfig: "/tmp/.npmrc"}
+func TestReleaseDoctorJSONUsesGitHubReleaseFields(t *testing.T) {
+	report := releaseDoctorReport{LatestRelease: "v1.2.3", UpdateAvailable: true}
 	data, err := json.Marshal(report)
 	if err != nil {
 		t.Fatalf("marshal failed: %v", err)
 	}
 	jsonText := string(data)
-	if !contains(jsonText, `"npm_userconfig":"/tmp/.npmrc"`) {
-		t.Fatalf("expected npm_userconfig field, got %s", jsonText)
+	if !strings.Contains(jsonText, `"latest_release":"v1.2.3"`) {
+		t.Fatalf("expected latest_release field, got %s", jsonText)
 	}
-	if contains(jsonText, `"***"`) {
-		t.Fatalf("unexpected legacy redacted field key in %s", jsonText)
+	if strings.Contains(jsonText, "npm_") || strings.Contains(jsonText, "repo_npmrc") {
+		t.Fatalf("unexpected npm release doctor field in %s", jsonText)
 	}
 }
 
-func TestCollectReleaseDoctorReportChecksRenamedNPMPackage(t *testing.T) {
+func TestCollectReleaseDoctorReportChecksGitHubLatestRelease(t *testing.T) {
 	origCommand := releaseDoctorCommand
 	releaseDoctorCommand = fakeReleaseDoctorCommand
-	t.Cleanup(func() { releaseDoctorCommand = origCommand })
-
-	report := collectReleaseDoctorReport()
-	if report.RegistryLatest != "1.2.3" {
-		t.Fatalf("expected registry version from one-click-ai-tools lookup, got %q", report.RegistryLatest)
+	origLatest := releaseDoctorLatestRelease
+	releaseDoctorLatestRelease = func(ctx context.Context, repo string) (string, error) {
+		if repo != selfUpdateRepo {
+			t.Fatalf("repo = %q, want %q", repo, selfUpdateRepo)
+		}
+		return "v1.2.3", nil
 	}
-	if report.NPMWhoami != "publisher" {
-		t.Fatalf("expected npm whoami from fake npm, got %q", report.NPMWhoami)
+	t.Cleanup(func() {
+		releaseDoctorCommand = origCommand
+		releaseDoctorLatestRelease = origLatest
+	})
+
+	report := collectReleaseDoctorReport(context.Background())
+	if report.LatestRelease != "v1.2.3" {
+		t.Fatalf("expected GitHub latest release, got %q", report.LatestRelease)
+	}
+	if !report.UpdateAvailable {
+		t.Fatal("expected update_available for newer latest release")
 	}
 }
 
@@ -68,8 +79,6 @@ func TestReleaseDoctorCommandHelper(t *testing.T) {
 	switch name {
 	case "git":
 		handleFakeGit(cmdArgs)
-	case "npm":
-		handleFakeNPM(cmdArgs)
 	default:
 		fmt.Fprintf(os.Stderr, "unexpected command: %s\n", name)
 		os.Exit(2)
@@ -84,36 +93,9 @@ func handleFakeGit(args []string) {
 	case "branch --show-current":
 		fmt.Println("main")
 	case "remote get-url origin":
-		fmt.Println("https://example.test/suho-han/one-click-ai-tools.git")
+		fmt.Println("git@github.com:suho-han/one-click-ai-tools.git")
 	default:
 		fmt.Fprintf(os.Stderr, "unexpected git args: %s\n", strings.Join(args, " "))
-		os.Exit(1)
-	}
-}
-
-func handleFakeNPM(args []string) {
-	if len(args) == 0 {
-		fmt.Fprintln(os.Stderr, "missing npm args")
-		os.Exit(1)
-	}
-	switch args[0] {
-	case "view":
-		if len(args) < 3 || args[1] != "one-click-ai-tools" || args[2] != "version" {
-			fmt.Fprintf(os.Stderr, "unexpected npm view args: %s\n", strings.Join(args, " "))
-			os.Exit(1)
-		}
-		fmt.Println("1.2.3")
-	case "config":
-		if len(args) == 3 && args[1] == "get" && args[2] == "userconfig" {
-			fmt.Println("/tmp/npmrc")
-			return
-		}
-		fmt.Fprintf(os.Stderr, "unexpected npm config args: %s\n", strings.Join(args, " "))
-		os.Exit(1)
-	case "whoami":
-		fmt.Println("publisher")
-	default:
-		fmt.Fprintf(os.Stderr, "unexpected npm args: %s\n", strings.Join(args, " "))
 		os.Exit(1)
 	}
 }

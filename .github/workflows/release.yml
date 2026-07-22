@@ -101,11 +101,25 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  npm-publish:
-    name: publish npm package
+      - name: Add darwin assets to checksums
+        run: |
+          set -euo pipefail
+          gh release download "$EFFECTIVE_RELEASE_TAG" -p checksums.txt -D dist --clobber
+          (
+            cd dist
+            awk '$2 !~ /^one-click-ai-tools_darwin_(amd64|arm64)\.tar\.gz$/ {print}' checksums.txt > checksums.tmp
+            mv checksums.tmp checksums.txt
+            shasum -a 256 one-click-ai-tools_darwin_amd64.tar.gz one-click-ai-tools_darwin_arm64.tar.gz >> checksums.txt
+            sort -k2 checksums.txt -o checksums.txt
+          )
+          gh release upload "$EFFECTIVE_RELEASE_TAG" dist/checksums.txt --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  verify-release-assets:
+    name: verify release assets
     needs: [goreleaser, darwin-assets]
     runs-on: ubuntu-latest
-    # 태그 릴리스 또는 수동 release 모드에서만 publish
     if: >-
       startsWith(github.ref, 'refs/tags/v') ||
       (github.event_name == 'workflow_dispatch' && inputs.release_mode == 'release')
@@ -118,11 +132,10 @@ jobs:
           fetch-depth: 0
           ref: ${{ inputs.git_ref != '' && inputs.git_ref || github.ref }}
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
+      - name: Set up Go
+        uses: actions/setup-go@v6
         with:
-          node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
+          go-version: 'stable'
 
       - name: Validate manual release ref
         if: ${{ github.event_name == 'workflow_dispatch' && inputs.release_mode == 'release' }}
@@ -131,16 +144,6 @@ jobs:
             echo "ERROR: release_mode=release requires git_ref=vX.Y.Z"
             exit 1
           fi
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: 'stable'
-
-      - name: Install deps
-        run: npm ci
-
-      - name: Build smoke
-        run: go build -o oct main.go
 
       - name: Verify release integrity
         run: bash scripts/verify-release-integrity.sh
@@ -155,6 +158,8 @@ jobs:
             "one-click-ai-tools_linux_amd64.tar.gz"
             "one-click-ai-tools_linux_arm64.tar.gz"
             "one-click-ai-tools_darwin_arm64.tar.gz"
+            "one-click-ai-tools_darwin_amd64.tar.gz"
+            "checksums.txt"
           )
 
           assets_json="$(gh release view "$tag" --json assets)"
@@ -167,11 +172,3 @@ jobs:
           done
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: npm publish dry-run
-        run: npm publish --dry-run --access public
-
-      - name: Publish to npm
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
