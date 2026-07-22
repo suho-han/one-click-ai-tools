@@ -124,6 +124,36 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.providers[0].metrics, [.init(label: "7d", value: "2.0")])
     }
 
+    func testUsageSnapshotShowsLegacyCodexFiveHourBucketWhenWeeklyMissing() throws {
+        let json = #"""
+        {
+          "summary": {
+            "total": 1,
+            "ok": 1,
+            "warn": 0,
+            "error": 0
+          },
+          "results": [
+            {
+              "provider": "codex",
+              "status": "ok",
+              "used": "4.0",
+              "unit": "percent",
+              "buckets": {
+                "5h": "4.0"
+              },
+              "message": "Usage extracted from local Codex session logs"
+            }
+          ]
+        }
+        """#
+
+        let response = try JSONDecoder().decode(UsageResponse.self, from: Data(json.utf8))
+        let snapshot = UsageSnapshot.from(response: response, refreshDate: .now, refreshInterval: 60)
+
+        XCTAssertEqual(snapshot.providers[0].metrics, [.init(label: "5h", value: "4.0")])
+    }
+
     func testUsageSnapshotKeepsPlanOutOfProviderMessage() throws {
         let json = #"""
         {

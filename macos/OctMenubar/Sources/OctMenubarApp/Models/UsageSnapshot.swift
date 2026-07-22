@@ -268,9 +268,14 @@ extension UsageSnapshot {
         guard let buckets else {
             return []
         }
-        let labels = provider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "codex"
-            ? ["7d"]
-            : ["5h", "7d"]
+
+        let labels: [String]
+        if provider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "codex" {
+            labels = visibleMetricValue(buckets["7d"]) == nil ? ["5h"] : ["7d"]
+        } else {
+            labels = ["5h", "7d"]
+        }
+
         return labels.compactMap { label in
             guard let value = visibleMetricValue(buckets[label]) else {
                 return nil
