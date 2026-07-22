@@ -4,13 +4,16 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"strconv"
 	"strings"
 )
 
 type Linux struct{}
 
 func (l *Linux) Enable(task Task, interval string, hour int) error {
+	interval, err := validateScheduleTiming(interval, hour)
+	if err != nil {
+		return err
+	}
 	cfg, err := taskDetails(task)
 	if err != nil {
 		return err
@@ -99,10 +102,20 @@ func filepathJoin(elem ...string) string {
 }
 
 func cronExpression(interval string, hour int) string {
-	if interval == "weekly" {
+	switch interval {
+	case WeeklyInterval:
 		return fmt.Sprintf("0 %d * * 1", hour)
+	case DailyInterval:
+		return fmt.Sprintf("0 %d * * *", hour)
+	case TwelveHourInterval:
+		return "0 */12 * * *"
+	case SixHourInterval:
+		return "0 */6 * * *"
+	case OneHourInterval:
+		return "0 * * * *"
+	default:
+		return fmt.Sprintf("0 %d * * *", hour)
 	}
-	return fmt.Sprintf("0 %d * * *", hour)
 }
 
 func cronMarker(task Task) string {
@@ -110,5 +123,5 @@ func cronMarker(task Task) string {
 }
 
 func shellQuote(value string) string {
-	return strconv.Quote(value)
+	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
 }
