@@ -24,6 +24,7 @@ type configSnapshot struct {
 	SessionRefreshEnabled  bool               `json:"session_refresh_enabled"`
 	SessionRefreshInterval string             `json:"session_refresh_interval"`
 	SessionRefreshHour     int                `json:"session_refresh_hour"`
+	AgentOrder             []string           `json:"agent_order"`
 	Tools                  []configToolStatus `json:"tools"`
 }
 
@@ -33,6 +34,7 @@ type configUpdatePayload struct {
 	SessionRefreshEnabled  *bool    `json:"session_refresh_enabled"`
 	SessionRefreshInterval string   `json:"session_refresh_interval"`
 	SessionRefreshHour     *int     `json:"session_refresh_hour"`
+	AgentOrder             []string `json:"agent_order"`
 }
 
 func parseConfigUpdatePayload(raw string) (configUpdatePayload, error) {
@@ -49,8 +51,11 @@ func parseConfigUpdatePayload(raw string) (configUpdatePayload, error) {
 
 func buildConfigSnapshot(configFile string) configSnapshot {
 	enabledTools := viper.GetStringSlice("enabled_tools")
-	tools := make([]configToolStatus, 0, len(update.Tools))
-	for _, tool := range update.Tools {
+	orderedTools := update.GetOrderedTools(viper.GetStringSlice("agent_order"))
+	agentOrder := make([]string, 0, len(orderedTools))
+	tools := make([]configToolStatus, 0, len(orderedTools))
+	for _, tool := range orderedTools {
+		agentOrder = append(agentOrder, tool.BinaryName)
 		tools = append(tools, configToolStatus{
 			Name:       tool.Name,
 			BinaryName: tool.BinaryName,
@@ -64,6 +69,7 @@ func buildConfigSnapshot(configFile string) configSnapshot {
 		SessionRefreshEnabled:  viper.GetBool("session_refresh_enabled"),
 		SessionRefreshInterval: normalizedConfigRefreshInterval(viper.GetString("session_refresh_interval")),
 		SessionRefreshHour:     normalizedConfigRefreshHour(viper.GetInt("session_refresh_hour")),
+		AgentOrder:             agentOrder,
 		Tools:                  tools,
 	}
 }
@@ -85,10 +91,16 @@ func applyConfigUpdate(payload configUpdatePayload) error {
 	if err != nil {
 		return err
 	}
+	agentOrder, shouldSetOrder, err := normalizeConfigUpdateOrder(payload.AgentOrder)
+	if err != nil {
+		return err
+	}
 
 	if shouldSetTools {
 		viper.Set("enabled_tools", normalizedTools)
-		viper.Set("agent_order", orderedConfigToolNames())
+	}
+	if shouldSetOrder {
+		viper.Set("agent_order", agentOrder)
 	}
 	if shouldSetUsageMode {
 		viper.Set("usage_display_mode", usageMode)
@@ -135,6 +147,36 @@ func normalizeConfigUpdateTools(rawTools []string) ([]string, bool, error) {
 			continue
 		}
 		seen[tool.BinaryName] = true
+		normalized = append(normalized, tool.BinaryName)
+	}
+	return normalized, true, nil
+}
+func normalizeConfigUpdateOrder(rawOrder []string) ([]string, bool, error) {
+	if rawOrder == nil {
+		return nil, false, nil
+	}
+	if len(rawOrder) == 0 {
+		return nil, false, fmt.Errorf("agent_order must include at least one provider")
+	}
+
+	normalized := make([]string, 0, len(update.Tools))
+	seen := map[string]bool{}
+	for _, rawTool := range rawOrder {
+		tool, ok := canonicalConfigTool(rawTool)
+		if !ok {
+			return nil, false, fmt.Errorf("unknown provider in agent_order: %s", rawTool)
+		}
+		if seen[tool.BinaryName] {
+			continue
+		}
+		seen[tool.BinaryName] = true
+		normalized = append(normalized, tool.BinaryName)
+	}
+
+	for _, tool := range update.Tools {
+		if seen[tool.BinaryName] {
+			continue
+		}
 		normalized = append(normalized, tool.BinaryName)
 	}
 	return normalized, true, nil
@@ -203,14 +245,6 @@ func canonicalConfigTool(rawTool string) (update.Tool, bool) {
 		}
 	}
 	return update.Tool{}, false
-}
-
-func orderedConfigToolNames() []string {
-	names := make([]string, 0, len(update.Tools))
-	for _, tool := range update.Tools {
-		names = append(names, tool.BinaryName)
-	}
-	return names
 }
 
 func configPathForDisplay() string {
