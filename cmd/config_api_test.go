@@ -15,6 +15,7 @@ func TestBuildConfigSnapshot_enablesAllToolsWhenEnabledToolsUnset(t *testing.T) 
 	viper.Set("session_refresh_enabled", true)
 	viper.Set("session_refresh_interval", "weekly")
 	viper.Set("session_refresh_hour", 7)
+	viper.Set("agent_order", []string{"codex", "agy", "claude"})
 
 	got := buildConfigSnapshot("/tmp/oct.yaml")
 
@@ -32,6 +33,12 @@ func TestBuildConfigSnapshot_enablesAllToolsWhenEnabledToolsUnset(t *testing.T) 
 	}
 	if got.SessionRefreshHour != 7 {
 		t.Fatalf("SessionRefreshHour = %d, want 7", got.SessionRefreshHour)
+	}
+	if got.Tools[0].BinaryName != "codex" || got.Tools[1].BinaryName != "agy" || got.Tools[2].BinaryName != "claude" {
+		t.Fatalf("Tools order starts with %v, want [codex agy claude]", []string{got.Tools[0].BinaryName, got.Tools[1].BinaryName, got.Tools[2].BinaryName})
+	}
+	if got.AgentOrder[0] != "codex" || got.AgentOrder[1] != "agy" || got.AgentOrder[2] != "claude" {
+		t.Fatalf("AgentOrder starts with %v, want [codex agy claude]", got.AgentOrder[:3])
 	}
 	if len(got.Tools) != len(update.Tools) {
 		t.Fatalf("Tools length = %d, want %d", len(got.Tools), len(update.Tools))
@@ -53,6 +60,7 @@ func TestConfigUpdatePayload_applyConfigUpdatePersistsValidValues(t *testing.T) 
 		SessionRefreshEnabled:  boolPtr(true),
 		SessionRefreshInterval: "weekly",
 		SessionRefreshHour:     intPtr(22),
+		AgentOrder:             []string{"claude", "codex"},
 	}
 
 	if err := applyConfigUpdate(payload); err != nil {
@@ -74,6 +82,10 @@ func TestConfigUpdatePayload_applyConfigUpdatePersistsValidValues(t *testing.T) 
 	}
 	if got := viper.GetInt("session_refresh_hour"); got != 22 {
 		t.Fatalf("session_refresh_hour = %d, want 22", got)
+	}
+	gotOrder := viper.GetStringSlice("agent_order")
+	if len(gotOrder) < 2 || gotOrder[0] != "claude" || gotOrder[1] != "codex" {
+		t.Fatalf("agent_order = %v, want prefix [claude codex]", gotOrder)
 	}
 }
 

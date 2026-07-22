@@ -59,7 +59,7 @@ struct SettingsConfigurationTab: View {
         SettingsSectionCard(
             title: "Providers",
             systemImage: "person.2",
-            description: "Choose the providers included in usage checks."
+            description: "Choose usage providers and change execution priority with the arrow controls."
         ) {
             VStack(alignment: .leading, spacing: 8) {
                 LabeledContent("Configuration file") {
@@ -73,8 +73,35 @@ struct SettingsConfigurationTab: View {
 
                 Divider()
 
-                ForEach(configDraft?.tools ?? []) { tool in
-                    Toggle(tool.name, isOn: toolEnabledBinding(tool.binaryName))
+                ForEach(Array((configDraft?.tools ?? []).enumerated()), id: \.element.id) { index, tool in
+                    HStack(spacing: 8) {
+                        Toggle(tool.name, isOn: toolEnabledBinding(tool.binaryName))
+
+                        Spacer(minLength: 8)
+
+                        Text("#\(index + 1)")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 28, alignment: .trailing)
+
+                        Button {
+                            moveTool(tool.binaryName, by: -1)
+                        } label: {
+                            Image(systemName: "chevron.up")
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(index == 0)
+                        .accessibilityLabel("Move \(tool.name) up")
+
+                        Button {
+                            moveTool(tool.binaryName, by: 1)
+                        } label: {
+                            Image(systemName: "chevron.down")
+                        }
+                        .buttonStyle(.borderless)
+                        .disabled(index == (configDraft?.tools.count ?? 0) - 1)
+                        .accessibilityLabel("Move \(tool.name) down")
+                    }
                 }
 
                 if configDraft?.hasEnabledTool == false {
@@ -112,12 +139,20 @@ struct SettingsConfigurationTab: View {
                 Toggle("Refresh sessions automatically", isOn: sessionRefreshEnabledBinding)
 
                 Picker("Refresh interval", selection: sessionRefreshIntervalBinding) {
-                    Text("Daily").tag("daily")
-                    Text("Weekly").tag("weekly")
+                    ForEach(SessionRefreshIntervalOption.all) { option in
+                        Text(option.label).tag(option.value)
+                    }
                 }
 
-                Stepper(value: sessionRefreshHourBinding, in: 0...23) {
-                    Text("Refresh hour: \(configDraft?.sessionRefreshHour ?? 0):00")
+                if sessionRefreshUsesHour {
+                    Stepper(value: sessionRefreshHourBinding, in: 0...23) {
+                        Text("Refresh hour: \(configDraft?.sessionRefreshHour ?? 0):00")
+                    }
+                } else {
+                    LabeledContent("Refresh hour") {
+                        Text("Not used for sub-daily intervals")
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
         }
@@ -168,7 +203,7 @@ struct SettingsConfigurationTab: View {
 
     private var sessionRefreshIntervalBinding: Binding<String> {
         Binding(
-            get: { configDraft?.sessionRefreshInterval ?? "daily" },
+            get: { SessionRefreshIntervalOption.option(for: configDraft?.sessionRefreshInterval ?? "daily").value },
             set: {
                 configDraft?.sessionRefreshInterval = $0
                 onDraftChange()
@@ -185,6 +220,10 @@ struct SettingsConfigurationTab: View {
             }
         )
     }
+    private var sessionRefreshUsesHour: Bool {
+        SessionRefreshIntervalOption.usesHour(configDraft?.sessionRefreshInterval ?? "daily")
+    }
+
 
     private func toolEnabledBinding(_ binaryName: String) -> Binding<Bool> {
         Binding(
@@ -196,5 +235,9 @@ struct SettingsConfigurationTab: View {
                 onDraftChange()
             }
         )
+    }
+    private func moveTool(_ binaryName: String, by offset: Int) {
+        configDraft?.moveTool(binaryName, by: offset)
+        onDraftChange()
     }
 }
