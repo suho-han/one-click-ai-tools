@@ -323,7 +323,7 @@ async function maybeConfigureSessionRefresh(binaryPath) {
         console.log(`one-click-ai-tools: session-refresh enabled (${interval}, ${hour}:00).`);
     } catch (err) {
         console.warn(`one-click-ai-tools: Failed to enable session-refresh schedule automatically: ${err.message}`);
-        console.warn('one-click-ai-tools: You can enable it later with: oct schedule enable --task session-refresh --interval daily --hour 9');
+        console.warn('one-click-ai-tools: You can enable it later with: oct schedule config --enabled --interval daily --hour 9');
     }
 }
 
