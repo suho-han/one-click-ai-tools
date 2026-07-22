@@ -19,10 +19,12 @@ struct ProviderCardView: View {
                             .foregroundStyle(providerAccent)
                             .lineLimit(1)
 
-                        Text("· \(provider.plan)")
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
-                            .foregroundStyle(provider.plan == "unknown" ? .secondary : .primary)
-                            .lineLimit(1)
+                        if showsPlan {
+                            Text("· \(provider.plan)")
+                                .font(.system(size: 10, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                        }
                     }
                 }
 
@@ -38,7 +40,9 @@ struct ProviderCardView: View {
                     )
             }
 
-            metricStrip
+            if !provider.metrics.isEmpty {
+                metricStrip
+            }
 
             if let message = provider.message, !message.isEmpty {
                 Text(message)
@@ -76,6 +80,11 @@ struct ProviderCardView: View {
                 )
             }
         }
+    }
+
+    private var showsPlan: Bool {
+        let plan = provider.plan.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return !plan.isEmpty && plan != "unknown" && plan != "n/a"
     }
 
     private var providerAccent: Color {

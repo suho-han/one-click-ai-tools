@@ -19,8 +19,8 @@ struct UsageSnapshot: Equatable {
         nextRefreshLabel: "pending",
         autoRefreshLabel: "Auto refresh: every 1m",
         providers: [
-            ProviderCard(name: "codex", status: .loading, metrics: [.init(label: "5h", value: "-"), .init(label: "7d", value: "-")], message: "Waiting for first refresh"),
-            ProviderCard(name: "claude-code", status: .loading, metrics: [.init(label: "5h", value: "-"), .init(label: "7d", value: "-")], message: "Refresh timer starts after launch"),
+            ProviderCard(name: "codex", status: .loading, metrics: [], message: "Waiting for first refresh"),
+            ProviderCard(name: "claude-code", status: .loading, metrics: [], message: "Refresh timer starts after launch"),
         ],
         note: "Data will be loaded from oct usage --json after launch."
     )
@@ -34,7 +34,7 @@ struct UsageSnapshot: Equatable {
             nextRefreshLabel: "pending",
             autoRefreshLabel: "Auto refresh: every \(DurationFormatter.label(for: refreshInterval))",
             providers: [
-                ProviderCard(name: "oct", status: .error, metrics: [.init(label: "5h", value: "unavailable"), .init(label: "7d", value: "unavailable")], message: message),
+                ProviderCard(name: "oct", status: .error, metrics: [], message: message),
             ],
             note: "Check oct path or run Refresh now after fixing the CLI location."
         )
@@ -170,10 +170,7 @@ extension UsageSnapshot {
                 plan: normalizedPlan(result.plan),
                 planSource: normalizedPlanSource(result.planSource),
                 status: effectiveStatus(for: result),
-                metrics: [
-                    UsageMetric(label: "5h", value: result.buckets?["5h"] ?? "-"),
-                    UsageMetric(label: "7d", value: result.buckets?["7d"] ?? "-"),
-                ],
+                metrics: visibleMetrics(for: result.provider, from: result.buckets),
                 message: composedMessage(for: result)
             )
         }
@@ -265,6 +262,29 @@ extension UsageSnapshot {
 
     private static func hasPartialSignal(_ message: String) -> Bool {
         message.hasPrefix("partial:") || message.contains("partial data")
+    }
+
+    private static func visibleMetrics(for provider: String, from buckets: [String: String]?) -> [UsageMetric] {
+        guard let buckets else {
+            return []
+        }
+        let labels = provider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "codex"
+            ? ["7d"]
+            : ["5h", "7d"]
+        return labels.compactMap { label in
+            guard let value = visibleMetricValue(buckets[label]) else {
+                return nil
+            }
+            return UsageMetric(label: label, value: value)
+        }
+    }
+
+    private static func visibleMetricValue(_ raw: String?) -> String? {
+        let value = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if value.isEmpty || value == "-" || value.lowercased() == "n/a" || value.lowercased() == "unavailable" {
+            return nil
+        }
+        return value
     }
 
     private static func composedMessage(for result: UsageResponse.Result) -> String? {

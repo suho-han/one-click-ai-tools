@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"unicode/utf8"
@@ -87,51 +88,18 @@ func PrintTable(results []UsageResult) {
 
 func RenderTable(w io.Writer, results []UsageResult) {
 	width := terminalWidth()
-	messageWidth := tableMessageWidth(width)
 
 	displayMode := strings.ToLower(strings.TrimSpace(viper.GetString("usage_display_mode")))
 	if displayMode != "used" && displayMode != "remaining" {
 		displayMode = "used"
 	}
 
-	fmt.Fprintf(w, "%-16s %-12s %-12s %-8s %-8s %-12s %-12s %-10s %-8s %-8s %s\n",
-		"provider", "plan", "period", "5h", "1w", "used", "limit", "unit", "source", "status", "message")
-	for _, r := range results {
-		providerLabel := providerDisplayLabel(r.Provider)
-		paddedProvider := colorizeProvider(padRightRunes(providerLabel, 16), r.Provider)
-		planLabel := r.Plan
-		if strings.TrimSpace(planLabel) == "" {
-			planLabel = "unknown"
+	cardWidth := tableCardWidth(width)
+	for i, r := range results {
+		if i > 0 {
+			fmt.Fprintln(w)
 		}
-
-		fiveHour := "-"
-		oneWeek := "-"
-		if val, ok := r.Buckets["5h"]; ok && val != "" {
-			fiveHour = formatBucketDisplay(r, val, displayMode)
-		}
-		if val, ok := r.Buckets["7d"]; ok && val != "" {
-			oneWeek = formatBucketDisplay(r, val, displayMode)
-		}
-		// Fallback for providers that currently expose a single percent usage value.
-		if fiveHour == "-" && r.Unit == "percent" && r.Used != "" && r.Used != "n/a" {
-			provider := strings.ToLower(r.Provider)
-			if strings.Contains(provider, "gemini") || strings.Contains(provider, "claude") {
-				fiveHour = formatBucketDisplay(r, r.Used, displayMode)
-			}
-		}
-
-		displayUsed := r.Used
-		if displayMode == "remaining" && strings.EqualFold(r.Unit, "percent") {
-			if rem, ok := remainingFromUsed(r.Used); ok {
-				displayUsed = rem
-			}
-		}
-
-		statusLabel := colorizeStatus(fmt.Sprintf("%-8s", r.Status), r.Status)
-		message := colorizeMessage(truncateText(r.Message, messageWidth), r.Status)
-
-		fmt.Fprintf(w, "%s %-12s %-12s %-8s %-8s %-12s %-12s %-10s %-8s %s %s\n",
-			paddedProvider, planLabel, r.Period, fiveHour, oneWeek, displayUsed, r.Limit, r.Unit, r.Source, statusLabel, message)
+		renderProviderCard(w, r, displayMode, cardWidth)
 	}
 }
 
@@ -268,6 +236,80 @@ func truncateText(s string, max int) string {
 	return s[:max-3] + "..."
 }
 
+func tableCardWidth(width int) int {
+	switch {
+	case width < 56:
+		return 56
+	case width > 92:
+		return 92
+	default:
+		return width
+	}
+}
+
+func renderProviderCard(w io.Writer, r UsageResult, displayMode string, cardWidth int) {
+	innerWidth := cardWidth - 2
+	providerLabel := providerDisplayLabel(r.Provider)
+	statusLabel := strings.ToUpper(strings.TrimSpace(r.Status))
+	if statusLabel == "" {
+		statusLabel = "UNKNOWN"
+	}
+
+	fmt.Fprintf(w, "╭%s╮\n", strings.Repeat("─", innerWidth))
+	fmt.Fprintln(w, cardTitleLine(providerLabel, r.Provider, statusLabel, r.Status, innerWidth))
+	fmt.Fprintf(w, "├%s┤\n", strings.Repeat("─", innerWidth))
+	fmt.Fprintln(w, cardKeyValueLine("Plan", tablePlanLabel(r.Plan), innerWidth, ""))
+	fmt.Fprintln(w, cardKeyValueLine("Quota", usageSummaryDisplay(r, displayMode), innerWidth, ""))
+	fmt.Fprintln(w, cardKeyValueLine("Source", tableSourceLabel(r.Source), innerWidth, ""))
+	if msg := strings.TrimSpace(r.Message); msg != "" {
+		fmt.Fprintln(w, cardKeyValueLine("Note", truncateText(msg, innerWidth-10), innerWidth, r.Status))
+	}
+	fmt.Fprintf(w, "╰%s╯\n", strings.Repeat("─", innerWidth))
+}
+
+func cardTitleLine(providerLabel, provider, statusLabel, status string, innerWidth int) string {
+	left := " " + providerLabel
+	right := statusLabel + " "
+	gap := innerWidth - utf8.RuneCountInString(left) - utf8.RuneCountInString(right)
+	if gap < 1 {
+		gap = 1
+	}
+	return "│" +
+		colorizeProvider(left, provider) +
+		strings.Repeat(" ", gap) +
+		colorizeStatus(right, status) +
+		"│"
+}
+
+func cardKeyValueLine(key, value string, innerWidth int, statusForValue string) string {
+	keyLabel := fmt.Sprintf(" %-7s", key)
+	value = strings.TrimSpace(value)
+	if value == "" {
+		value = "—"
+	}
+	maxValueWidth := innerWidth - utf8.RuneCountInString(keyLabel) - 1
+	if maxValueWidth < 1 {
+		maxValueWidth = 1
+	}
+	value = truncateText(value, maxValueWidth)
+	padding := innerWidth - utf8.RuneCountInString(keyLabel) - 1 - utf8.RuneCountInString(value)
+	if padding < 0 {
+		padding = 0
+	}
+	if statusForValue != "" {
+		value = colorizeMessage(value, statusForValue)
+	}
+	return "│" + keyLabel + " " + value + strings.Repeat(" ", padding) + "│"
+}
+
+func tableSourceLabel(source string) string {
+	source = strings.TrimSpace(source)
+	if source == "" {
+		return "—"
+	}
+	return source
+}
+
 func formatBucketDisplay(r UsageResult, rawValue, mode string) string {
 	value := rawValue
 	if mode == "remaining" && strings.EqualFold(r.Unit, "percent") {
@@ -276,12 +318,12 @@ func formatBucketDisplay(r UsageResult, rawValue, mode string) string {
 		}
 	}
 
+	if strings.EqualFold(r.Unit, "percent") {
+		return value + "%"
+	}
 	// Antigravity alias compatibility keeps count-style numbers unmodified in table output.
 	if strings.Contains(strings.ToLower(r.Provider), "antigravity") || strings.Contains(strings.ToLower(r.Provider), "gemini") {
 		return value
-	}
-	if strings.EqualFold(r.Unit, "percent") {
-		return value + "%"
 	}
 	return value
 }
@@ -298,16 +340,112 @@ func remainingFromUsed(used string) (string, bool) {
 	return fmt.Sprintf("%.1f", remaining), true
 }
 
+func tablePlanLabel(plan string) string {
+	plan = strings.TrimSpace(plan)
+	if plan == "" || strings.EqualFold(plan, "unknown") || strings.EqualFold(plan, "n/a") {
+		return "—"
+	}
+	return plan
+}
+
+func usageSummaryDisplay(r UsageResult, mode string) string {
+	var parts []string
+	if !strings.EqualFold(r.Provider, "codex") {
+		if val, ok := visibleBucketValue(r, "5h", mode); ok {
+			parts = append(parts, "5h "+val)
+		}
+	}
+	if val, ok := visibleBucketValue(r, "7d", mode); ok {
+		parts = append(parts, "7d "+val)
+	}
+	if len(parts) > 0 {
+		return strings.Join(parts, " · ")
+	}
+
+	if modelParts := modelBucketDisplays(r, mode); len(modelParts) > 0 {
+		return strings.Join(modelParts, " · ")
+	}
+
+	used := strings.TrimSpace(r.Used)
+	msg := strings.ToLower(strings.TrimSpace(r.Message))
+	if used == "" || strings.EqualFold(used, "n/a") || hasNoDataSignal(msg) {
+		return "—"
+	}
+	if mode == "remaining" && strings.EqualFold(r.Unit, "percent") {
+		if rem, ok := remainingFromUsed(used); ok {
+			used = rem
+		}
+	}
+	if strings.EqualFold(r.Unit, "percent") {
+		return used + "%"
+	}
+	unit := strings.TrimSpace(r.Unit)
+	if unit == "" || strings.EqualFold(unit, "n/a") {
+		return used
+	}
+	limit := strings.TrimSpace(r.Limit)
+	if limit != "" && !strings.EqualFold(limit, "n/a") {
+		if quota := strings.TrimSpace(r.Buckets["quota"]); quota != "" {
+			return used + "/" + limit + " " + unit + " used (" + quota + "%)"
+		}
+		return used + "/" + limit + " " + unit
+	}
+	return used + " " + unit
+}
+
+func visibleBucketValue(r UsageResult, bucket string, mode string) (string, bool) {
+	raw := ""
+	if r.Buckets != nil {
+		raw = strings.TrimSpace(r.Buckets[bucket])
+	}
+	if raw == "" || raw == "-" || strings.EqualFold(raw, "n/a") || strings.EqualFold(raw, "unavailable") {
+		return "", false
+	}
+	value := formatBucketDisplay(r, raw, mode)
+	if mode == "remaining" && strings.EqualFold(r.Unit, "percent") {
+		value += " left"
+	}
+	return value, true
+}
+
+func modelBucketDisplays(r UsageResult, mode string) []string {
+	if len(r.Buckets) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(r.Buckets))
+	for key := range r.Buckets {
+		if strings.HasPrefix(key, "model:") {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+
+	out := make([]string, 0, len(keys))
+	for _, key := range keys {
+		value, ok := visibleBucketValue(r, key, mode)
+		if !ok {
+			continue
+		}
+		label := strings.TrimPrefix(key, "model:")
+		if label == "" {
+			label = "model"
+		}
+		out = append(out, label+" "+value)
+	}
+	return out
+}
+
 func PrintJSON(results []UsageResult) error {
 	type UsageResultCompact struct {
-		Provider   string            `json:"provider"`
-		Plan       string            `json:"plan,omitempty"`
-		PlanSource string            `json:"plan_source,omitempty"`
-		Status     string            `json:"status"`
-		Used       string            `json:"used"`
-		Unit       string            `json:"unit"`
-		Buckets    map[string]string `json:"buckets,omitempty"`
-		Message    string            `json:"message,omitempty"`
+		Provider     string            `json:"provider"`
+		Plan         string            `json:"plan,omitempty"`
+		PlanSource   string            `json:"plan_source,omitempty"`
+		Status       string            `json:"status"`
+		Used         string            `json:"used"`
+		Unit         string            `json:"unit"`
+		Buckets      map[string]string `json:"buckets,omitempty"`
+		SourceDetail string            `json:"source_detail,omitempty"`
+		Message      string            `json:"message,omitempty"`
 	}
 	type UsageSummary struct {
 		Total int `json:"total"`
@@ -325,14 +463,15 @@ func PrintJSON(results []UsageResult) error {
 
 	for _, r := range results {
 		payload.Results = append(payload.Results, UsageResultCompact{
-			Provider:   r.Provider,
-			Plan:       r.Plan,
-			PlanSource: r.PlanSource,
-			Status:     r.Status,
-			Used:       r.Used,
-			Unit:       r.Unit,
-			Buckets:    r.Buckets,
-			Message:    truncateText(r.Message, 48),
+			Provider:     r.Provider,
+			Plan:         r.Plan,
+			PlanSource:   r.PlanSource,
+			Status:       r.Status,
+			Used:         r.Used,
+			Unit:         r.Unit,
+			Buckets:      r.Buckets,
+			SourceDetail: r.SourceDetail,
+			Message:      truncateText(r.Message, 48),
 		})
 
 		switch classifySummaryStatus(r) {
