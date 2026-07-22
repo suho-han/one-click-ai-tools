@@ -8,6 +8,7 @@ bin/
 
 # Local release/build artifacts
 dist/
+macos/OctMenubar/.build/
 
 .DS_Store
 
