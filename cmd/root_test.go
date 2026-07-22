@@ -2,10 +2,10 @@ package cmd
 
 import (
 	"bytes"
-	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/spf13/viper"
@@ -44,24 +44,13 @@ func contains(s, substr string) bool {
 	return bytes.Contains([]byte(s), []byte(substr))
 }
 
-func TestRootVersionMatchesPackageJSON(t *testing.T) {
-	type pkg struct {
-		Version string `json:"version"`
-	}
-
-	data, err := os.ReadFile("../package.json")
+func TestRootVersionIsSemver(t *testing.T) {
+	matched, err := regexp.MatchString(`^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$`, rootCmd.Version)
 	if err != nil {
-		t.Fatalf("read package.json failed: %v", err)
+		t.Fatalf("compile semver regexp failed: %v", err)
 	}
-	var p pkg
-	if err := json.Unmarshal(data, &p); err != nil {
-		t.Fatalf("parse package.json failed: %v", err)
-	}
-	if p.Version == "" {
-		t.Fatal("package.json version is empty")
-	}
-	if rootCmd.Version != p.Version {
-		t.Fatalf("version mismatch: rootCmd=%q package.json=%q", rootCmd.Version, p.Version)
+	if !matched {
+		t.Fatalf("rootCmd.Version = %q, want semver", rootCmd.Version)
 	}
 }
 

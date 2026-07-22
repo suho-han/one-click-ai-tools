@@ -222,7 +222,7 @@ func commandLooksLikeOctProcess(fields []string) bool {
 		case "oct", "one-click-tools", "main.go":
 			return true
 		}
-		if strings.Contains(field, "one-click-tools") || strings.Contains(field, "oct-wrapper.js") {
+		if strings.Contains(field, "one-click-tools") {
 			return true
 		}
 	}

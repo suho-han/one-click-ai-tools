@@ -172,12 +172,6 @@ func TestIsMenubarStopTarget(t *testing.T) {
 			want:    true,
 		},
 		{
-			name:    "NPM wrapper foreground menubar",
-			pid:     103,
-			command: "node /opt/node/bin/oct-wrapper.js menubar",
-			want:    true,
-		},
-		{
 			name:    "Current stop command",
 			pid:     currentPID,
 			command: "/Users/me/bin/oct menubar stop",

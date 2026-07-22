@@ -12,24 +12,21 @@
 
 ## Installation
 
-### Via npm
+### GitHub Releases installer
+
 ```bash
-npm install -g one-click-ai-tools
+curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | sh
 ```
 
-공식 패키지 릴리스 경로는 `npm publish` 입니다.
+스크립트는 현재 OS/CPU에 맞는 GitHub Release 바이너리를 내려받고, 릴리스 checksum 항목이 있으면 검증한 뒤 기본적으로 `~/.local/bin/oct`에 설치합니다.
 
-Install-time note:
-- In interactive terminals, `postinstall` asks whether to enable periodic token-free `session-refresh`.
-- Defaults written to config: disabled, `daily`, `09:00`.
-- Global npm/pnpm installs auto-install shell completion for detected `zsh`, `bash`, or `fish` unless `OCT_INSTALL_COMPLETION=0` is set. Use `OCT_INSTALL_COMPLETION=1` to force it.
-
-### Via pnpm
 ```bash
-pnpm add -g one-click-ai-tools
-```
+# 특정 버전 설치
+curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | OCT_VERSION=v0.1.1 sh
 
-공식 패키지 릴리스 경로는 `npm publish` 입니다.
+# 설치 경로 변경
+curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | OCT_INSTALL_DIR=/usr/local/bin sh
+```
 
 ## Quick Start
 
@@ -87,24 +84,17 @@ oct menubar install-helper
 이 built-in support matrix는 `internal/update/manager_test.go`에서 회귀 테스트로 고정합니다.
 
 ## Requirements
-- **Node.js/npm** or **pnpm** (All platforms)
-- **Homebrew** (macOS)
+- **Homebrew** (macOS, agent update support)
 - **Go >= 1.25** (source build/test)
 
 ## Release
-- dependency management: `pnpm`
-- official package publish: `npm` via GitHub Actions `goreleaser` workflow
-- local release wrapper: `npm run release:npm`
+- primary binary distribution: GitHub Releases + `scripts/install.sh`
+- local release wrapper: `bash scripts/release-package.sh vX.Y.Z`
 
 ### Release preflight
 ```bash
-# local version vs npm registry
-node -p "require('./package.json').version"
-npm view one-click-ai-tools version --registry=https://registry.npmjs.org/
-
-# local npm auth / registry reachability
-npm whoami
-npm ping --registry=https://registry.npmjs.org/
+# local CLI version
+go run main.go --version
 
 # release integrity + Go validation
 bash scripts/verify-release-integrity.sh
@@ -113,15 +103,11 @@ GOTOOLCHAIN=auto go build ./...
 ```
 
 ### Publish lanes
-1. Canonical release path
-   - `npm run release:npm`
-   - the wrapper bumps/tag/pushes locally, then waits for GitHub Actions `goreleaser` to publish with `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}`
+1. Direct binary release path
+   - GitHub Actions `goreleaser` publishes Linux/Windows assets.
+   - macOS assets are built/uploaded by the `darwin-assets` job and appended to `checksums.txt`.
+   - Users install/update through `scripts/install.sh` or `oct update`.
 2. Manual CI rerun
    - GitHub Actions → `goreleaser` → `Run workflow`
    - `release_mode=release`
    - `git_ref=vX.Y.Z`
-
-### Notes
-- `npm run release:npm -- --help` is **not** a safe help path; it still enters the release wrapper.
-- Local `npm whoami` can still be useful as preflight, but the package publish itself is CI-driven.
-- If local npm auth is broken, separate `E401` (local auth failure) from CI publish wiring.
