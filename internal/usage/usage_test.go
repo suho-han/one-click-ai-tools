@@ -203,6 +203,29 @@ func TestProviderDisplayLabel_IconCapability(t *testing.T) {
 	}
 }
 
+func TestRenderTableRespectsRemainingModeForPercentBuckets(t *testing.T) {
+	oldMode := viper.GetString("usage_display_mode")
+	t.Cleanup(func() {
+		viper.Set("usage_display_mode", oldMode)
+	})
+	viper.Set("usage_display_mode", "remaining")
+	t.Setenv("OCT_NO_ICONS", "1")
+
+	var buf bytes.Buffer
+	RenderTable(&buf, []UsageResult{{
+		Provider: "claude-code",
+		Status:   "ok",
+		Used:     "12.0",
+		Limit:    "100",
+		Unit:     "percent",
+		Buckets:  map[string]string{"5h": "12.0", "7d": "41.0"},
+	}})
+
+	out := buf.String()
+	if !strings.Contains(out, "5h 88.0% left") || !strings.Contains(out, "7d 59.0% left") {
+		t.Fatalf("expected remaining percent buckets in table, got:\n%s", out)
+	}
+}
 func captureStdout(t *testing.T, fn func()) string {
 	t.Helper()
 	old := os.Stdout

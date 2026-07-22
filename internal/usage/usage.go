@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/spf13/viper"
@@ -27,7 +28,8 @@ type UsageResult struct {
 	Status       string            `json:"status"`
 	Message      string            `json:"message"`
 	SourceDetail string            `json:"source_detail"`
-	Buckets      map[string]string `json:"buckets"` // e.g. {"5h": "10", "7d": "20"}
+	Buckets      map[string]string `json:"buckets"`                 // e.g. {"5h": "10", "7d": "20"}
+	BucketResets map[string]string `json:"bucket_resets,omitempty"` // e.g. {"5h": "2026-07-22T06:09:59Z"}
 }
 
 func SelectedTools() []update.Tool {
@@ -405,7 +407,71 @@ func visibleBucketValue(r UsageResult, bucket string, mode string) (string, bool
 	if mode == "remaining" && strings.EqualFold(r.Unit, "percent") {
 		value += " left"
 	}
+	if resetLabel := bucketResetDisplay(r, bucket); resetLabel != "" {
+		value += " (" + resetLabel + ")"
+	}
 	return value, true
+}
+
+func bucketResetDisplay(r UsageResult, bucket string) string {
+	if r.BucketResets == nil {
+		return ""
+	}
+	reset := strings.TrimSpace(r.BucketResets[bucket])
+	if reset == "" {
+		return ""
+	}
+	t, ok := parseBucketResetTime(reset)
+	if !ok {
+		return ""
+	}
+	d := time.Until(t)
+	if d <= 0 {
+		return "resets now"
+	}
+	return "resets in " + compactDuration(d)
+}
+
+func parseBucketResetTime(raw string) (time.Time, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return time.Time{}, false
+	}
+	if t, err := time.Parse(time.RFC3339Nano, raw); err == nil {
+		return t, true
+	}
+	if t, err := time.Parse(time.RFC3339, raw); err == nil {
+		return t, true
+	}
+	if sec, err := strconv.ParseInt(raw, 10, 64); err == nil && sec > 0 {
+		if sec > 10_000_000_000 {
+			return time.UnixMilli(sec), true
+		}
+		return time.Unix(sec, 0), true
+	}
+	return time.Time{}, false
+}
+
+func compactDuration(d time.Duration) string {
+	minutes := int(d.Round(time.Minute).Minutes())
+	if minutes < 1 {
+		return "<1m"
+	}
+	days := minutes / (24 * 60)
+	hours := (minutes % (24 * 60)) / 60
+	mins := minutes % 60
+	switch {
+	case days > 0 && hours > 0:
+		return fmt.Sprintf("%dd %dh", days, hours)
+	case days > 0:
+		return fmt.Sprintf("%dd", days)
+	case hours > 0 && mins > 0:
+		return fmt.Sprintf("%dh %dm", hours, mins)
+	case hours > 0:
+		return fmt.Sprintf("%dh", hours)
+	default:
+		return fmt.Sprintf("%dm", mins)
+	}
 }
 
 func modelBucketDisplays(r UsageResult, mode string) []string {
@@ -444,6 +510,7 @@ func PrintJSON(results []UsageResult) error {
 		Used         string            `json:"used"`
 		Unit         string            `json:"unit"`
 		Buckets      map[string]string `json:"buckets,omitempty"`
+		BucketResets map[string]string `json:"bucket_resets,omitempty"`
 		SourceDetail string            `json:"source_detail,omitempty"`
 		Message      string            `json:"message,omitempty"`
 	}
@@ -470,6 +537,7 @@ func PrintJSON(results []UsageResult) error {
 			Used:         r.Used,
 			Unit:         r.Unit,
 			Buckets:      r.Buckets,
+			BucketResets: r.BucketResets,
 			SourceDetail: r.SourceDetail,
 			Message:      truncateText(r.Message, 48),
 		})

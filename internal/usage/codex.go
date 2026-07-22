@@ -206,14 +206,15 @@ func fetchCodexBackendUsage(base UsageResult) (UsageResult, bool) {
 	result.Unit = "percent"
 	result.Limit = "100"
 	result.Buckets = map[string]string{}
+	result.BucketResets = map[string]string{}
 
 	if strings.TrimSpace(payload.PlanType) != "" {
 		result.Plan = strings.TrimSpace(payload.PlanType)
 		result.PlanSource = "codex backend wham/usage"
 	}
 
-	addCodexBackendWindow(result.Buckets, payload.RateLimit.PrimaryWindow)
-	addCodexBackendWindow(result.Buckets, payload.RateLimit.SecondaryWindow)
+	addCodexBackendWindow(result.Buckets, result.BucketResets, payload.RateLimit.PrimaryWindow)
+	addCodexBackendWindow(result.Buckets, result.BucketResets, payload.RateLimit.SecondaryWindow)
 
 	if result.Buckets["7d"] != "" {
 		result.Used = result.Buckets["7d"]
@@ -235,7 +236,7 @@ func fetchCodexBackendUsage(base UsageResult) (UsageResult, bool) {
 	return result, true
 }
 
-func addCodexBackendWindow(buckets map[string]string, window *codexBackendRateLimitWindow) {
+func addCodexBackendWindow(buckets map[string]string, resets map[string]string, window *codexBackendRateLimitWindow) {
 	if window == nil || window.UsedPercent == nil {
 		return
 	}
@@ -246,6 +247,9 @@ func addCodexBackendWindow(buckets map[string]string, window *codexBackendRateLi
 		}
 	}
 	buckets["7d"] = fmt.Sprintf("%.1f", *window.UsedPercent)
+	if window.ResetAt != nil && *window.ResetAt > 0 {
+		resets["7d"] = fmt.Sprintf("%d", *window.ResetAt)
+	}
 }
 
 func codexHomePath() (string, bool) {
