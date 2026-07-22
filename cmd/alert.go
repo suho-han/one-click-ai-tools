@@ -33,7 +33,7 @@ var alertConfigShowCmd = &cobra.Command{
 	Use:   "show",
 	Short: "Show effective usage alert config",
 	Run: func(cmd *cobra.Command, args []string) {
-		cfg := buildAlertConfigFromViper(true)
+		cfg := buildAlertConfigFromViper(viper.GetBool("usage_alert_enabled"))
 		payload, _ := json.MarshalIndent(cfg, "", "  ")
 		fmt.Println(string(payload))
 	},
@@ -217,33 +217,45 @@ func setAlertConfigValue(key, val string) error {
 	val = strings.TrimSpace(val)
 	switch key {
 	case "enabled":
-		viper.Set("usage_alert_enabled", val == "1" || strings.EqualFold(val, "true") || strings.EqualFold(val, "yes"))
+		enabled, err := parseAlertBool(val)
+		if err != nil {
+			return err
+		}
+		viper.Set("usage_alert_enabled", enabled)
 		return nil
 	case "cooldown_minutes":
 		n, err := strconv.Atoi(val)
-		if err != nil {
-			return fmt.Errorf("invalid cooldown_minutes: %v", err)
+		if err != nil || n <= 0 {
+			return fmt.Errorf("invalid cooldown_minutes %q: must be a positive integer", val)
 		}
 		viper.Set("usage_alert_cooldown_minutes", n)
 		return nil
 	case "threshold_percent":
-		f, err := strconv.ParseFloat(val, 64)
+		f, err := parseAlertPercent("threshold_percent", val)
 		if err != nil {
-			return fmt.Errorf("invalid threshold_percent: %v", err)
+			return err
 		}
 		viper.Set("usage_alert_threshold_percent", f)
 		return nil
 	case "critical_percent":
-		f, err := strconv.ParseFloat(val, 64)
+		f, err := parseAlertPercent("critical_percent", val)
 		if err != nil {
-			return fmt.Errorf("invalid critical_percent: %v", err)
+			return err
 		}
 		viper.Set("usage_alert_critical_percent", f)
 		return nil
 	case "quiet_hours":
+		if err := validateAlertQuietHours(val); err != nil {
+			return err
+		}
 		viper.Set("usage_alert_quiet_hours", val)
 		return nil
 	case "timezone":
+		if strings.TrimSpace(val) != "" {
+			if _, err := time.LoadLocation(val); err != nil {
+				return fmt.Errorf("invalid timezone %q: %v", val, err)
+			}
+		}
 		viper.Set("usage_alert_timezone", val)
 		return nil
 	}
@@ -253,9 +265,9 @@ func setAlertConfigValue(key, val string) error {
 		if window == "" {
 			return fmt.Errorf("invalid key: threshold.<window> expected")
 		}
-		f, err := strconv.ParseFloat(val, 64)
+		f, err := parseAlertPercent("threshold", val)
 		if err != nil {
-			return fmt.Errorf("invalid threshold value: %v", err)
+			return err
 		}
 		viper.Set("usage_alert_thresholds."+strings.ToLower(window), f)
 		return nil
@@ -272,9 +284,9 @@ func setAlertConfigValue(key, val string) error {
 		if provider == "" || window == "" {
 			return fmt.Errorf("invalid key: provider.<name>.<window|default> expected")
 		}
-		f, err := strconv.ParseFloat(val, 64)
+		f, err := parseAlertPercent("provider threshold", val)
 		if err != nil {
-			return fmt.Errorf("invalid provider threshold value: %v", err)
+			return err
 		}
 		provider = strings.ToLower(provider)
 		window = strings.ToLower(window)
@@ -283,6 +295,59 @@ func setAlertConfigValue(key, val string) error {
 	}
 
 	return fmt.Errorf("supported keys: enabled, cooldown_minutes, threshold_percent, critical_percent, quiet_hours, timezone, threshold.<window>, provider.<name>.<window|default>")
+}
+
+func parseAlertBool(val string) (bool, error) {
+	switch strings.ToLower(strings.TrimSpace(val)) {
+	case "1", "true", "t", "yes", "y", "on":
+		return true, nil
+	case "0", "false", "f", "no", "n", "off":
+		return false, nil
+	default:
+		return false, fmt.Errorf("invalid enabled value %q: use true or false", val)
+	}
+}
+
+func parseAlertPercent(name, val string) (float64, error) {
+	f, err := strconv.ParseFloat(strings.TrimSpace(val), 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid %s %q: %v", name, val, err)
+	}
+	if f <= 0 || f > 100 {
+		return 0, fmt.Errorf("invalid %s %.1f: must be > 0 and <= 100", name, f)
+	}
+	return f, nil
+}
+
+func validateAlertQuietHours(val string) error {
+	val = strings.TrimSpace(val)
+	if val == "" {
+		return nil
+	}
+	parts := strings.Split(val, "-")
+	if len(parts) != 2 {
+		return fmt.Errorf("invalid quiet_hours %q: expected HH:MM-HH:MM", val)
+	}
+	if _, ok := parseAlertClockMinute(parts[0]); !ok {
+		return fmt.Errorf("invalid quiet_hours %q: expected HH:MM-HH:MM", val)
+	}
+	if _, ok := parseAlertClockMinute(parts[1]); !ok {
+		return fmt.Errorf("invalid quiet_hours %q: expected HH:MM-HH:MM", val)
+	}
+	return nil
+}
+
+func parseAlertClockMinute(val string) (int, bool) {
+	parts := strings.Split(strings.TrimSpace(val), ":")
+	if len(parts) != 2 || len(parts[0]) != 2 || len(parts[1]) != 2 {
+		return 0, false
+	}
+	hour, errH := strconv.Atoi(parts[0])
+	minute, errM := strconv.Atoi(parts[1])
+	if errH != nil || errM != nil || hour < 0 || hour > 23 || minute < 0 || minute > 59 {
+		return 0, false
+	}
+	return hour*60 + minute, true
 }
 
 func providerOptions() []string {

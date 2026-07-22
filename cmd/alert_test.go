@@ -39,6 +39,33 @@ func TestSetAlertConfigValueInvalidProviderKey(t *testing.T) {
 	}
 }
 
+func TestSetAlertConfigValueRejectsInvalidScalars(t *testing.T) {
+	viper.Reset()
+
+	for key, value := range map[string]string{
+		"enabled":           "truthy",
+		"cooldown_minutes":  "0",
+		"threshold_percent": "101",
+		"critical_percent":  "-1",
+		"quiet_hours":       "9:00-18:00",
+		"timezone":          "No/Such_Zone",
+	} {
+		if err := setAlertConfigValue(key, value); err == nil {
+			t.Fatalf("expected %s=%q to be rejected", key, value)
+		}
+	}
+}
+
+func TestBuildAlertConfigFromViperIncludesCriticalPercent(t *testing.T) {
+	viper.Reset()
+	viper.Set("usage_alert_critical_percent", 95.0)
+
+	cfg := buildAlertConfigFromViper(true)
+	if cfg.CriticalPct != 95 {
+		t.Fatalf("expected critical percent 95, got %v", cfg.CriticalPct)
+	}
+}
+
 func TestProviderOptionsIncludesCursor(t *testing.T) {
 	viper.Reset()
 	viper.Set("enabled_tools", []string{"cursor-agent", "agy", "opencode"})
