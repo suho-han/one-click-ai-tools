@@ -140,6 +140,18 @@ func NormalizeToolName(name string) string {
 		return strings.ToLower(strings.TrimSpace(name))
 	}
 }
+func splitToolNames(names []string) []string {
+	out := make([]string, 0, len(names))
+	for _, name := range names {
+		for _, part := range strings.Split(name, ",") {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				out = append(out, part)
+			}
+		}
+	}
+	return out
+}
 
 func canonicalToolMap() map[string]Tool {
 	toolMap := make(map[string]Tool, len(Tools))
@@ -150,6 +162,7 @@ func canonicalToolMap() map[string]Tool {
 }
 
 func GetOrderedTools(order []string) []Tool {
+	order = splitToolNames(order)
 	if len(order) == 0 {
 		return Tools
 	}
@@ -181,6 +194,7 @@ func GetOrderedTools(order []string) []Tool {
 }
 
 func GetFilteredTools(enabled []string, ordered []Tool) []Tool {
+	enabled = splitToolNames(enabled)
 	if len(enabled) == 0 {
 		return ordered
 	}

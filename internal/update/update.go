@@ -15,7 +15,6 @@ import (
 
 	"github.com/spf13/viper"
 	"github.com/suho-han/one-click-ai-tools/internal/ui"
-	"golang.org/x/sync/errgroup"
 )
 
 var brewInstallMu sync.Mutex
@@ -94,68 +93,55 @@ func Run(opts ...Options) error {
 	total := len(toolsToUpdate)
 	fmt.Fprintf(out, "Updating %d tools...\n", total)
 
-	g := new(errgroup.Group)
 	ctx := context.Background()
-	var mu sync.Mutex
-	count := 0
 	failureCount := 0
 
-	for _, t := range toolsToUpdate {
-		tool := t
-		g.Go(func() error {
-			manager := ResolveManagerForInstall(tool)
+	for i, plan := range plans {
+		tool := plan.Tool
+		manager := plan.Manager
+		current := i + 1
 
-			mu.Lock()
-			count++
-			current := count
+		lines := ui.InlineIconLines(tool.LobeIcon, 6, 3)
+		if len(lines) >= 3 {
+			fmt.Fprintf(out, "      %s\n", lines[0])
+			fmt.Fprintf(out, "[%d/%d] %s %s: Updating... (using %s)\n", current, total, lines[1], tool.Colorize(tool.Name), manager)
+			fmt.Fprintf(out, "      %s\n", lines[2])
+		} else {
+			fmt.Fprintf(out, "[%d/%d] %s: Updating... (using %s)\n", current, total, tool.Colorize(tool.Name), manager)
+		}
 
-			lines := ui.InlineIconLines(tool.LobeIcon, 6, 3)
-			if len(lines) >= 3 {
-				fmt.Fprintf(out, "      %s\n", lines[0])
-				fmt.Fprintf(out, "[%d/%d] %s %s: Detecting manager... (using %s)\n", current, total, lines[1], tool.Colorize(tool.Name), manager)
-				fmt.Fprintf(out, "      %s\n", lines[2])
-			} else {
-				fmt.Fprintf(out, "[%d/%d] %s: Detecting manager... (using %s)\n", current, total, tool.Colorize(tool.Name), manager)
+		versionBefore := manager.GetInstalledVersion(tool)
+		start := time.Now()
+		var output []byte
+		var err error
+		if manager == Brew {
+			brewInstallMu.Lock()
+			output, err = runInstallWithFallback(ctx, manager, tool)
+			brewInstallMu.Unlock()
+		} else {
+			output, err = runInstallWithFallback(ctx, manager, tool)
+		}
+		duration := time.Since(start).Round(time.Second)
+		versionAfter := manager.GetInstalledVersion(tool)
+
+		versionSummary := formatVersionSummary(versionBefore, versionAfter)
+		if err != nil {
+			if manager.IsNoChangeOutput(string(output)) {
+				fmt.Fprintf(out, "[%d/%d] %s ✓ Already up to date in %v%s\n", current, total, tool.Colorize(tool.Name), duration, versionSummary)
+				continue
 			}
-			mu.Unlock()
+			fmt.Fprintf(out, "[%d/%d] %s ✗ Failed after %v%s: %v\nOutput: %s\n", current, total, tool.Colorize(tool.Name), duration, versionSummary, err, string(output))
+			failureCount++
+			continue
+		}
 
-			versionBefore := manager.GetInstalledVersion(tool)
-			start := time.Now()
-			var output []byte
-			var err error
-			if manager == Brew {
-				brewInstallMu.Lock()
-				output, err = runInstallWithFallback(ctx, manager, tool)
-				brewInstallMu.Unlock()
-			} else {
-				output, err = runInstallWithFallback(ctx, manager, tool)
-			}
-			duration := time.Since(start).Round(time.Second)
-			versionAfter := manager.GetInstalledVersion(tool)
-
-			mu.Lock()
-			defer mu.Unlock()
-			if err != nil {
-				if manager.IsNoChangeOutput(string(output)) {
-					fmt.Fprintf(out, "[%s] ✓ Already up to date in %v\n", tool.Colorize(tool.Name), duration)
-					return nil
-				}
-				fmt.Fprintf(out, "[%s] ✗ Failed after %v: %v\nOutput: %s\n", tool.Colorize(tool.Name), duration, err, string(output))
-				failureCount++
-				return nil
-			}
-
-			alreadyUpToDate := (versionBefore != "" && versionBefore == versionAfter) || manager.IsNoChangeOutput(string(output))
-			if alreadyUpToDate {
-				fmt.Fprintf(out, "[%s] ✓ Already up to date in %v\n", tool.Colorize(tool.Name), duration)
-			} else {
-				fmt.Fprintf(out, "[%s] ✓ Updated successfully in %v\n", tool.Colorize(tool.Name), duration)
-			}
-			return nil
-		})
+		alreadyUpToDate := isAlreadyUpToDate(manager, versionBefore, versionAfter, string(output))
+		if alreadyUpToDate {
+			fmt.Fprintf(out, "[%d/%d] %s ✓ Already up to date in %v%s\n", current, total, tool.Colorize(tool.Name), duration, versionSummary)
+		} else {
+			fmt.Fprintf(out, "[%d/%d] %s ✓ Updated successfully in %v%s\n", current, total, tool.Colorize(tool.Name), duration, versionSummary)
+		}
 	}
-
-	_ = g.Wait()
 	if failureCount == 0 {
 		fmt.Fprintln(out, "\nAll tools updated successfully!")
 		return nil
@@ -215,6 +201,30 @@ func defaultConfirmInstallPrompt(in io.Reader, out io.Writer, plan Plan) (bool, 
 	return answer == "" || answer == "y" || answer == "yes", nil
 }
 
+func formatVersionSummary(before, after string) string {
+	before = strings.TrimSpace(before)
+	after = strings.TrimSpace(after)
+	switch {
+	case before != "" && after != "" && before != after:
+		return fmt.Sprintf(" (%s → %s)", before, after)
+	case after != "":
+		return fmt.Sprintf(" (%s)", after)
+	case before != "":
+		return fmt.Sprintf(" (%s)", before)
+	default:
+		return ""
+	}
+}
+
+func isAlreadyUpToDate(manager Manager, before, after, output string) bool {
+	before = strings.TrimSpace(before)
+	after = strings.TrimSpace(after)
+	if before != "" && after != "" && before != after {
+		return false
+	}
+	return (before != "" && before == after) || manager.IsNoChangeOutput(output)
+}
+
 func ExplainPlans(tools []Tool) []Plan {
 	plans := make([]Plan, 0, len(tools))
 	for _, tool := range tools {
@@ -239,8 +249,20 @@ func explainResolvedManager(t Tool) (Manager, string) {
 	if m, ok := managerFromPackagePrefix(t.Package); ok {
 		return m, "package prefix"
 	}
+	if isClaudeNativeTool(t) {
+		return ClaudeNative, "active native binary"
+	}
 	if isAntigravityTool(t) {
+		if hasInstalledBinary(t) {
+			return AntigravityUpdater, "active binary updater"
+		}
 		return AntigravityInstaller, "tool-specific installer"
+	}
+	if isOpenCodeTool(t) && hasInstalledBinary(t) {
+		return OpenCodeNative, "active binary updater"
+	}
+	if isCopilotTool(t) && hasInstalledBinary(t) {
+		return CopilotNative, "active binary updater"
 	}
 	if isCursorTool(t) {
 		return CursorAgent, "tool-specific installer"
