@@ -4,34 +4,34 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-PACKAGE_VERSION="$(node -p "require('./package.json').version")"
-ROOT_VERSION="$(grep -E '^[[:space:]]*Version:[[:space:]]*"[^"]+"' cmd/root.go | sed -E 's/.*"([^"]+)".*/\1/' | head -1)"
+ROOT_VERSION="$(python3 - <<'PY'
+import re
+from pathlib import Path
+match = re.search(r'Version:\s*"([^"]+)"', Path('cmd/root.go').read_text())
+if match:
+    print(match.group(1))
+PY
+)"
 
 if [[ -z "$ROOT_VERSION" ]]; then
   echo "ERROR: cannot parse Version from cmd/root.go"
   exit 1
 fi
 
-if [[ "$PACKAGE_VERSION" != "$ROOT_VERSION" ]]; then
-  echo "ERROR: version mismatch"
-  echo "  package.json: $PACKAGE_VERSION"
-  echo "  cmd/root.go:  $ROOT_VERSION"
-  exit 1
-fi
-
-echo "OK: version parity package.json == cmd/root.go == $PACKAGE_VERSION"
+echo "OK: cmd/root.go version = $ROOT_VERSION"
 
 if [[ -n "${RELEASE_TAG:-}" ]]; then
   TAG_VERSION="${RELEASE_TAG#v}"
-  if [[ "$TAG_VERSION" != "$PACKAGE_VERSION" ]]; then
-    echo "ERROR: release tag does not match package version"
+  if [[ "$TAG_VERSION" != "$ROOT_VERSION" ]]; then
+    echo "ERROR: release tag does not match root command version"
     echo "  RELEASE_TAG:  $RELEASE_TAG"
-    echo "  package.json: $PACKAGE_VERSION"
+    echo "  cmd/root.go:  $ROOT_VERSION"
     exit 1
   fi
-  echo "OK: tag parity RELEASE_TAG($RELEASE_TAG) == v$PACKAGE_VERSION"
+  echo "OK: tag parity RELEASE_TAG($RELEASE_TAG) == v$ROOT_VERSION"
 fi
 
-npm pack --dry-run >/dev/null
+bash -n scripts/install.sh
+GOTOOLCHAIN=auto go build ./...
 
-echo "OK: npm pack --dry-run passed"
+echo "OK: install script syntax and Go build passed"
