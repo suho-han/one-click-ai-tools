@@ -242,14 +242,16 @@ final class UsageSnapshotTests: XCTestCase {
         draft.sessionRefreshEnabled = true
         draft.sessionRefreshInterval = "weekly"
         draft.sessionRefreshHour = 22
+        draft.moveTool("claude", by: -1)
 
         let payload = draft.updatePayload()
 
-        XCTAssertEqual(payload.enabledTools, ["codex", "claude"])
+        XCTAssertEqual(payload.enabledTools, ["claude", "codex"])
         XCTAssertEqual(payload.usageDisplayMode, .used)
         XCTAssertTrue(payload.sessionRefreshEnabled)
         XCTAssertEqual(payload.sessionRefreshInterval, "weekly")
         XCTAssertEqual(payload.sessionRefreshHour, 22)
+        XCTAssertEqual(payload.agentOrder, ["claude", "codex"])
     }
 
     func testConfigurationDraftRevertsToLoadedSnapshot() {

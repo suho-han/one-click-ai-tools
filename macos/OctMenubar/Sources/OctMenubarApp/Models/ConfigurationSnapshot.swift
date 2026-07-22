@@ -15,6 +15,30 @@ enum UsageDisplayMode: String, Codable, CaseIterable, Identifiable {
         }
     }
 }
+struct SessionRefreshIntervalOption: Equatable, Identifiable {
+    let value: String
+    let label: String
+    let usesHour: Bool
+
+    var id: String { value }
+
+    static let all: [SessionRefreshIntervalOption] = [
+        SessionRefreshIntervalOption(value: "1h", label: "Hourly", usesHour: false),
+        SessionRefreshIntervalOption(value: "6h", label: "Every 6 hours", usesHour: false),
+        SessionRefreshIntervalOption(value: "12h", label: "Every 12 hours", usesHour: false),
+        SessionRefreshIntervalOption(value: "daily", label: "Daily", usesHour: true),
+        SessionRefreshIntervalOption(value: "weekly", label: "Weekly", usesHour: true),
+    ]
+
+    static func option(for value: String) -> SessionRefreshIntervalOption {
+        all.first { $0.value == value } ?? all[0]
+    }
+
+    static func usesHour(_ value: String) -> Bool {
+        option(for: value).usesHour
+    }
+}
+
 
 struct ConfigTool: Codable, Equatable, Identifiable {
     let name: String
@@ -54,6 +78,7 @@ struct ConfigurationUpdatePayload: Codable, Equatable {
     let sessionRefreshEnabled: Bool
     let sessionRefreshInterval: String
     let sessionRefreshHour: Int
+    let agentOrder: [String]
 
     enum CodingKeys: String, CodingKey {
         case enabledTools = "enabled_tools"
@@ -61,6 +86,7 @@ struct ConfigurationUpdatePayload: Codable, Equatable {
         case sessionRefreshEnabled = "session_refresh_enabled"
         case sessionRefreshInterval = "session_refresh_interval"
         case sessionRefreshHour = "session_refresh_hour"
+        case agentOrder = "agent_order"
     }
 }
 
@@ -91,6 +117,17 @@ struct ConfigurationDraft: Equatable {
         }
         tools[index].enabled = enabled
     }
+    mutating func moveTool(_ binaryName: String, by offset: Int) {
+        guard let sourceIndex = tools.firstIndex(where: { $0.binaryName == binaryName }) else {
+            return
+        }
+        let destinationIndex = sourceIndex + offset
+        guard tools.indices.contains(destinationIndex) else {
+            return
+        }
+        tools.swapAt(sourceIndex, destinationIndex)
+    }
+
 
     mutating func revert(to snapshot: ConfigurationSnapshot) {
         self = ConfigurationDraft(snapshot: snapshot)
@@ -102,7 +139,8 @@ struct ConfigurationDraft: Equatable {
             usageDisplayMode: usageDisplayMode,
             sessionRefreshEnabled: sessionRefreshEnabled,
             sessionRefreshInterval: sessionRefreshInterval,
-            sessionRefreshHour: sessionRefreshHour
+            sessionRefreshHour: sessionRefreshHour,
+            agentOrder: tools.map(\.binaryName)
         )
     }
 }

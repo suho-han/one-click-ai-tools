@@ -10,4 +10,13 @@ final class SettingsTabTests: XCTestCase {
             ["paintbrush", "slider.horizontal.3", "terminal"]
         )
     }
+
+    func testSessionRefreshIntervalOptionsMatchSchedulerIntervals() {
+        XCTAssertEqual(SessionRefreshIntervalOption.all.map(\.value), ["1h", "6h", "12h", "daily", "weekly"])
+        XCTAssertTrue(SessionRefreshIntervalOption.usesHour("daily"))
+        XCTAssertTrue(SessionRefreshIntervalOption.usesHour("weekly"))
+        XCTAssertFalse(SessionRefreshIntervalOption.usesHour("12h"))
+        XCTAssertFalse(SessionRefreshIntervalOption.usesHour("6h"))
+        XCTAssertFalse(SessionRefreshIntervalOption.usesHour("1h"))
+    }
 }
