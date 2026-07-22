@@ -1,7 +1,6 @@
 package update
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,7 +25,50 @@ func TestDetectManagerCursorAgent(t *testing.T) {
 	}
 }
 
+func TestDetectManagerClaudeNative(t *testing.T) {
+	reset := stubManagerDetection(t)
+	defer reset()
+
+	home := t.TempDir()
+	binDir := filepath.Join(home, ".local", "bin")
+	versionDir := filepath.Join(home, ".local", "share", "claude", "versions")
+	target := filepath.Join(versionDir, "2.1.214")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(binDir) error = %v", err)
+	}
+	if err := os.MkdirAll(versionDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(versionDir) error = %v", err)
+	}
+	if err := os.WriteFile(target, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	linkPath := filepath.Join(binDir, "claude")
+	if err := os.Symlink(target, linkPath); err != nil {
+		t.Fatalf("Symlink() error = %v", err)
+	}
+
+	binaryLookup = func(name string) (string, error) {
+		if name == "claude" {
+			return linkPath, nil
+		}
+		return "", errExecutableNotFound
+	}
+
+	manager := DetectManager(Tool{
+		Name:       "Claude Code",
+		Package:    "@anthropic-ai/claude-code",
+		BinaryName: "claude",
+	})
+
+	if manager != ClaudeNative {
+		t.Fatalf("DetectManager(claude native) = %q, want %q", manager, ClaudeNative)
+	}
+}
+
 func TestDetectManagerAntigravityInstaller(t *testing.T) {
+	reset := stubManagerDetection(t)
+	defer reset()
+
 	manager := DetectManager(Tool{
 		Name:          "Antigravity CLI",
 		Package:       "github.com/google-antigravity/antigravity-cli",
@@ -35,7 +77,75 @@ func TestDetectManagerAntigravityInstaller(t *testing.T) {
 	})
 
 	if manager != AntigravityInstaller {
-		t.Fatalf("DetectManager(agy) = %q, want %q", manager, AntigravityInstaller)
+		t.Fatalf("DetectManager(agy missing) = %q, want %q", manager, AntigravityInstaller)
+	}
+}
+
+func TestDetectManagerAntigravityUpdater(t *testing.T) {
+	reset := stubManagerDetection(t)
+	defer reset()
+
+	binaryLookup = func(name string) (string, error) {
+		if name == "agy" {
+			return "/Users/test/.local/bin/agy", nil
+		}
+		return "", errExecutableNotFound
+	}
+
+	manager := DetectManager(Tool{
+		Name:          "Antigravity CLI",
+		Package:       "github.com/google-antigravity/antigravity-cli",
+		BinaryName:    "agy",
+		BinaryAliases: []string{"antigravity", "gemini", "gemini-cli"},
+	})
+
+	if manager != AntigravityUpdater {
+		t.Fatalf("DetectManager(agy installed) = %q, want %q", manager, AntigravityUpdater)
+	}
+}
+
+func TestDetectManagerOpenCodeNative(t *testing.T) {
+	reset := stubManagerDetection(t)
+	defer reset()
+
+	binaryLookup = func(name string) (string, error) {
+		if name == "opencode" {
+			return "/Users/test/.opencode/bin/opencode", nil
+		}
+		return "", errExecutableNotFound
+	}
+
+	manager := DetectManager(Tool{
+		Name:       "OpenCode",
+		Package:    "opencode-ai",
+		BinaryName: "opencode",
+	})
+
+	if manager != OpenCodeNative {
+		t.Fatalf("DetectManager(opencode installed) = %q, want %q", manager, OpenCodeNative)
+	}
+}
+
+func TestDetectManagerCopilotNative(t *testing.T) {
+	reset := stubManagerDetection(t)
+	defer reset()
+
+	binaryLookup = func(name string) (string, error) {
+		if name == "copilot" {
+			return "/opt/homebrew/bin/copilot", nil
+		}
+		return "", errExecutableNotFound
+	}
+
+	manager := DetectManager(Tool{
+		Name:        "GitHub Copilot",
+		Package:     "@github/copilot",
+		BinaryName:  "copilot",
+		BrewPackage: "copilot-cli",
+	})
+
+	if manager != CopilotNative {
+		t.Fatalf("DetectManager(copilot installed) = %q, want %q", manager, CopilotNative)
 	}
 }
 
@@ -59,9 +169,84 @@ func TestAntigravityInstallCommand(t *testing.T) {
 	}
 }
 
+func TestClaudeNativeInstallCommand(t *testing.T) {
+	reset := stubManagerDetection(t)
+	defer reset()
+
+	binaryLookup = func(name string) (string, error) {
+		if name == "claude" {
+			return "/Users/test/.local/bin/claude", nil
+		}
+		return "", errExecutableNotFound
+	}
+
+	cmd := ClaudeNative.InstallCommand(Tool{BinaryName: "claude", BinaryAliases: []string{"claude-code"}})
+	if len(cmd.Args) != 2 || commandBase(cmd.Args[0]) != "claude" || cmd.Args[1] != "update" {
+		t.Fatalf("ClaudeNative.InstallCommand args = %v, want [claude update]", cmd.Args)
+	}
+}
+
+func TestAntigravityUpdaterInstallCommand(t *testing.T) {
+	reset := stubManagerDetection(t)
+	defer reset()
+
+	binaryLookup = func(name string) (string, error) {
+		if name == "agy" {
+			return "/Users/test/.local/bin/agy", nil
+		}
+		return "", errExecutableNotFound
+	}
+
+	cmd := AntigravityUpdater.InstallCommand(Tool{BinaryName: "agy", BinaryAliases: []string{"antigravity", "gemini", "gemini-cli"}})
+	if len(cmd.Args) != 2 || commandBase(cmd.Args[0]) != "agy" || cmd.Args[1] != "update" {
+		t.Fatalf("AntigravityUpdater.InstallCommand args = %v, want [agy update]", cmd.Args)
+	}
+}
+
+func TestOpenCodeNativeInstallCommand(t *testing.T) {
+	reset := stubManagerDetection(t)
+	defer reset()
+
+	binaryLookup = func(name string) (string, error) {
+		if name == "opencode" {
+			return "/Users/test/.opencode/bin/opencode", nil
+		}
+		return "", errExecutableNotFound
+	}
+
+	cmd := OpenCodeNative.InstallCommand(Tool{BinaryName: "opencode", BinaryAliases: []string{"opencode-ai"}})
+	if len(cmd.Args) != 2 || commandBase(cmd.Args[0]) != "opencode" || cmd.Args[1] != "upgrade" {
+		t.Fatalf("OpenCodeNative.InstallCommand args = %v, want [opencode upgrade]", cmd.Args)
+	}
+}
+
+func TestCopilotNativeInstallCommand(t *testing.T) {
+	reset := stubManagerDetection(t)
+	defer reset()
+
+	binaryLookup = func(name string) (string, error) {
+		if name == "copilot" {
+			return "/opt/homebrew/bin/copilot", nil
+		}
+		return "", errExecutableNotFound
+	}
+
+	cmd := CopilotNative.InstallCommand(Tool{BinaryName: "copilot"})
+	if len(cmd.Args) != 2 || commandBase(cmd.Args[0]) != "copilot" || cmd.Args[1] != "update" {
+		t.Fatalf("CopilotNative.InstallCommand args = %v, want [copilot update]", cmd.Args)
+	}
+}
+
 func TestCursorAgentNoChangeOutput(t *testing.T) {
 	if !CursorAgent.IsNoChangeOutput("Already on the latest version") {
 		t.Fatal("expected latest-version message to be treated as no change")
+	}
+}
+
+func TestFirstNonEmptyLine(t *testing.T) {
+	got := firstNonEmptyLine("\nGitHub Copilot CLI 1.0.65.\nRun 'copilot update' to check for updates.\n")
+	if got != "GitHub Copilot CLI 1.0.65." {
+		t.Fatalf("firstNonEmptyLine() = %q", got)
 	}
 }
 
@@ -290,78 +475,6 @@ func TestBuiltInToolManagerSupportMatrix(t *testing.T) {
 		if got := ResolveManagerForInstall(tool); got != want {
 			t.Fatalf("ResolveManagerForInstall(%s) = %q, want %q", tool.BinaryName, got, want)
 		}
-	}
-}
-
-func TestDetectManagerPrefersNpmWhenHomebrewBinPathIsAmbiguous(t *testing.T) {
-	reset := stubManagerDetection(t)
-	defer reset()
-
-	binaryLookup = func(name string) (string, error) {
-		if name == "copilot" {
-			return "/opt/homebrew/bin/copilot", nil
-		}
-		return "", errExecutableNotFound
-	}
-	commandOutput = func(name string, args ...string) ([]byte, error) {
-		switch name {
-		case "brew":
-			if len(args) >= 1 && args[0] == "--prefix" {
-				return []byte("/opt/homebrew\n"), nil
-			}
-			if len(args) >= 2 && args[0] == "list" && args[1] == "copilot-cli" {
-				return []byte("Error: copilot-cli not installed\n"), errors.New("exit status 1")
-			}
-		case "npm":
-			if len(args) >= 2 && args[0] == "prefix" && args[1] == "-g" {
-				return []byte("/opt/homebrew\n"), nil
-			}
-			if len(args) >= 3 && args[0] == "list" {
-				return []byte("@github/copilot@1.0.0\n"), nil
-			}
-		}
-		return nil, errExecutableNotFound
-	}
-
-	got := DetectManager(Tool{Package: "@github/copilot", BinaryName: "copilot", BrewPackage: "copilot-cli"})
-	if got != Npm {
-		t.Fatalf("DetectManager() = %q, want %q", got, Npm)
-	}
-}
-
-func TestDetectManagerUsesConfiguredBrewPackageForCopilotCask(t *testing.T) {
-	reset := stubManagerDetection(t)
-	defer reset()
-
-	binaryLookup = func(name string) (string, error) {
-		if name == "copilot" {
-			return "/opt/homebrew/bin/copilot", nil
-		}
-		return "", errExecutableNotFound
-	}
-	commandOutput = func(name string, args ...string) ([]byte, error) {
-		switch name {
-		case "brew":
-			if len(args) >= 1 && args[0] == "--prefix" {
-				return []byte("/opt/homebrew\n"), nil
-			}
-			if len(args) >= 2 && args[0] == "list" && args[1] == "copilot-cli" {
-				return []byte("/opt/homebrew/Caskroom/copilot-cli/1.0.34/copilot\n"), nil
-			}
-		case "npm":
-			if len(args) >= 2 && args[0] == "prefix" && args[1] == "-g" {
-				return []byte("/opt/homebrew\n"), nil
-			}
-			if len(args) >= 3 && args[0] == "list" {
-				return []byte("(empty)\n"), nil
-			}
-		}
-		return nil, errExecutableNotFound
-	}
-
-	got := DetectManager(Tool{Package: "@github/copilot", BinaryName: "copilot", BrewPackage: "copilot-cli"})
-	if got != Brew {
-		t.Fatalf("DetectManager() = %q, want %q", got, Brew)
 	}
 }
 

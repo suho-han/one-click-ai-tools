@@ -18,7 +18,11 @@ const (
 	Cargo                Manager = "cargo"
 	GoInstall            Manager = "go-install"
 	Pip                  Manager = "pip"
+	ClaudeNative         Manager = "claude-native"
+	OpenCodeNative       Manager = "opencode-native"
+	CopilotNative        Manager = "copilot-native"
 	CursorAgent          Manager = "cursor-agent"
+	AntigravityUpdater   Manager = "antigravity-updater"
 	AntigravityInstaller Manager = "antigravity-installer"
 	Unknown              Manager = "unknown"
 )
@@ -30,14 +34,17 @@ var (
 )
 
 var noChangePatterns = map[Manager][]string{
-	Npm:                  {"up to date"},
-	Pnpm:                 {"already up to date"},
-	Yarn:                 {"already up to date"},
-	Brew:                 {"already installed", "up-to-date"},
-	CursorAgent:          {"already up to date", "already on the latest version", "latest version"},
-	AntigravityInstaller: {"already up to date", "already on the latest version", "latest version"},
-	Cargo:                {"is already installed", "use --force to override"},
-	Pip:                  {"requirement already satisfied"},
+	Npm:                {"up to date"},
+	Pnpm:               {"already up to date"},
+	Yarn:               {"already up to date"},
+	Brew:               {"already installed", "up-to-date"},
+	ClaudeNative:       {"already up to date", "already on the latest version", "latest version"},
+	OpenCodeNative:     {"already up to date", "already on the latest version", "latest version"},
+	CopilotNative:      {"already up to date", "already on the latest version", "latest version"},
+	CursorAgent:        {"already up to date", "already on the latest version", "latest version"},
+	AntigravityUpdater: {"already up to date", "already on the latest version", "latest version", "no update available"},
+	Cargo:              {"is already installed", "use --force to override"},
+	Pip:                {"requirement already satisfied"},
 }
 
 func DetectManager(t Tool) Manager {
@@ -45,8 +52,23 @@ func DetectManager(t Tool) Manager {
 		return m
 	}
 
+	if isClaudeNativeTool(t) {
+		return ClaudeNative
+	}
+
 	if isAntigravityTool(t) {
+		if hasInstalledBinary(t) {
+			return AntigravityUpdater
+		}
 		return AntigravityInstaller
+	}
+
+	if isOpenCodeTool(t) && hasInstalledBinary(t) {
+		return OpenCodeNative
+	}
+
+	if isCopilotTool(t) && hasInstalledBinary(t) {
+		return CopilotNative
 	}
 
 	if isCursorTool(t) {
@@ -89,8 +111,16 @@ func (m Manager) InstallCommand(t Tool) *exec.Cmd {
 
 func (m Manager) InstallCommandCtx(ctx context.Context, t Tool) *exec.Cmd {
 	switch m {
+	case ClaudeNative:
+		return commandContextWithEnv(ctx, firstAvailableBinary(t), "update")
+	case OpenCodeNative:
+		return commandContextWithEnv(ctx, firstAvailableBinary(t), "upgrade")
+	case CopilotNative:
+		return commandContextWithEnv(ctx, firstAvailableBinary(t), "update")
 	case CursorAgent:
 		return commandContextWithEnv(ctx, "bash", "-lc", "curl https://cursor.com/install -fsS | bash")
+	case AntigravityUpdater:
+		return commandContextWithEnv(ctx, firstAvailableBinary(t), "update")
 	case AntigravityInstaller:
 		return commandContextWithEnv(ctx, "bash", "-lc", "curl -fsSL https://antigravity.google/cli/install.sh | bash")
 	case Brew:
@@ -112,21 +142,20 @@ func (m Manager) InstallCommandCtx(ctx context.Context, t Tool) *exec.Cmd {
 
 func (m Manager) GetInstalledVersion(t Tool) string {
 	switch m {
-	case CursorAgent, AntigravityInstaller:
-		for _, binary := range preferredBinaries(t) {
-			out, err := commandWithEnv(binary, "--version").Output()
-			if err == nil {
-				return strings.TrimSpace(string(out))
-			}
-		}
-		return ""
+	case ClaudeNative, OpenCodeNative, CopilotNative, CursorAgent, AntigravityUpdater, AntigravityInstaller:
+		return versionFromBinary(t)
 	case Brew:
 		out, _ := commandWithEnv("brew", "list", "--versions", t.BrewTarget()).Output()
 		parts := strings.Fields(strings.TrimSpace(string(out)))
 		if len(parts) >= 2 {
 			return parts[1]
 		}
-		return ""
+		out, _ = commandWithEnv("brew", "list", "--versions", "--cask", t.BrewTarget()).Output()
+		parts = strings.Fields(strings.TrimSpace(string(out)))
+		if len(parts) >= 2 {
+			return parts[1]
+		}
+		return versionFromBinary(t)
 	case Pnpm:
 		out, _ := commandWithEnv("pnpm", "list", "-g", t.Package, "--depth=0").Output()
 		for _, line := range strings.Split(string(out), "\n") {
@@ -370,6 +399,26 @@ func detectNodePackageManagerFromInstalledBinary(path string) Manager {
 	return Unknown
 }
 
+func versionFromBinary(t Tool) string {
+	for _, binary := range preferredBinaries(t) {
+		out, err := commandWithEnv(binary, "--version").Output()
+		if err == nil {
+			return firstNonEmptyLine(string(out))
+		}
+	}
+	return ""
+}
+
+func firstNonEmptyLine(output string) string {
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			return line
+		}
+	}
+	return ""
+}
+
 func cargoBinaryPrefixes() []string {
 	if home := strings.TrimSpace(os.Getenv("CARGO_HOME")); home != "" {
 		return []string{filepath.Join(filepath.Clean(home), "bin")}
@@ -467,8 +516,69 @@ func isCursorTool(t Tool) bool {
 	return t.MatchesName("cursor-agent") || t.MatchesName("cursor") || t.MatchesName("agent")
 }
 
+func isClaudeTool(t Tool) bool {
+	return t.MatchesName("claude") || t.MatchesName("claude-code")
+}
+
+func isClaudeNativeTool(t Tool) bool {
+	if !isClaudeTool(t) {
+		return false
+	}
+	for _, binary := range preferredBinaries(t) {
+		path, err := binaryLookup(binary)
+		if err != nil || strings.TrimSpace(path) == "" {
+			continue
+		}
+		resolved, err := filepath.EvalSymlinks(path)
+		if err != nil {
+			continue
+		}
+		if isClaudeNativePath(resolved) {
+			return true
+		}
+	}
+	return false
+}
+
+func isClaudeNativePath(path string) bool {
+	path = filepath.Clean(strings.TrimSpace(path))
+	if path == "" {
+		return false
+	}
+	nativeVersionDir := string(os.PathSeparator) + filepath.Join(".local", "share", "claude", "versions") + string(os.PathSeparator)
+	return strings.Contains(path, nativeVersionDir)
+}
+
 func isAntigravityTool(t Tool) bool {
 	return t.MatchesName("agy") || t.MatchesName("antigravity") || t.MatchesName("gemini") || t.MatchesName("gemini-cli")
+}
+
+func isOpenCodeTool(t Tool) bool {
+	return t.MatchesName("opencode") || t.MatchesName("opencode-ai")
+}
+
+func isCopilotTool(t Tool) bool {
+	return t.MatchesName("copilot")
+}
+
+func hasInstalledBinary(t Tool) bool {
+	for _, binary := range preferredBinaries(t) {
+		path, err := binaryLookup(binary)
+		if err == nil && strings.TrimSpace(path) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+func firstAvailableBinary(t Tool) string {
+	for _, binary := range preferredBinaries(t) {
+		path, err := binaryLookup(binary)
+		if err == nil && strings.TrimSpace(path) != "" {
+			return binary
+		}
+	}
+	return t.BinaryName
 }
 
 func preferredBinaries(t Tool) []string {

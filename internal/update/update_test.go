@@ -140,6 +140,33 @@ func TestDefaultConfirmInstallPrompt(t *testing.T) {
 	}
 }
 
+func TestFormatVersionSummary(t *testing.T) {
+	if got := formatVersionSummary("1.0.0", "1.0.1"); got != " (1.0.0 → 1.0.1)" {
+		t.Fatalf("formatVersionSummary change = %q", got)
+	}
+	if got := formatVersionSummary("1.0.1", "1.0.1"); got != " (1.0.1)" {
+		t.Fatalf("formatVersionSummary same = %q", got)
+	}
+	if got := formatVersionSummary("", "1.0.1"); got != " (1.0.1)" {
+		t.Fatalf("formatVersionSummary after = %q", got)
+	}
+	if got := formatVersionSummary("", ""); got != "" {
+		t.Fatalf("formatVersionSummary empty = %q", got)
+	}
+}
+
+func TestIsAlreadyUpToDatePrefersObservedVersionChange(t *testing.T) {
+	if isAlreadyUpToDate(ClaudeNative, "2.1.214", "2.1.217", "Already up to date") {
+		t.Fatal("version change should be reported as an update even when command output contains no-change text")
+	}
+	if !isAlreadyUpToDate(ClaudeNative, "2.1.217", "2.1.217", "") {
+		t.Fatal("same version should be reported as already up to date")
+	}
+	if !isAlreadyUpToDate(ClaudeNative, "", "", "Already up to date") {
+		t.Fatal("no-change command output should be used when versions are unavailable")
+	}
+}
+
 func TestIsNpmPermissionError(t *testing.T) {
 	if !isNpmPermissionError("npm ERR! code EACCES\nnpm ERR! permission denied") {
 		t.Fatal("expected EACCES output to be detected as npm permission error")
