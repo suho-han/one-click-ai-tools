@@ -16,6 +16,14 @@ const (
 	SessionRefreshTask Task = "session-refresh"
 )
 
+const (
+	WeeklyInterval     = "weekly"
+	DailyInterval      = "daily"
+	TwelveHourInterval = "12h"
+	SixHourInterval    = "6h"
+	OneHourInterval    = "1h"
+)
+
 type Scheduler interface {
 	Enable(task Task, interval string, hour int) error
 	Disable(task Task) error
@@ -62,23 +70,32 @@ func GetScheduler() (Scheduler, error) {
 }
 
 func ParseTask(raw string) (Task, error) {
-	switch Task(raw) {
+	task := Task(strings.ToLower(strings.TrimSpace(raw)))
+	switch task {
 	case AgentUpdateTask:
 		return AgentUpdateTask, nil
 	case SessionRefreshTask:
 		return SessionRefreshTask, nil
 	default:
-		return "", fmt.Errorf("unsupported schedule task: %s", raw)
+		return "", fmt.Errorf("unsupported schedule task %q (use agent-update or session-refresh)", raw)
 	}
 }
 
 func ParseInterval(raw string) (string, error) {
 	interval := strings.ToLower(strings.TrimSpace(raw))
 	switch interval {
-	case "daily", "weekly":
-		return interval, nil
+	case "weekly", "week", "1w", "7d":
+		return WeeklyInterval, nil
+	case "daily", "day", "1d", "24h":
+		return DailyInterval, nil
+	case "12h", "12hour", "12hours":
+		return TwelveHourInterval, nil
+	case "6h", "6hour", "6hours":
+		return SixHourInterval, nil
+	case "1h", "hourly", "hour", "1hour":
+		return OneHourInterval, nil
 	default:
-		return "", fmt.Errorf("unsupported interval %q (use daily or weekly)", raw)
+		return "", fmt.Errorf("unsupported interval %q (use weekly, daily, 12h, 6h, or 1h)", raw)
 	}
 }
 
@@ -91,6 +108,27 @@ func ParseHour(raw string) (int, error) {
 		return 0, fmt.Errorf("invalid hour %q: must be 0-23", raw)
 	}
 	return hour, nil
+}
+func validateScheduleTiming(rawInterval string, hour int) (string, error) {
+	interval, err := ParseInterval(rawInterval)
+	if err != nil {
+		return "", err
+	}
+	if hour < 0 || hour > 23 {
+		return "", fmt.Errorf("invalid hour %d: must be 0-23", hour)
+	}
+	return interval, nil
+}
+
+func IntervalUsesHour(interval string) bool {
+	return interval == WeeklyInterval || interval == DailyInterval
+}
+
+func FormatSchedule(interval string, hour int) string {
+	if IntervalUsesHour(interval) {
+		return fmt.Sprintf("%s, %02d:00", interval, hour)
+	}
+	return interval
 }
 
 func taskDetails(task Task) (taskConfig, error) {

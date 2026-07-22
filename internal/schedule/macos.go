@@ -2,11 +2,22 @@ package schedule
 
 import (
 	"fmt"
+	"html/template"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"text/template"
 )
+
+type launchAgentTemplateData struct {
+	Label                string
+	BinaryPath           string
+	Command              string
+	Interval             string
+	Hour                 int
+	StartIntervalSeconds int
+	LogPath              string
+}
 
 type MacOS struct {
 	LabelPrefix string
@@ -23,6 +34,10 @@ const plistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
         <string>{{.BinaryPath}}</string>
         <string>{{.Command}}</string>
     </array>
+    {{if gt .StartIntervalSeconds 0}}
+    <key>StartInterval</key>
+    <integer>{{.StartIntervalSeconds}}</integer>
+    {{else}}
     <key>StartCalendarInterval</key>
     {{if eq .Interval "weekly"}}
     <dict>
@@ -36,6 +51,7 @@ const plistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
         <key>Minute</key><integer>0</integer>
     </dict>
     {{end}}
+    {{end}}
     <key>StandardOutPath</key>
     <string>{{.LogPath}}</string>
     <key>StandardErrorPath</key>
@@ -44,29 +60,30 @@ const plistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
 </plist>`
 
 func (m *MacOS) Enable(task Task, interval string, hour int) error {
+	interval, err := validateScheduleTiming(interval, hour)
+	if err != nil {
+		return err
+	}
 	cfg, err := taskDetails(task)
 	if err != nil {
 		return err
 	}
 
-	home, _ := os.UserHomeDir()
+	home, err := homeDirPath()
+	if err != nil {
+		return err
+	}
 	binPath := resolveBinaryPath()
 
 	logPath := filepath.Join(home, ".oct", "logs", cfg.LogFile)
-	data := struct {
-		Label      string
-		BinaryPath string
-		Command    string
-		Interval   string
-		Hour       int
-		LogPath    string
-	}{
-		Label:      launchAgentLabel(m.LabelPrefix, task),
-		BinaryPath: binPath,
-		Command:    cfg.Command,
-		Interval:   interval,
-		Hour:       hour,
-		LogPath:    logPath,
+	data := launchAgentTemplateData{
+		Label:                launchAgentLabel(m.LabelPrefix, task),
+		BinaryPath:           binPath,
+		Command:              cfg.Command,
+		Interval:             interval,
+		Hour:                 hour,
+		StartIntervalSeconds: startIntervalSeconds(interval),
+		LogPath:              logPath,
 	}
 
 	plistPath := launchAgentPath(home, m.LabelPrefix, task)
@@ -79,8 +96,7 @@ func (m *MacOS) Enable(task Task, interval string, hour int) error {
 	}
 	defer f.Close()
 
-	tmpl, _ := template.New("plist").Parse(plistTemplate)
-	if err := tmpl.Execute(f, data); err != nil {
+	if err := renderLaunchAgentPlist(f, data); err != nil {
 		return err
 	}
 
@@ -94,7 +110,10 @@ func (m *MacOS) Enable(task Task, interval string, hour int) error {
 }
 
 func (m *MacOS) Disable(task Task) error {
-	home, _ := os.UserHomeDir()
+	home, err := homeDirPath()
+	if err != nil {
+		return err
+	}
 	plistPath := launchAgentPath(home, m.LabelPrefix, task)
 	exec.Command("launchctl", "unload", plistPath).Run()
 	if err := os.Remove(plistPath); err != nil && !os.IsNotExist(err) {
@@ -109,6 +128,27 @@ func (m *MacOS) Status(task Task) (string, error) {
 		return "enabled", nil
 	}
 	return "disabled", nil
+}
+
+func renderLaunchAgentPlist(w io.Writer, data launchAgentTemplateData) error {
+	tmpl, err := template.New("plist").Parse(plistTemplate)
+	if err != nil {
+		return err
+	}
+	return tmpl.Execute(w, data)
+}
+
+func startIntervalSeconds(interval string) int {
+	switch interval {
+	case TwelveHourInterval:
+		return 12 * 60 * 60
+	case SixHourInterval:
+		return 6 * 60 * 60
+	case OneHourInterval:
+		return 60 * 60
+	default:
+		return 0
+	}
 }
 
 func launchAgentLabel(prefix string, task Task) string {

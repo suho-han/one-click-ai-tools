@@ -76,7 +76,7 @@ oct agent-update
 
 ```bash
 oct session-refresh --dry-run
-oct schedule enable --task session-refresh --interval daily --hour 9
+oct schedule config --enabled --interval daily --hour 9
 ```
 
 ### Check usage

@@ -48,7 +48,7 @@ func TestLinuxEnableWritesTaskSpecificCronEntryWithoutDuplicates(t *testing.T) {
 	if strings.Count(written, cronMarker(AgentUpdateTask)) != 1 {
 		t.Fatalf("expected exactly one managed entry, got %q", written)
 	}
-	if !strings.Contains(written, `"/tmp/oct-under-test" "agent-update" >> "/tmp/test-home/.oct/logs/agent-update.log"`) {
+	if !strings.Contains(written, `'/tmp/oct-under-test' 'agent-update' >> '/tmp/test-home/.oct/logs/agent-update.log'`) {
 		t.Fatalf("expected current binary + task log path, got %q", written)
 	}
 	if !strings.Contains(written, "0 3 * * *") {
@@ -165,5 +165,12 @@ func TestLinuxStatusTreatsMissingCrontabAsDisabled(t *testing.T) {
 	}
 	if got != "disabled" {
 		t.Fatalf("expected disabled, got %q", got)
+	}
+}
+func TestShellQuotePreventsShellExpansion(t *testing.T) {
+	got := shellQuote("/tmp/oct's $HOME `touch nope`")
+	want := `'/tmp/oct'"'"'s $HOME ` + "`touch nope`" + `'`
+	if got != want {
+		t.Fatalf("shellQuote() = %q, want %q", got, want)
 	}
 }

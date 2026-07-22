@@ -8,6 +8,10 @@ import (
 type Windows struct{}
 
 func (w *Windows) Enable(task Task, interval string, hour int) error {
+	interval, err := validateScheduleTiming(interval, hour)
+	if err != nil {
+		return err
+	}
 	cfg, err := taskDetails(task)
 	if err != nil {
 		return err
@@ -18,9 +22,12 @@ func (w *Windows) Enable(task Task, interval string, hour int) error {
 	taskName := windowsTaskName(task)
 	exec.Command("schtasks", "/Delete", "/TN", taskName, "/F").Run()
 
-	scheduleType := windowsScheduleType(interval)
-	startTime := fmt.Sprintf("%02d:00", hour)
-	cmd := exec.Command("schtasks", "/Create", "/TN", taskName, "/TR", windowsTaskCommand(binPath, cfg.Command), "/SC", scheduleType, "/ST", startTime, "/F")
+	args := []string{"/Create", "/TN", taskName, "/TR", windowsTaskCommand(binPath, cfg.Command), "/SC", windowsScheduleType(interval)}
+	if modifier := windowsScheduleModifier(interval); modifier != "" {
+		args = append(args, "/MO", modifier)
+	}
+	args = append(args, "/ST", windowsStartTime(interval, hour), "/F")
+	cmd := exec.Command("schtasks", args...)
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("schtasks failed: %v, output: %s", err, string(output))
 	}
@@ -45,10 +52,34 @@ func (w *Windows) Status(task Task) (string, error) {
 }
 
 func windowsScheduleType(interval string) string {
-	if interval == "weekly" {
+	switch interval {
+	case WeeklyInterval:
 		return "WEEKLY"
+	case TwelveHourInterval, SixHourInterval, OneHourInterval:
+		return "HOURLY"
+	default:
+		return "DAILY"
 	}
-	return "DAILY"
+}
+
+func windowsScheduleModifier(interval string) string {
+	switch interval {
+	case TwelveHourInterval:
+		return "12"
+	case SixHourInterval:
+		return "6"
+	case OneHourInterval:
+		return "1"
+	default:
+		return ""
+	}
+}
+
+func windowsStartTime(interval string, hour int) string {
+	if !IntervalUsesHour(interval) {
+		return "00:00"
+	}
+	return fmt.Sprintf("%02d:00", hour)
 }
 
 func windowsTaskName(task Task) string {
