@@ -44,6 +44,8 @@ var releaseDoctorCmd = &cobra.Command{
 	},
 }
 
+var releaseDoctorCommand = execenv.Command
+
 func collectReleaseDoctorReport() releaseDoctorReport {
 	workingTree := strings.TrimSpace(runDoctorCommand("git", "status", "--short"))
 	report := releaseDoctorReport{LocalVersion: rootCmd.Version, WorkingTree: workingTree}
@@ -57,7 +59,7 @@ func collectReleaseDoctorReport() releaseDoctorReport {
 	report.RegistryLatest = strings.TrimSpace(runDoctorCommand("npm", "view", npmPackageName, "version", "--registry=https://registry.npmjs.org/"))
 	report.NPMUserConfig = strings.TrimSpace(runDoctorCommand("npm", "config", "get", "userconfig"))
 
-	whoami := execenv.Command("npm", "whoami")
+	whoami := releaseDoctorCommand("npm", "whoami")
 	if out, err := whoami.CombinedOutput(); err == nil {
 		report.NPMWhoami = strings.TrimSpace(string(out))
 	} else {
@@ -130,7 +132,7 @@ func firstNonEmptyLine(value string) string {
 }
 
 func runDoctorCommand(name string, args ...string) string {
-	out, err := execenv.Command(name, args...).CombinedOutput()
+	out, err := releaseDoctorCommand(name, args...).CombinedOutput()
 	if err != nil {
 		return ""
 	}
