@@ -18,7 +18,7 @@
 curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | sh
 ```
 
-스크립트는 현재 OS/CPU에 맞는 GitHub Release 바이너리를 내려받고, 릴리스 checksum 항목이 있으면 검증한 뒤 기본적으로 `~/.local/bin/oct`에 설치합니다.
+스크립트는 현재 OS/CPU에 맞는 GitHub Release 바이너리를 내려받고, 릴리스 checksum 항목이 있으면 검증한 뒤 기본적으로 `~/.local/bin/oct`에 설치합니다. 터미널에서 실행하면 설치 직후 `oct config`가 자동으로 열려 provider/usage 설정까지 이어서 진행합니다.
 
 ```bash
 # 특정 버전 설치
@@ -26,6 +26,9 @@ curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/sc
 
 # 설치 경로 변경
 curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | OCT_INSTALL_DIR=/usr/local/bin sh
+
+# 설치 후 config 단계 건너뛰기
+curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | OCT_INSTALL_RUN_CONFIG=0 sh
 ```
 
 ## Quick Start
