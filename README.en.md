@@ -16,7 +16,7 @@
 curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | sh
 ```
 
-The installer downloads the matching GitHub Release binary, verifies it when the release checksum entry is present, and installs `oct` to `~/.local/bin` by default.
+The installer downloads the matching GitHub Release binary, verifies it when the release checksum entry is present, installs `oct` to `~/.local/bin` by default, and opens `oct config` immediately when a terminal is available.
 
 ```bash
 # Install a specific version
@@ -24,6 +24,9 @@ curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/sc
 
 # Install somewhere else
 curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | OCT_INSTALL_DIR=/usr/local/bin sh
+
+# Skip post-install configuration
+curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | OCT_INSTALL_RUN_CONFIG=0 sh
 ```
 
 ### Core flows
