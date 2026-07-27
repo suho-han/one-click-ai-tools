@@ -8,7 +8,7 @@
 - `cmd/`: Cobra commands (`agent-update`, `usage`, `config`, `schedule`, `update`).
 - `internal/`: core logic (`update/`, `usage/`, `config/`, `schedule/`, `ui/`).
 - `scripts/`: release and installer helpers (`install.sh`, `release-package.sh`, `verify-release-integrity.sh`).
-- `CONTEXT/`: project notes and local testing guides.
+- `context/`: project notes and local testing guides.
 - `skills/`: optional skill docs; not runtime-critical.
 
 Use `internal/ui/assets/` for icon/image assets and keep generated artifacts in their existing folders.
@@ -42,7 +42,7 @@ Primary framework is Go’s built-in `testing` package.
 
 - Add unit tests near changed code (for example `internal/usage/usage_test.go`).
 - Add command-level tests in `cmd/*_test.go` when CLI behavior changes.
-- For usage/API flows, prefer mock endpoints via env vars (see `CONTEXT/LOCAL_TEST.md`).
+- For usage/API flows, prefer mock endpoints via env vars (see `context/LOCAL_TEST.md`).
 
 Run `go test ./...` before committing.
 
