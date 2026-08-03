@@ -100,7 +100,7 @@ type menubarUI struct {
 func onMenubarReady() {
 	ui, err := newMenubarUI()
 	if err != nil {
-		systray.SetTitle("oct !!")
+		systray.SetTitle("oct")
 		systray.SetTooltip("one-click-tools menubar init failed")
 		mErr := systray.AddMenuItem("menubar init failed: "+truncateMenubarText(err.Error(), 48), "Initialization error")
 		mErr.Disable()
@@ -126,7 +126,7 @@ func newMenubarUI() (*menubarUI, error) {
 
 	toolNames := selectedMenubarToolNames()
 	refreshInterval := menubarRefreshInterval(viper.GetString("menubar_refresh_interval"))
-	systray.SetTitle("oct …")
+	systray.SetTitle("oct")
 	systray.SetTooltip("one-click-tools menubar")
 
 	ui := &menubarUI{

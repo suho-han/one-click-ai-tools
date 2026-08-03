@@ -42,7 +42,7 @@ func buildMenubarLoadingSnapshot(toolNames []string) menubarSnapshot {
 		})
 	}
 	return menubarSnapshot{
-		Title:           "oct …",
+		Title:           "oct",
 		Tooltip:         "one-click-tools menubar loading",
 		SummaryLine:     fmt.Sprintf("Loading usage for %d provider(s)…", len(toolNames)),
 		UpdatedLine:     "Last refresh: -",
@@ -101,7 +101,7 @@ func buildMenubarErrorSnapshot(toolNames []string, now time.Time, err error) men
 		msg = err.Error()
 	}
 	return menubarSnapshot{
-		Title:           "oct !!",
+		Title:           "oct",
 		Tooltip:         "menubar refresh failed",
 		SummaryLine:     "Refresh failed · " + truncateMenubarText(msg, 48),
 		UpdatedLine:     "Last refresh: " + menubarTimeLabel(now),
@@ -112,16 +112,7 @@ func buildMenubarErrorSnapshot(toolNames []string, now time.Time, err error) men
 }
 
 func menubarTitleForSeverity(severity string) string {
-	switch severity {
-	case "error":
-		return "oct !!"
-	case "warn":
-		return "oct !"
-	case "loading":
-		return "oct …"
-	default:
-		return "oct"
-	}
+	return "oct"
 }
 
 func menubarProviderLine(result usage.UsageResult) string {
