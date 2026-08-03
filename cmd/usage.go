@@ -72,8 +72,8 @@ type switchProviderMsg struct{}
 
 var usageFetcher = usage.GetUsage
 
-func shouldAutoJSONFallback(jsonMode bool, isTTY bool) bool {
-	return !jsonMode && !isTTY
+func shouldAutoJSONFallback(jsonMode bool, compactMode bool, isTTY bool) bool {
+	return !jsonMode && !compactMode && !isTTY
 }
 
 func usageOrderedTools() []update.Tool {
@@ -122,6 +122,7 @@ To properly fetch usage, ensure you are authenticated:
 Legacy aliases 'gemini' and 'gemini-cli' still map to 'agy' for compatibility.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		jsonMode, _ := cmd.Flags().GetBool("json")
+		compactMode, _ := cmd.Flags().GetBool("compact")
 		notifyMode, _ := cmd.Flags().GetBool("notify")
 
 		isTTY := false
@@ -130,17 +131,21 @@ Legacy aliases 'gemini' and 'gemini-cli' still map to 'agy' for compatibility.`,
 		}
 
 		// Auto-fallback for non-TTY environments (CI, pipes, cron, tool runners)
-		if shouldAutoJSONFallback(jsonMode, isTTY) {
+		if shouldAutoJSONFallback(jsonMode, compactMode, isTTY) {
 			jsonMode = true
 			fmt.Fprintln(os.Stderr, "[oct] non-TTY detected -> switching to --json (pretty output)")
 		}
 
-		if jsonMode {
+		if jsonMode || compactMode {
 			results, err := usageFetcher()
 			if err != nil {
 				return fmt.Errorf("fetch usage: %w", err)
 			}
 			maybeSendUsageAlerts(results, notifyMode)
+			if compactMode {
+				usage.RenderCompactRemaining(os.Stdout, results)
+				return nil
+			}
 			if err := usage.PrintJSON(results); err != nil {
 				return fmt.Errorf("print usage json: %w", err)
 			}
@@ -182,5 +187,6 @@ Legacy aliases 'gemini' and 'gemini-cli' still map to 'agy' for compatibility.`,
 func init() {
 	rootCmd.AddCommand(usageCmd)
 	usageCmd.Flags().Bool("json", false, "Output in JSON format")
+	usageCmd.Flags().Bool("compact", false, "Output compact remaining usage (C-45% X-25%)")
 	usageCmd.Flags().Bool("notify", false, "Send usage alerts based on threshold/cooldown rules")
 }
