@@ -54,6 +54,44 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.providers[1], ProviderCard(name: "opencode", status: .warn, metrics: [], message: "No data: No local OpenCode session logs found"))
     }
 
+    func testUsageSnapshotSupportsCompactStatusItemTitle() throws {
+        let json = #"""
+        {
+          "summary": {
+            "total": 2,
+            "ok": 2,
+            "warn": 0,
+            "error": 0
+          },
+          "results": [
+            {
+              "provider": "claude-code",
+              "status": "ok",
+              "used": "55.0",
+              "unit": "percent",
+              "buckets": {
+                "5h": "55.0"
+              }
+            },
+            {
+              "provider": "codex",
+              "status": "ok",
+              "used": "80.0",
+              "unit": "percent",
+              "buckets": {
+                "7d": "75.0"
+              }
+            }
+          ]
+        }
+        """#
+
+        let response = try JSONDecoder().decode(UsageResponse.self, from: Data(json.utf8))
+        let snapshot = UsageSnapshot.from(response: response, refreshDate: .now, refreshInterval: 60, titleMode: .compact)
+
+        XCTAssertEqual(snapshot.statusItemTitle, "C-45% X-25%")
+    }
+
     func testUsageSnapshotSummaryUsesProjectedProviderStatuses() throws {
         let json = #"""
         {
@@ -194,6 +232,7 @@ final class UsageSnapshotTests: XCTestCase {
         {
           "config_file": "/Users/me/.oct/config.yaml",
           "usage_display_mode": "remaining",
+          "menubar_title_mode": "compact",
           "session_refresh_enabled": true,
           "session_refresh_interval": "weekly",
           "session_refresh_hour": 9,
@@ -216,6 +255,7 @@ final class UsageSnapshotTests: XCTestCase {
 
         XCTAssertEqual(snapshot.configFile, "/Users/me/.oct/config.yaml")
         XCTAssertEqual(snapshot.usageDisplayMode, .remaining)
+        XCTAssertEqual(snapshot.menubarTitleMode, .compact)
         XCTAssertTrue(snapshot.sessionRefreshEnabled)
         XCTAssertEqual(snapshot.sessionRefreshInterval, "weekly")
         XCTAssertEqual(snapshot.sessionRefreshHour, 9)
@@ -223,10 +263,37 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.tools.map(\.enabled), [true, false])
     }
 
+    func testConfigurationSnapshotDecodesLegacyConfigListJSON() throws {
+        let json = #"""
+        {
+          "config_file": "/Users/me/.oct/config.yaml",
+          "usage_display_mode": "remaining",
+          "session_refresh_enabled": true,
+          "session_refresh_interval": "weekly",
+          "session_refresh_hour": 9,
+          "tools": [
+            {
+              "name": "OpenAI Codex",
+              "binary_name": "codex",
+              "enabled": true
+            }
+          ]
+        }
+        """#
+
+        let snapshot = try JSONDecoder().decode(ConfigurationSnapshot.self, from: Data(json.utf8))
+
+        XCTAssertEqual(snapshot.configFile, "/Users/me/.oct/config.yaml")
+        XCTAssertEqual(snapshot.usageDisplayMode, .remaining)
+        XCTAssertEqual(snapshot.menubarTitleMode, .oct)
+        XCTAssertEqual(snapshot.tools.map(\.binaryName), ["codex"])
+    }
+
     func testConfigurationDraftBuildsUpdatePayloadAfterEdits() throws {
         let snapshot = ConfigurationSnapshot(
             configFile: "/tmp/config.yaml",
             usageDisplayMode: .remaining,
+            menubarTitleMode: .oct,
             sessionRefreshEnabled: false,
             sessionRefreshInterval: "daily",
             sessionRefreshHour: 9,
@@ -248,6 +315,7 @@ final class UsageSnapshotTests: XCTestCase {
 
         XCTAssertEqual(payload.enabledTools, ["claude", "codex"])
         XCTAssertEqual(payload.usageDisplayMode, .used)
+        XCTAssertEqual(payload.menubarTitleMode, .oct)
         XCTAssertTrue(payload.sessionRefreshEnabled)
         XCTAssertEqual(payload.sessionRefreshInterval, "weekly")
         XCTAssertEqual(payload.sessionRefreshHour, 22)
@@ -258,6 +326,7 @@ final class UsageSnapshotTests: XCTestCase {
         let snapshot = ConfigurationSnapshot(
             configFile: "/tmp/config.yaml",
             usageDisplayMode: .remaining,
+            menubarTitleMode: .compact,
             sessionRefreshEnabled: false,
             sessionRefreshInterval: "daily",
             sessionRefreshHour: 9,
@@ -267,11 +336,13 @@ final class UsageSnapshotTests: XCTestCase {
         )
         var draft = ConfigurationDraft(snapshot: snapshot)
         draft.usageDisplayMode = .used
+        draft.menubarTitleMode = .oct
         draft.setTool("codex", enabled: false)
 
         draft.revert(to: snapshot)
 
         XCTAssertEqual(draft.usageDisplayMode, .remaining)
+        XCTAssertEqual(draft.menubarTitleMode, .compact)
         XCTAssertEqual(draft.tools.map(\.enabled), [true])
     }
 

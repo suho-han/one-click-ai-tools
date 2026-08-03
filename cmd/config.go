@@ -507,12 +507,32 @@ var configSetUsageModeCmd = &cobra.Command{
 	},
 }
 
+var configSetMenubarTitleModeCmd = &cobra.Command{
+	Use:   "menubar-title-mode <oct|compact>",
+	Short: "Set menubar title display mode",
+	Args:  cobra.ExactArgs(1),
+	Run: func(cmd *cobra.Command, args []string) {
+		mode := strings.ToLower(strings.TrimSpace(args[0]))
+		if mode != "oct" && mode != "compact" {
+			fmt.Println("Invalid menubar title mode. Use: oct or compact")
+			return
+		}
+		viper.Set("menubar_title_mode", mode)
+		if err := writeConfig(); err != nil {
+			fmt.Printf("Failed to write config: %v\n", err)
+			return
+		}
+		fmt.Printf("Menubar title mode set to %s.\n", mode)
+	},
+}
+
 var configResetCmd = &cobra.Command{
 	Use:   "reset",
 	Short: "Reset configuration to defaults",
 	Run: func(cmd *cobra.Command, args []string) {
 		viper.Set("enabled_tools", []string{})
 		viper.Set("usage_display_mode", "remaining")
+		viper.Set("menubar_title_mode", "oct")
 		viper.Set("session_refresh_enabled", false)
 		viper.Set("session_refresh_interval", "daily")
 		viper.Set("session_refresh_hour", 9)
@@ -536,7 +556,9 @@ var configListCmd = &cobra.Command{
 		if usageMode != "used" && usageMode != "remaining" {
 			usageMode = "remaining"
 		}
+		titleMode := normalizedMenubarTitleMode(viper.GetString("menubar_title_mode"))
 		fmt.Printf("Usage display mode: %s\n", usageMode)
+		fmt.Printf("Menubar title mode: %s\n", titleMode)
 		fmt.Printf("Session refresh enabled: %v\n", viper.GetBool("session_refresh_enabled"))
 		fmt.Printf("Session refresh interval: %s\n", viper.GetString("session_refresh_interval"))
 		fmt.Printf("Session refresh hour: %d\n\n", viper.GetInt("session_refresh_hour"))
@@ -571,4 +593,5 @@ func init() {
 	configCmd.AddCommand(configResetCmd)
 	configSetCmd.AddCommand(configSetToolsCmd)
 	configSetCmd.AddCommand(configSetUsageModeCmd)
+	configSetCmd.AddCommand(configSetMenubarTitleModeCmd)
 }

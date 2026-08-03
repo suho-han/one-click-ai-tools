@@ -60,6 +60,44 @@ struct ProviderCard: Equatable, Identifiable {
         self.message = message
     }
 
+    var compactLabel: String {
+        let provider = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if provider.contains("claude") {
+            return "C"
+        }
+        if provider.contains("codex") || provider.contains("openai") {
+            return "X"
+        }
+        if provider.contains("antigravity") || provider.contains("gemini") || provider == "agy" {
+            return "G"
+        }
+        if provider.contains("cursor") {
+            return "R"
+        }
+        if provider.contains("copilot") || provider.contains("github") {
+            return "P"
+        }
+        if provider.contains("opencode") {
+            return "O"
+        }
+        return provider.first.map { String($0).uppercased() } ?? "?"
+    }
+
+    var compactRemainingValue: String {
+        guard let metric = metrics.first else {
+            return "?"
+        }
+        let raw = metric.value
+            .replacingOccurrences(of: "% left", with: "")
+            .replacingOccurrences(of: "%", with: "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let used = Double(raw) else {
+            return "?"
+        }
+        let remaining = min(max(100 - used, 0), 100)
+        return "\(Int(remaining.rounded()))%"
+    }
+
     func accentColor(useProviderAccentColors: Bool) -> Color {
         guard useProviderAccentColors else {
             return .primary
@@ -157,6 +195,7 @@ extension UsageSnapshot {
         response: UsageResponse,
         refreshDate: Date,
         refreshInterval: TimeInterval,
+        titleMode: MenubarTitleMode = .oct,
         timeZone: TimeZone = .autoupdatingCurrent
     ) -> UsageSnapshot {
         let formatter = DateFormatter()
@@ -177,7 +216,7 @@ extension UsageSnapshot {
         let summary = projectedSummary(for: providers)
         let status = aggregateStatus(summary: summary)
         return UsageSnapshot(
-            statusItemTitle: statusItemTitle(for: status),
+            statusItemTitle: statusItemTitle(for: status, providers: providers, titleMode: titleMode),
             title: "Usage Overview",
             summaryLine: "\(summary.total) providers · \(summary.ok) ok · \(summary.warn) warn · \(summary.error) error",
             lastRefreshLabel: formatter.string(from: refreshDate),
@@ -207,8 +246,17 @@ extension UsageSnapshot {
         )
     }
 
-    private static func statusItemTitle(for status: ProviderStatus) -> String {
-        "oct"
+    private static func statusItemTitle(
+        for status: ProviderStatus,
+        providers: [ProviderCard],
+        titleMode: MenubarTitleMode
+    ) -> String {
+        guard titleMode == .compact else {
+            return "oct"
+        }
+        let parts = providers.map { "\($0.compactLabel)-\($0.compactRemainingValue)" }
+        let title = parts.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        return title.isEmpty ? "oct" : title
     }
 
     private static func classifyStatus(_ raw: String) -> String {
