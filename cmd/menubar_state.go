@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/spf13/viper"
 	"github.com/suho-han/one-click-ai-tools/internal/update"
 	"github.com/suho-han/one-click-ai-tools/internal/usage"
 )
@@ -42,7 +43,7 @@ func buildMenubarLoadingSnapshot(toolNames []string) menubarSnapshot {
 		})
 	}
 	return menubarSnapshot{
-		Title:           "oct",
+		Title:           menubarTitle("oct", nil),
 		Tooltip:         "one-click-tools menubar loading",
 		SummaryLine:     fmt.Sprintf("Loading usage for %d provider(s)…", len(toolNames)),
 		UpdatedLine:     "Last refresh: -",
@@ -75,7 +76,7 @@ func buildMenubarUsageSnapshot(results []usage.UsageResult, now time.Time) menub
 	}
 
 	return menubarSnapshot{
-		Title:           menubarTitleForSeverity(severity),
+		Title:           menubarTitle(menubarTitleForSeverity(severity), results),
 		Tooltip:         fmt.Sprintf("%d provider(s): %d ok, %d warn, %d error", len(results), okCount, warnCount, errCount),
 		SummaryLine:     fmt.Sprintf("%d providers · %d ok · %d warn · %d error", len(results), okCount, warnCount, errCount),
 		UpdatedLine:     "Last refresh: " + menubarTimeLabel(now),
@@ -101,7 +102,7 @@ func buildMenubarErrorSnapshot(toolNames []string, now time.Time, err error) men
 		msg = err.Error()
 	}
 	return menubarSnapshot{
-		Title:           "oct",
+		Title:           menubarTitle("oct", nil),
 		Tooltip:         "menubar refresh failed",
 		SummaryLine:     "Refresh failed · " + truncateMenubarText(msg, 48),
 		UpdatedLine:     "Last refresh: " + menubarTimeLabel(now),
@@ -113,6 +114,16 @@ func buildMenubarErrorSnapshot(toolNames []string, now time.Time, err error) men
 
 func menubarTitleForSeverity(severity string) string {
 	return "oct"
+}
+
+func menubarTitle(fallback string, results []usage.UsageResult) string {
+	if normalizedMenubarTitleMode(viper.GetString("menubar_title_mode")) != "compact" || len(results) == 0 {
+		return fallback
+	}
+	if title := strings.TrimSpace(usage.CompactRemainingTitle(results)); title != "" {
+		return title
+	}
+	return fallback
 }
 
 func menubarProviderLine(result usage.UsageResult) string {

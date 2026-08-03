@@ -24,6 +24,15 @@ What each command does:
 
 ## Expected behavior
 
+The status item title defaults to `oct`. To show compact remaining usage in
+the menu bar instead, run:
+
+```bash
+oct config menubar-title-mode compact
+```
+
+Use `oct config menubar-title-mode oct` to restore the static title.
+
 ### 1. Before helper installation
 
 Example `oct menubar doctor` result:

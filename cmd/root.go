@@ -100,6 +100,7 @@ func initConfig() {
 	viper.SetDefault("session_refresh_interval", "daily")
 	viper.SetDefault("session_refresh_hour", 9)
 	viper.SetDefault("menubar_refresh_interval", "1m")
+	viper.SetDefault("menubar_title_mode", "oct")
 	// Avoid accidental overrides from generic env vars like ENABLED_TOOLS.
 	// Require explicit OCT_* variables (e.g., OCT_ENABLED_TOOLS) for env-based overrides.
 	viper.SetEnvPrefix("OCT")

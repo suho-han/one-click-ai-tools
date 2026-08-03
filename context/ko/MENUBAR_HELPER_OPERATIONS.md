@@ -24,6 +24,15 @@ oct menubar install-helper
 
 ## 기대 동작
 
+status item title 기본값은 `oct`입니다. 메뉴바에 간단한 잔여 사용량을
+표시하려면 다음을 실행합니다.
+
+```bash
+oct config menubar-title-mode compact
+```
+
+정적 title로 되돌리려면 `oct config menubar-title-mode oct`를 사용합니다.
+
 ### 1. helper 미설치 상태
 
 `oct menubar doctor` 예시:
