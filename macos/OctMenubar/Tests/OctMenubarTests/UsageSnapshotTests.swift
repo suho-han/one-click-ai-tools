@@ -44,7 +44,7 @@ final class UsageSnapshotTests: XCTestCase {
             timeZone: TimeZone(secondsFromGMT: 9 * 60 * 60)!
         )
 
-        XCTAssertEqual(snapshot.statusItemTitle, "oct !")
+        XCTAssertEqual(snapshot.statusItemTitle, "oct")
         XCTAssertEqual(snapshot.summaryLine, "2 providers · 1 ok · 1 warn · 0 error")
         XCTAssertEqual(snapshot.lastRefreshLabel, "02:12:44")
         XCTAssertEqual(snapshot.nextRefreshLabel, "02:13:44")
@@ -90,7 +90,7 @@ final class UsageSnapshotTests: XCTestCase {
         let snapshot = UsageSnapshot.from(response: response, refreshDate: .now, refreshInterval: 60)
 
         XCTAssertEqual(snapshot.summaryLine, "2 providers · 1 ok · 1 warn · 0 error")
-        XCTAssertEqual(snapshot.statusItemTitle, "oct !")
+        XCTAssertEqual(snapshot.statusItemTitle, "oct")
         XCTAssertEqual(snapshot.providers.map(\.status), [.warn, .ok])
     }
 

@@ -10,8 +10,8 @@ import (
 
 func TestMenubarLoadingSnapshot(t *testing.T) {
 	snap := buildMenubarLoadingSnapshot([]string{"Claude Code", "Codex"})
-	if snap.Title != "oct …" {
-		t.Fatalf("Title = %q, want %q", snap.Title, "oct …")
+	if snap.Title != "oct" {
+		t.Fatalf("Title = %q, want %q", snap.Title, "oct")
 	}
 	if !strings.Contains(snap.SummaryLine, "Loading usage") {
 		t.Fatalf("SummaryLine = %q, want loading summary", snap.SummaryLine)
@@ -42,8 +42,8 @@ func TestMenubarUsageSnapshotSummarizesCounts(t *testing.T) {
 	}
 
 	snap := buildMenubarUsageSnapshot(results, now)
-	if snap.Title != "oct !!" {
-		t.Fatalf("Title = %q, want %q", snap.Title, "oct !!")
+	if snap.Title != "oct" {
+		t.Fatalf("Title = %q, want %q", snap.Title, "oct")
 	}
 	if got := snap.SummaryLine; got != "3 providers · 1 ok · 1 warn · 1 error" {
 		t.Fatalf("SummaryLine = %q", got)
@@ -89,8 +89,8 @@ func TestMenubarProviderLineOmitsMessageForOKStatus(t *testing.T) {
 func TestMenubarErrorSnapshotPreservesTimestamp(t *testing.T) {
 	now := time.Date(2026, 6, 12, 14, 5, 6, 0, time.UTC)
 	snap := buildMenubarErrorSnapshot([]string{"Claude Code"}, now, assertErr("boom"))
-	if snap.Title != "oct !!" {
-		t.Fatalf("Title = %q, want %q", snap.Title, "oct !!")
+	if snap.Title != "oct" {
+		t.Fatalf("Title = %q, want %q", snap.Title, "oct")
 	}
 	if !strings.Contains(snap.SummaryLine, "Refresh failed") {
 		t.Fatalf("SummaryLine = %q, want refresh failure", snap.SummaryLine)
