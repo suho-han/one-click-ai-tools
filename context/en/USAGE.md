@@ -36,12 +36,14 @@ Collects and prints usage from configured providers.
 
 ```bash
 oct usage
+oct usage --compact
 oct usage --json
 oct usage --notify
 ```
 
 Notes:
 - In non-TTY environments (CI/pipes), output auto-switches to JSON.
+- `--compact` prints remaining percent in one line, for example `C-88% X-45% G-72%` (`Claude=C`, `Codex=X`, `Gemini/Antigravity=G`).
 - Alert logic applies when `--notify` is set or `usage_alert_enabled=true`.
 - Selected providers are filtered by `enabled_tools`, and output order follows `agent_order`.
 - Legacy config values `gemini` and `gemini-cli` are still accepted, but they normalize internally to `agy`.
