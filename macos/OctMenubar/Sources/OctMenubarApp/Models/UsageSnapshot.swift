@@ -12,7 +12,7 @@ struct UsageSnapshot: Equatable {
     let note: String?
 
     static let placeholder = UsageSnapshot(
-        statusItemTitle: "oct …",
+        statusItemTitle: "oct",
         title: "Usage Overview",
         summaryLine: "Loading usage…",
         lastRefreshLabel: "-",
@@ -27,7 +27,7 @@ struct UsageSnapshot: Equatable {
 
     static func error(message: String, refreshInterval: TimeInterval = 60) -> UsageSnapshot {
         UsageSnapshot(
-            statusItemTitle: "oct !!",
+            statusItemTitle: "oct",
             title: "Usage Overview",
             summaryLine: "Refresh failed",
             lastRefreshLabel: "-",
@@ -208,16 +208,7 @@ extension UsageSnapshot {
     }
 
     private static func statusItemTitle(for status: ProviderStatus) -> String {
-        switch status {
-        case .error:
-            return "oct !!"
-        case .warn:
-            return "oct !"
-        case .loading:
-            return "oct …"
-        case .ok:
-            return "oct"
-        }
+        "oct"
     }
 
     private static func classifyStatus(_ raw: String) -> String {
