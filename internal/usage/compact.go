@@ -8,11 +8,15 @@ import (
 )
 
 func RenderCompactRemaining(w io.Writer, results []UsageResult) {
+	fmt.Fprintln(w, CompactRemainingTitle(results))
+}
+
+func CompactRemainingTitle(results []UsageResult) string {
 	parts := make([]string, 0, len(results))
 	for _, result := range results {
 		parts = append(parts, compactProviderLabel(result.Provider)+"-"+compactRemainingValue(result))
 	}
-	fmt.Fprintln(w, strings.Join(parts, " "))
+	return strings.Join(parts, " ")
 }
 
 func compactProviderLabel(provider string) string {

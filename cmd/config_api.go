@@ -21,6 +21,7 @@ type configToolStatus struct {
 type configSnapshot struct {
 	ConfigFile             string             `json:"config_file"`
 	UsageDisplayMode       string             `json:"usage_display_mode"`
+	MenubarTitleMode       string             `json:"menubar_title_mode"`
 	SessionRefreshEnabled  bool               `json:"session_refresh_enabled"`
 	SessionRefreshInterval string             `json:"session_refresh_interval"`
 	SessionRefreshHour     int                `json:"session_refresh_hour"`
@@ -31,6 +32,7 @@ type configSnapshot struct {
 type configUpdatePayload struct {
 	EnabledTools           []string `json:"enabled_tools"`
 	UsageDisplayMode       string   `json:"usage_display_mode"`
+	MenubarTitleMode       string   `json:"menubar_title_mode"`
 	SessionRefreshEnabled  *bool    `json:"session_refresh_enabled"`
 	SessionRefreshInterval string   `json:"session_refresh_interval"`
 	SessionRefreshHour     *int     `json:"session_refresh_hour"`
@@ -66,6 +68,7 @@ func buildConfigSnapshot(configFile string) configSnapshot {
 	return configSnapshot{
 		ConfigFile:             configFile,
 		UsageDisplayMode:       normalizedConfigUsageMode(viper.GetString("usage_display_mode")),
+		MenubarTitleMode:       normalizedMenubarTitleMode(viper.GetString("menubar_title_mode")),
 		SessionRefreshEnabled:  viper.GetBool("session_refresh_enabled"),
 		SessionRefreshInterval: normalizedConfigRefreshInterval(viper.GetString("session_refresh_interval")),
 		SessionRefreshHour:     normalizedConfigRefreshHour(viper.GetInt("session_refresh_hour")),
@@ -80,6 +83,10 @@ func applyConfigUpdate(payload configUpdatePayload) error {
 		return err
 	}
 	usageMode, shouldSetUsageMode, err := normalizeConfigUpdateUsageMode(payload.UsageDisplayMode)
+	if err != nil {
+		return err
+	}
+	titleMode, shouldSetTitleMode, err := normalizeConfigUpdateMenubarTitleMode(payload.MenubarTitleMode)
 	if err != nil {
 		return err
 	}
@@ -104,6 +111,9 @@ func applyConfigUpdate(payload configUpdatePayload) error {
 	}
 	if shouldSetUsageMode {
 		viper.Set("usage_display_mode", usageMode)
+	}
+	if shouldSetTitleMode {
+		viper.Set("menubar_title_mode", titleMode)
 	}
 	if payload.SessionRefreshEnabled != nil {
 		viper.Set("session_refresh_enabled", *payload.SessionRefreshEnabled)
@@ -193,6 +203,17 @@ func normalizeConfigUpdateUsageMode(rawMode string) (string, bool, error) {
 	return rawMode, true, nil
 }
 
+func normalizeConfigUpdateMenubarTitleMode(rawMode string) (string, bool, error) {
+	rawMode = strings.TrimSpace(strings.ToLower(rawMode))
+	if rawMode == "" {
+		return "", false, nil
+	}
+	if rawMode != "oct" && rawMode != "compact" {
+		return "", false, fmt.Errorf("invalid menubar_title_mode %q (use oct or compact)", rawMode)
+	}
+	return rawMode, true, nil
+}
+
 func normalizeConfigUpdateInterval(rawInterval string) (string, bool, error) {
 	rawInterval = strings.TrimSpace(rawInterval)
 	if rawInterval == "" {
@@ -219,6 +240,14 @@ func normalizedConfigUsageMode(rawMode string) string {
 	rawMode = strings.TrimSpace(strings.ToLower(rawMode))
 	if rawMode != "used" && rawMode != "remaining" {
 		return "remaining"
+	}
+	return rawMode
+}
+
+func normalizedMenubarTitleMode(rawMode string) string {
+	rawMode = strings.TrimSpace(strings.ToLower(rawMode))
+	if rawMode != "oct" && rawMode != "compact" {
+		return "oct"
 	}
 	return rawMode
 }

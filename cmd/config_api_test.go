@@ -12,6 +12,7 @@ func TestBuildConfigSnapshot_enablesAllToolsWhenEnabledToolsUnset(t *testing.T) 
 	t.Cleanup(viper.Reset)
 	viper.Reset()
 	viper.Set("usage_display_mode", "remaining")
+	viper.Set("menubar_title_mode", "compact")
 	viper.Set("session_refresh_enabled", true)
 	viper.Set("session_refresh_interval", "weekly")
 	viper.Set("session_refresh_hour", 7)
@@ -24,6 +25,9 @@ func TestBuildConfigSnapshot_enablesAllToolsWhenEnabledToolsUnset(t *testing.T) 
 	}
 	if got.UsageDisplayMode != "remaining" {
 		t.Fatalf("UsageDisplayMode = %q, want remaining", got.UsageDisplayMode)
+	}
+	if got.MenubarTitleMode != "compact" {
+		t.Fatalf("MenubarTitleMode = %q, want compact", got.MenubarTitleMode)
 	}
 	if !got.SessionRefreshEnabled {
 		t.Fatal("SessionRefreshEnabled = false, want true")
@@ -57,6 +61,7 @@ func TestConfigUpdatePayload_applyConfigUpdatePersistsValidValues(t *testing.T) 
 	payload := configUpdatePayload{
 		EnabledTools:           []string{"codex", "claude-code"},
 		UsageDisplayMode:       "used",
+		MenubarTitleMode:       "compact",
 		SessionRefreshEnabled:  boolPtr(true),
 		SessionRefreshInterval: "weekly",
 		SessionRefreshHour:     intPtr(22),
@@ -73,6 +78,9 @@ func TestConfigUpdatePayload_applyConfigUpdatePersistsValidValues(t *testing.T) 
 	}
 	if got := viper.GetString("usage_display_mode"); got != "used" {
 		t.Fatalf("usage_display_mode = %q, want used", got)
+	}
+	if got := viper.GetString("menubar_title_mode"); got != "compact" {
+		t.Fatalf("menubar_title_mode = %q, want compact", got)
 	}
 	if !viper.GetBool("session_refresh_enabled") {
 		t.Fatal("session_refresh_enabled = false, want true")
@@ -132,6 +140,7 @@ func TestConfigSnapshot_marshalJSONUsesMachineReadableShape(t *testing.T) {
 	viper.Reset()
 	viper.Set("enabled_tools", []string{"codex"})
 	viper.Set("usage_display_mode", "used")
+	viper.Set("menubar_title_mode", "oct")
 	viper.Set("session_refresh_interval", "daily")
 	viper.Set("session_refresh_hour", 5)
 
@@ -144,6 +153,7 @@ func TestConfigSnapshot_marshalJSONUsesMachineReadableShape(t *testing.T) {
 	var decoded struct {
 		ConfigFile             string `json:"config_file"`
 		UsageDisplayMode       string `json:"usage_display_mode"`
+		MenubarTitleMode       string `json:"menubar_title_mode"`
 		SessionRefreshInterval string `json:"session_refresh_interval"`
 		Tools                  []struct {
 			BinaryName string `json:"binary_name"`
@@ -153,7 +163,7 @@ func TestConfigSnapshot_marshalJSONUsesMachineReadableShape(t *testing.T) {
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("json.Unmarshal returned error: %v", err)
 	}
-	if decoded.ConfigFile != "/tmp/config.yaml" || decoded.UsageDisplayMode != "used" || decoded.SessionRefreshInterval != "daily" {
+	if decoded.ConfigFile != "/tmp/config.yaml" || decoded.UsageDisplayMode != "used" || decoded.MenubarTitleMode != "oct" || decoded.SessionRefreshInterval != "daily" {
 		t.Fatalf("decoded snapshot = %+v", decoded)
 	}
 	if len(decoded.Tools) == 0 || decoded.Tools[0].BinaryName == "" {

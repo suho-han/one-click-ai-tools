@@ -5,10 +5,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/spf13/viper"
 	"github.com/suho-han/one-click-ai-tools/internal/usage"
 )
 
 func TestMenubarLoadingSnapshot(t *testing.T) {
+	t.Cleanup(viper.Reset)
+	viper.Reset()
 	snap := buildMenubarLoadingSnapshot([]string{"Claude Code", "Codex"})
 	if snap.Title != "oct" {
 		t.Fatalf("Title = %q, want %q", snap.Title, "oct")
@@ -18,6 +21,35 @@ func TestMenubarLoadingSnapshot(t *testing.T) {
 	}
 	if len(snap.ProviderLines) != 2 {
 		t.Fatalf("ProviderLines len = %d, want 2", len(snap.ProviderLines))
+	}
+}
+
+func TestMenubarUsageSnapshotSupportsCompactTitleMode(t *testing.T) {
+	t.Cleanup(viper.Reset)
+	viper.Reset()
+	viper.Set("menubar_title_mode", "compact")
+
+	snap := buildMenubarUsageSnapshot([]usage.UsageResult{
+		{Provider: "claude-code", Status: "ok", Used: "55.0", Unit: "percent", Buckets: map[string]string{"5h": "55.0"}},
+		{Provider: "codex", Status: "ok", Used: "80.0", Unit: "percent", Buckets: map[string]string{"7d": "75.0"}},
+	}, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC))
+
+	if got, want := snap.Title, "C-45% X-25%"; got != want {
+		t.Fatalf("Title = %q, want %q", got, want)
+	}
+}
+
+func TestMenubarUsageSnapshotDefaultsToOctTitleMode(t *testing.T) {
+	t.Cleanup(viper.Reset)
+	viper.Reset()
+	viper.Set("menubar_title_mode", "oct")
+
+	snap := buildMenubarUsageSnapshot([]usage.UsageResult{
+		{Provider: "claude-code", Status: "ok", Used: "55.0", Unit: "percent", Buckets: map[string]string{"5h": "55.0"}},
+	}, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC))
+
+	if snap.Title != "oct" {
+		t.Fatalf("Title = %q, want oct", snap.Title)
 	}
 }
 
