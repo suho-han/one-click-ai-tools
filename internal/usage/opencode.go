@@ -1,189 +1,175 @@
 package usage
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
-	"sort"
-	"strconv"
 	"strings"
+	"time"
 )
 
+// userHomeDir is a variable for testing (allows mocking in tests)
 var userHomeDir = os.UserHomeDir
 
+const openCodeGoUsageURL = "https://opencode.ai/zen/go/v1/usage"
+
+// openCodeGoAuth represents an auth entry from ~/.local/share/opencode/auth.json.
+// Format: {"opencode-go": {"type": "api", "key": "..."}}
+type openCodeGoAuth struct {
+	Type string `json:"type"`
+	Key  string `json:"key"`
+}
+
+// openCodeGoUsageResponse is the API response from https://opencode.ai/zen/go/v1/usage
+// Example: {"usage": {"rolling": {"status":"ok","percent":42,"resetsAt":"..."}, ...}}
+type openCodeGoUsageResponse struct {
+	Usage map[string]openCodeGoWindowUsage `json:"usage"`
+}
+
+type openCodeGoWindowUsage struct {
+	Status   string  `json:"status"`
+	Percent  float64 `json:"percent"`
+	ResetsAt string  `json:"resetsAt"`
+}
+
+// openCodeGoUsageEndpoint allows overriding the API URL for testing.
+var openCodeGoUsageEndpoint = openCodeGoUsageURL
+
+// resolveOpenCodeGoAPIKey tries to find the OpenCode Go API key.
+// Priority: OPENCODE_API_KEY env -> ~/.local/share/opencode/auth.json (opencode-go.key)
+func resolveOpenCodeGoAPIKey() (string, string) {
+	if key := os.Getenv("OPENCODE_API_KEY"); key != "" {
+		return key, "env:OPENCODE_API_KEY"
+	}
+
+	home, _ := userHomeDir()
+	if home == "" {
+		return "", ""
+	}
+
+	authPath := filepath.Join(home, ".local", "share", "opencode", "auth.json")
+	data, err := os.ReadFile(authPath)
+	if err != nil {
+		return "", ""
+	}
+
+	var auths map[string]openCodeGoAuth
+	if err := json.Unmarshal(data, &auths); err != nil {
+		return "", ""
+	}
+
+	if auth, ok := auths["opencode-go"]; ok && auth.Key != "" {
+		return auth.Key, "auth.json"
+	}
+
+	return "", ""
+}
+
+// FetchOpenCodeUsage fetches OpenCode Go quota from the remote API.
+// It uses the OpenCode Go usage endpoint with the API key from auth.json or env.
 func FetchOpenCodeUsage() UsageResult {
 	result := UsageResult{
 		Provider:   "opencode",
-		Plan:       "unknown",
-		PlanSource: "local opencode session logs do not expose plan",
+		Plan:       "opencode-go",
+		PlanSource: "remote_api",
 		Period:     "current",
 		Used:       "0",
 		Limit:      "100",
 		Unit:       "percent",
-		Source:     "local",
+		Source:     "remote",
 		Status:     "warn",
-		Message:    "No data: No local OpenCode session logs found",
+		Message:    "No data: OpenCode Go API key not found",
 	}
 
-	result = withPlanDetection(result, detectOpenCodePlan)
-
-	logFiles := collectOpenCodeLogFiles()
-	if len(logFiles) == 0 {
+	apiKey, source := resolveOpenCodeGoAPIKey()
+	if apiKey == "" {
+		result.Message = "No data: OpenCode Go API key not found (set OPENCODE_API_KEY or run opencode auth login)"
 		return result
 	}
 
-	sort.Strings(logFiles)
-	latest := logFiles[len(logFiles)-1]
+	result.SourceDetail = fmt.Sprintf("auth_source=%s", source)
 
-	used, weekly, ok, err := parseOpenCodeUsageFromJSONL(latest)
+	// Allow endpoint override for testing
+	endpoint := os.Getenv("OCT_OPENCODE_USAGE_ENDPOINT")
+	if endpoint == "" {
+		endpoint = openCodeGoUsageEndpoint
+	}
+
+	resp, err := fetchOpenCodeGoUsage(endpoint, apiKey)
 	if err != nil {
 		result.Status = "error"
 		result.Used = "n/a"
-		result.Message = fmt.Sprintf("Parse error: failed to parse OpenCode log: %v", err)
-		return result
-	}
-	if !ok {
-		result.Message = "No data: Latest OpenCode session log has no usage metrics"
-		if os.Getenv("OCT_USAGE_DEBUG") == "1" {
-			result.SourceDetail = "latest_log=" + latest
-		}
+		result.Message = fmt.Sprintf("API error: %v", err)
 		return result
 	}
 
-	result.Buckets = map[string]string{}
-	if used != "" {
-		result.Buckets["5h"] = used
-		result.Used = used
-	}
-	if weekly != "" {
-		result.Buckets["7d"] = weekly
-		if result.Used == "0" || result.Used == "" {
-			result.Used = weekly
-		}
-	}
 	result.Status = "ok"
-	result.Message = "Fetched from local OpenCode session logs"
-	if os.Getenv("OCT_USAGE_DEBUG") == "1" {
-		result.SourceDetail = "latest_log=" + latest
+	result.Buckets = map[string]string{}
+	result.BucketResets = map[string]string{}
+
+	if rolling, ok := resp.Usage["rolling"]; ok && rolling.Status == "ok" {
+		result.Buckets["5h"] = fmt.Sprintf("%.0f", rolling.Percent)
+		result.BucketResets["5h"] = rolling.ResetsAt
+		result.Used = fmt.Sprintf("%.0f", rolling.Percent)
 	}
+
+	if weekly, ok := resp.Usage["weekly"]; ok && weekly.Status == "ok" {
+		result.Buckets["7d"] = fmt.Sprintf("%.0f", weekly.Percent)
+		result.BucketResets["7d"] = weekly.ResetsAt
+	}
+
+	if monthly, ok := resp.Usage["monthly"]; ok && monthly.Status == "ok" {
+		result.Buckets["30d"] = fmt.Sprintf("%.0f", monthly.Percent)
+		result.BucketResets["30d"] = monthly.ResetsAt
+	}
+
+	result.Message = "Fetched from OpenCode Go API"
+	if os.Getenv("OCT_USAGE_DEBUG") == "1" {
+		result.SourceDetail = fmt.Sprintf("auth_source=%s endpoint=%s", source, endpoint)
+	}
+
 	return result
 }
 
-func collectOpenCodeLogFiles() []string {
-	home, _ := userHomeDir()
-	candidates := []string{
-		filepath.Join(home, ".opencode", "sessions"),
-		filepath.Join(home, ".config", "opencode", "sessions"),
-		filepath.Join(home, ".local", "share", "opencode", "sessions"),
-	}
+// fetchOpenCodeGoUsage calls the OpenCode Go usage API and parses the response.
+func fetchOpenCodeGoUsage(endpoint, apiKey string) (*openCodeGoUsageResponse, error) {
+	client := &http.Client{Timeout: 15 * time.Second}
 
-	var out []string
-	for _, root := range candidates {
-		_ = filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
-			if err != nil || info == nil || info.IsDir() {
-				return nil
-			}
-			name := strings.ToLower(info.Name())
-			if strings.HasSuffix(name, ".jsonl") || strings.HasSuffix(name, ".json") {
-				out = append(out, path)
-			}
-			return nil
-		})
-	}
-	return out
-}
-
-func parseOpenCodeUsageFromJSONL(path string) (used string, weekly string, ok bool, err error) {
-	file, err := os.Open(path)
+	req, err := http.NewRequest("GET", endpoint, nil)
 	if err != nil {
-		return "", "", false, err
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
-	defer file.Close()
 
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		var raw map[string]any
-		if jerr := json.Unmarshal(line, &raw); jerr != nil {
-			continue
-		}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "one-click-tools/1.0")
 
-		if v, found := findNumberByKeys(raw,
-			"used_percent", "usedPercent", "utilization", "usage_percent", "usagePercent",
-		); found {
-			used = trimFloat(v)
-			ok = true
-		}
-
-		if sec, found := findNestedMap(raw, "secondary"); found {
-			window, _ := findNumberByKeys(sec, "window_minutes", "windowMinutes")
-			if wv, foundW := findNumberByKeys(sec,
-				"used_percent", "usedPercent", "utilization", "usage_percent", "usagePercent",
-			); foundW && window >= 10080 {
-				weekly = trimFloat(wv)
-				ok = true
-			}
-		}
-
-		if rl, found := findNestedMap(raw, "rate_limits"); found {
-			if prim, okPrim := findNestedMap(rl, "primary"); okPrim {
-				if pv, foundP := findNumberByKeys(prim, "used_percent", "usedPercent", "utilization"); foundP {
-					used = trimFloat(pv)
-					ok = true
-				}
-			}
-			if sec, okSec := findNestedMap(rl, "secondary"); okSec {
-				window, _ := findNumberByKeys(sec, "window_minutes", "windowMinutes")
-				if sv, foundS := findNumberByKeys(sec, "used_percent", "usedPercent", "utilization"); foundS && window >= 10080 {
-					weekly = trimFloat(sv)
-					ok = true
-				}
-			}
-		}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
 	}
-	if err := scanner.Err(); err != nil {
-		return "", "", false, err
-	}
-	return used, weekly, ok, nil
-}
+	defer resp.Body.Close()
 
-func findNumberByKeys(m map[string]any, keys ...string) (float64, bool) {
-	for _, key := range keys {
-		if val, exists := m[key]; exists {
-			switch x := val.(type) {
-			case float64:
-				return x, true
-			case float32:
-				return float64(x), true
-			case int:
-				return float64(x), true
-			case int64:
-				return float64(x), true
-			case string:
-				f, err := strconv.ParseFloat(strings.TrimSpace(x), 64)
-				if err == nil {
-					return f, true
-				}
-			}
-		}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
-	return 0, false
-}
 
-func findNestedMap(m map[string]any, key string) (map[string]any, bool) {
-	if v, ok := m[key]; ok {
-		if out, ok := v.(map[string]any); ok {
-			return out, true
-		}
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
-	if payload, ok := m["payload"].(map[string]any); ok {
-		if v, ok := payload[key]; ok {
-			if out, ok := v.(map[string]any); ok {
-				return out, true
-			}
-		}
+
+	var usageResp openCodeGoUsageResponse
+	if err := json.Unmarshal(body, &usageResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
-	return nil, false
+
+	if len(usageResp.Usage) == 0 {
+		return nil, fmt.Errorf("empty usage data in response")
+	}
+
+	return &usageResp, nil
 }
