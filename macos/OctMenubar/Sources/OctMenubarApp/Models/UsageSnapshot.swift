@@ -3,6 +3,7 @@ import SwiftUI
 
 struct UsageSnapshot: Equatable {
     let statusItemTitle: String
+    let statusItemAccessibilityLabel: String
     let title: String
     let summaryLine: String
     let lastRefreshLabel: String
@@ -13,6 +14,7 @@ struct UsageSnapshot: Equatable {
 
     static let placeholder = UsageSnapshot(
         statusItemTitle: "oct",
+        statusItemAccessibilityLabel: "oct usage loading",
         title: "Usage Overview",
         summaryLine: "Loading usage…",
         lastRefreshLabel: "-",
@@ -28,6 +30,7 @@ struct UsageSnapshot: Equatable {
     static func error(message: String, refreshInterval: TimeInterval = 60) -> UsageSnapshot {
         UsageSnapshot(
             statusItemTitle: "oct",
+            statusItemAccessibilityLabel: "oct usage refresh failed",
             title: "Usage Overview",
             summaryLine: "Refresh failed",
             lastRefreshLabel: "-",
@@ -96,6 +99,13 @@ struct ProviderCard: Equatable, Identifiable {
         }
         let remaining = min(max(100 - used, 0), 100)
         return "\(Int(remaining.rounded()))%"
+    }
+
+    var compactRemainingAccessibilityLabel: String {
+        guard let metric = metrics.first else {
+            return "\(name) usage unavailable"
+        }
+        return "\(name) \(metric.label) \(compactRemainingValue) remaining"
     }
 
     func accentColor(useProviderAccentColors: Bool) -> Color {
@@ -215,8 +225,10 @@ extension UsageSnapshot {
         }
         let summary = projectedSummary(for: providers)
         let status = aggregateStatus(summary: summary)
+        let statusItem = statusItemPresentation(for: status, providers: providers, titleMode: titleMode)
         return UsageSnapshot(
-            statusItemTitle: statusItemTitle(for: status, providers: providers, titleMode: titleMode),
+            statusItemTitle: statusItem.title,
+            statusItemAccessibilityLabel: statusItem.accessibilityLabel,
             title: "Usage Overview",
             summaryLine: "\(summary.total) providers · \(summary.ok) ok · \(summary.warn) warn · \(summary.error) error",
             lastRefreshLabel: formatter.string(from: refreshDate),
@@ -246,17 +258,21 @@ extension UsageSnapshot {
         )
     }
 
-    private static func statusItemTitle(
+    private static func statusItemPresentation(
         for status: ProviderStatus,
         providers: [ProviderCard],
         titleMode: MenubarTitleMode
-    ) -> String {
+    ) -> (title: String, accessibilityLabel: String) {
         guard titleMode == .compact else {
-            return "oct"
+            return ("oct", "oct usage \(status.rawValue)")
         }
         let parts = providers.map { "\($0.compactLabel)-\($0.compactRemainingValue)" }
         let title = parts.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-        return title.isEmpty ? "oct" : title
+        guard !title.isEmpty else {
+            return ("oct", "oct usage unavailable")
+        }
+        let accessibilityParts = providers.map(\.compactRemainingAccessibilityLabel)
+        return (title, "Remaining usage: \(accessibilityParts.joined(separator: ", "))")
     }
 
     private static func classifyStatus(_ raw: String) -> String {
