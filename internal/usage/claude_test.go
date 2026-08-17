@@ -1,16 +1,44 @@
 package usage
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/suho-han/one-click-ai-tools/internal/netclient"
 )
+
+// mockSecurityCommand replaces the security command with a test function
+func mockSecurityCommand(t *testing.T, mockOutput string) func() {
+	t.Helper()
+	origCommand := exec.Command
+	execCommand = func(name string, args ...string) *exec.Cmd {
+		if name == "security" {
+			cs := []string{"-test.run=TestSecurityHelper", "--"}
+			cs = append(cs, args...)
+			cmd := exec.Command(os.Args[0], cs...)
+			cmd.Env = []string{"GO_WANT_SECURITY_OUTPUT=" + mockOutput}
+			return cmd
+		}
+		return origCommand(name, args...)
+	}
+	return func() { execCommand = origCommand }
+}
+
+// TestSecurityHelper is used by mockSecurityCommand
+func TestSecurityHelper(t *testing.T) {
+	if mockOutput := os.Getenv("GO_WANT_SECURITY_OUTPUT"); mockOutput != "" {
+		fmt.Print(mockOutput)
+		os.Exit(0)
+	}
+}
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
 
@@ -117,5 +145,155 @@ func TestFetchClaudeUsageRateLimitedBuckets(t *testing.T) {
 	}
 	if got := result.Buckets["7d"]; got != "41.0" {
 		t.Fatalf("expected 7d bucket 41.0, got %s", got)
+	}
+}
+
+func TestFetchClaudeUsage_ExpiredTokenWithRefreshAvailable(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	// Mock Keychain with expired token but valid refresh token
+	expiredCreds := map[string]interface{}{
+		"claudeAiOauth": map[string]interface{}{
+			"accessToken":           "",
+			"refreshToken":          "valid-refresh-token",
+			"expiresAt":             time.Now().Add(-24 * time.Hour).UnixMilli(),
+			"refreshTokenExpiresAt": time.Now().Add(30 * 24 * time.Hour).UnixMilli(),
+			"subscriptionType":      "pro",
+		},
+	}
+	credsJSON, _ := json.Marshal(expiredCreds)
+
+	// Mock the security command
+	restore := mockSecurityCommand(t, string(credsJSON))
+	defer restore()
+
+	result := FetchClaudeUsage()
+
+	if result.Status != "warn" {
+		t.Fatalf("expected status warn for expired token, got %s", result.Status)
+	}
+	if result.Used != "0" {
+		t.Fatalf("expected used=0 for expired token, got %s", result.Used)
+	}
+	if !strings.Contains(result.Message, "expired") {
+		t.Fatalf("expected message to contain 'expired', got: %s", result.Message)
+	}
+	if !strings.Contains(result.Message, "claude auth login") {
+		t.Fatalf("expected message to suggest 'claude auth login', got: %s", result.Message)
+	}
+	// Should still detect subscription type
+	if result.Plan != "pro" {
+		t.Fatalf("expected plan=pro from keychain, got %s", result.Plan)
+	}
+	if !strings.Contains(result.PlanSource, "keychain") {
+		t.Fatalf("expected planSource to indicate keychain, got %s", result.PlanSource)
+	}
+}
+
+func TestFetchClaudeUsage_ExpiredTokenWithoutRefresh(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	// Mock Keychain with expired token and expired refresh token
+	expiredCreds := map[string]interface{}{
+		"claudeAiOauth": map[string]interface{}{
+			"accessToken":           "",
+			"refreshToken":          "expired-refresh-token",
+			"expiresAt":             time.Now().Add(-24 * time.Hour).UnixMilli(),
+			"refreshTokenExpiresAt": time.Now().Add(-1 * time.Hour).UnixMilli(),
+		},
+	}
+	credsJSON, _ := json.Marshal(expiredCreds)
+
+	restore := mockSecurityCommand(t, string(credsJSON))
+	defer restore()
+
+	result := FetchClaudeUsage()
+
+	if result.Status != "error" {
+		t.Fatalf("expected status error for fully expired credentials, got %s", result.Status)
+	}
+	if !strings.Contains(result.Message, "expired") {
+		t.Fatalf("expected message to contain 'expired', got: %s", result.Message)
+	}
+}
+
+func TestFetchClaudeUsage_EmptyAccessToken(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	// Mock Keychain with empty access token but valid refresh
+	emptyTokenCreds := map[string]interface{}{
+		"claudeAiOauth": map[string]interface{}{
+			"accessToken":           "",
+			"refreshToken":          "valid-refresh-token",
+			"expiresAt":             0,
+			"refreshTokenExpiresAt": time.Now().Add(30 * 24 * time.Hour).UnixMilli(),
+			"subscriptionType":      "max",
+		},
+	}
+	credsJSON, _ := json.Marshal(emptyTokenCreds)
+
+	restore := mockSecurityCommand(t, string(credsJSON))
+	defer restore()
+
+	result := FetchClaudeUsage()
+
+	if result.Status != "warn" {
+		t.Fatalf("expected status warn for empty token, got %s", result.Status)
+	}
+	if result.Plan != "max" {
+		t.Fatalf("expected plan=max from keychain, got %s", result.Plan)
+	}
+	if !strings.Contains(result.Message, "expired") {
+		t.Fatalf("expected message about expired credentials, got: %s", result.Message)
+	}
+}
+
+func TestFetchClaudeUsage_FallbackToCredentialsFile(t *testing.T) {
+	oldClient := netclient.DefaultClient.HTTPClient
+	oldRetries := netclient.DefaultClient.MaxRetries
+	defer func() {
+		netclient.DefaultClient.HTTPClient = oldClient
+		netclient.DefaultClient.MaxRetries = oldRetries
+	}()
+
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+
+	// Create .claude directory and credentials file
+	claudeDir := filepath.Join(tmp, ".claude")
+	os.MkdirAll(claudeDir, 0755)
+	credsFile := filepath.Join(claudeDir, ".credentials.json")
+	credsContent := map[string]interface{}{
+		"access_token": "file-based-token",
+	}
+	credsJSON, _ := json.Marshal(credsContent)
+	os.WriteFile(credsFile, credsJSON, 0600)
+
+	// Mock API response
+	netclient.DefaultClient.HTTPClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			if req.Header.Get("Authorization") != "Bearer file-based-token" {
+				t.Fatalf("expected token from credentials file, got: %s", req.Header.Get("Authorization"))
+			}
+			body := `{"five_hour":{"utilization":25.5}}`
+			return &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(body)),
+				Header:     make(http.Header),
+			}, nil
+		}),
+	}
+	netclient.DefaultClient.MaxRetries = 0
+
+	result := FetchClaudeUsage()
+
+	if result.Status != "ok" {
+		t.Fatalf("expected status ok, got %s (message=%s)", result.Status, result.Message)
+	}
+	if result.Used != "25.5" {
+		t.Fatalf("expected used=25.5, got %s", result.Used)
 	}
 }
