@@ -90,6 +90,8 @@ final class UsageSnapshotTests: XCTestCase {
         let snapshot = UsageSnapshot.from(response: response, refreshDate: .now, refreshInterval: 60, titleMode: .compact)
 
         XCTAssertEqual(snapshot.statusItemTitle, "C-45% X-25%")
+        XCTAssertTrue(snapshot.statusItemAccessibilityLabel.contains("claude-code 5h 45% remaining"))
+        XCTAssertTrue(snapshot.statusItemAccessibilityLabel.contains("codex 7d 25% remaining"))
     }
 
     func testUsageSnapshotSummaryUsesProjectedProviderStatuses() throws {
@@ -344,6 +346,30 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertEqual(draft.usageDisplayMode, .remaining)
         XCTAssertEqual(draft.menubarTitleMode, .compact)
         XCTAssertEqual(draft.tools.map(\.enabled), [true])
+    }
+
+    func testConfigurationDraftPersistsMenubarTitleModeSelection() throws {
+        let snapshot = ConfigurationSnapshot(
+            configFile: "/tmp/config.yaml",
+            usageDisplayMode: .remaining,
+            menubarTitleMode: .oct,
+            sessionRefreshEnabled: false,
+            sessionRefreshInterval: "daily",
+            sessionRefreshHour: 9,
+            tools: [
+                ConfigTool(name: "OpenAI Codex", binaryName: "codex", enabled: true),
+            ]
+        )
+        var draft = ConfigurationDraft(snapshot: snapshot)
+
+        draft.setMenubarTitleMode(.compact)
+        let payload = draft.updatePayload()
+        let encoded = try JSONEncoder().encode(payload)
+        let decoded = try JSONDecoder().decode(ConfigurationUpdatePayload.self, from: encoded)
+
+        XCTAssertEqual(draft.menubarTitleMode, .compact)
+        XCTAssertEqual(decoded.menubarTitleMode, .compact)
+        XCTAssertEqual(MenubarTitleMode.compact.label, "Remaining %")
     }
 
     func testResolveExecutablePrefersExplicitOverride() throws {

@@ -20,6 +20,7 @@ final class StatusBarController: NSObject, NSApplicationDelegate {
     private func configureStatusItem() {
         guard let button = statusItem.button else { return }
         button.title = UsageSnapshot.placeholder.statusItemTitle
+        button.setAccessibilityLabel(UsageSnapshot.placeholder.statusItemAccessibilityLabel)
         button.target = self
         button.action = #selector(togglePopover(_:))
     }
@@ -36,6 +37,7 @@ final class StatusBarController: NSObject, NSApplicationDelegate {
             .receive(on: RunLoop.main)
             .sink { [weak self] snapshot in
                 self?.statusItem.button?.title = snapshot.statusItemTitle
+                self?.statusItem.button?.setAccessibilityLabel(snapshot.statusItemAccessibilityLabel)
                 self?.popover.contentSize = PopoverView.preferredSize(for: snapshot.providers.count)
             }
             .store(in: &cancellables)

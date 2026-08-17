@@ -21,6 +21,15 @@ enum MenubarTitleMode: String, Codable, CaseIterable, Identifiable {
     case compact
 
     var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .oct:
+            return "oct"
+        case .compact:
+            return "Remaining %"
+        }
+    }
 }
 
 struct SessionRefreshIntervalOption: Equatable, Identifiable {
@@ -162,6 +171,11 @@ struct ConfigurationDraft: Equatable {
         }
         tools[index].enabled = enabled
     }
+
+    mutating func setMenubarTitleMode(_ mode: MenubarTitleMode) {
+        menubarTitleMode = mode
+    }
+
     mutating func moveTool(_ binaryName: String, by offset: Int) {
         guard let sourceIndex = tools.firstIndex(where: { $0.binaryName == binaryName }) else {
             return

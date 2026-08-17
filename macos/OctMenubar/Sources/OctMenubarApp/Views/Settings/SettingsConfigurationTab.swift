@@ -118,14 +118,23 @@ struct SettingsConfigurationTab: View {
         SettingsSectionCard(
             title: "Usage display",
             systemImage: "chart.bar",
-            description: "Choose whether usage cards lead with remaining or used quota."
+            description: "Choose how cards display usage. The menu bar can show remaining quota directly."
         ) {
-            Picker("Usage display mode", selection: usageModeBinding) {
-                ForEach(UsageDisplayMode.allCases) { mode in
-                    Text(mode.label).tag(mode)
+            VStack(alignment: .leading, spacing: 8) {
+                Picker("Usage display mode", selection: usageModeBinding) {
+                    ForEach(UsageDisplayMode.allCases) { mode in
+                        Text(mode.label).tag(mode)
+                    }
                 }
+                .pickerStyle(.segmented)
+
+                Picker("Menu bar display", selection: menubarTitleModeBinding) {
+                    ForEach(MenubarTitleMode.allCases) { mode in
+                        Text(mode.label).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
             }
-            .pickerStyle(.segmented)
         }
     }
 
@@ -186,6 +195,16 @@ struct SettingsConfigurationTab: View {
             get: { configDraft?.usageDisplayMode ?? .remaining },
             set: {
                 configDraft?.usageDisplayMode = $0
+                onDraftChange()
+            }
+        )
+    }
+
+    private var menubarTitleModeBinding: Binding<MenubarTitleMode> {
+        Binding(
+            get: { configDraft?.menubarTitleMode ?? .oct },
+            set: {
+                configDraft?.setMenubarTitleMode($0)
                 onDraftChange()
             }
         )
