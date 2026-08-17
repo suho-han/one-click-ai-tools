@@ -9,9 +9,23 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/suho-han/one-click-ai-tools/internal/netclient"
 )
+
+// execCommand is a variable to allow testing with mocked commands
+var execCommand = exec.Command
+
+type claudeOAuthToken struct {
+	AccessToken           string   `json:"accessToken"`
+	RefreshToken          string   `json:"refreshToken"`
+	ExpiresAt             int64    `json:"expiresAt"`
+	RefreshTokenExpiresAt int64    `json:"refreshTokenExpiresAt"`
+	Scopes                []string `json:"scopes"`
+	SubscriptionType      string   `json:"subscriptionType"`
+	RateLimitTier         string   `json:"rateLimitTier"`
+}
 
 func FetchClaudeUsage() UsageResult {
 	home, _ := os.UserHomeDir()
@@ -30,21 +44,45 @@ func FetchClaudeUsage() UsageResult {
 	}
 
 	var token string
+	var keychainExpired bool
+	var keychainCanRefresh bool
+	var keychainSubscription string
 
 	// Try macOS Keychain first for Claude Code-credentials
-	cmd := exec.Command("security", "find-generic-password", "-s", "Claude Code-credentials", "-w")
+	cmd := execCommand("security", "find-generic-password", "-s", "Claude Code-credentials", "-w")
 	out, err := cmd.Output()
 	if err == nil && len(out) > 0 {
 		var keychainCreds struct {
-			ClaudeAiOauth struct {
-				AccessToken string `json:"accessToken"`
-			} `json:"claudeAiOauth"`
+			ClaudeAiOauth claudeOAuthToken `json:"claudeAiOauth"`
 		}
-		if json.Unmarshal(out, &keychainCreds) == nil && keychainCreds.ClaudeAiOauth.AccessToken != "" {
-			token = keychainCreds.ClaudeAiOauth.AccessToken
+		if json.Unmarshal(out, &keychainCreds) == nil {
+			oauth := keychainCreds.ClaudeAiOauth
+			keychainSubscription = oauth.SubscriptionType
+			
+			if oauth.AccessToken != "" {
+				// Check if token is expired
+				if oauth.ExpiresAt > 0 && time.Now().UnixMilli() > oauth.ExpiresAt {
+					keychainExpired = true
+					if oauth.RefreshTokenExpiresAt > 0 && time.Now().UnixMilli() < oauth.RefreshTokenExpiresAt {
+						keychainCanRefresh = true
+					}
+				} else if oauth.ExpiresAt == 0 {
+					// expiresAt=0 means token is invalid/expired
+					keychainExpired = true
+				} else {
+					token = oauth.AccessToken
+				}
+			} else {
+				// accessToken is empty but entry exists
+				keychainExpired = true
+				if oauth.RefreshTokenExpiresAt > 0 && time.Now().UnixMilli() < oauth.RefreshTokenExpiresAt {
+					keychainCanRefresh = true
+				}
+			}
 		}
 	}
 
+	// Fallback to credentials file if no valid token yet
 	if token == "" {
 		if _, err := os.Stat(credsFile); err == nil {
 			data, _ := os.ReadFile(credsFile)
@@ -57,16 +95,37 @@ func FetchClaudeUsage() UsageResult {
 		}
 	}
 
+	// Fallback to environment variable
 	if token == "" {
 		token = os.Getenv("CLAUDE_API_TOKEN")
 	}
 
+	// Extract plan info from Keychain even if token is expired
+	if keychainSubscription != "" {
+		result.Plan = keychainSubscription
+		result.PlanSource = "keychain subscriptionType"
+	}
+
+	// Handle expired/missing token cases
 	if token == "" {
-		plan, source := detectClaudePlan(token)
-		result = withPlan(result, plan, source)
-		result.Status = "ok"
-		result.Used = "0"
-		result.Message = "No Claude OAuth token found (check ~/.claude/.credentials.json or CLAUDE_API_TOKEN)"
+		if keychainExpired {
+			if keychainCanRefresh {
+				result.Status = "warn"
+				result.Used = "0"
+				result.Message = "Claude OAuth token expired. Run 'claude auth login' to refresh"
+				result.SourceDetail = "token_expired=true;can_refresh=true"
+			} else {
+				result.Status = "error"
+				result.Used = "n/a"
+				result.Message = "Claude OAuth token expired and cannot be refreshed. Run 'claude auth login'"
+				result.SourceDetail = "token_expired=true;can_refresh=false"
+			}
+		} else {
+			// No token found at all
+			result.Status = "ok"
+			result.Used = "0"
+			result.Message = "No Claude OAuth token found (check ~/.claude/.credentials.json or CLAUDE_API_TOKEN)"
+		}
 		return result
 	}
 
@@ -97,6 +156,12 @@ func FetchClaudeUsage() UsageResult {
 			if os.Getenv("OCT_USAGE_DEBUG") == "1" {
 				result.SourceDetail = "http_status=429;cache=missing"
 			}
+			return result
+		}
+		if resp.StatusCode == http.StatusUnauthorized {
+			result.Status = "error"
+			result.Message = "Claude OAuth token unauthorized. Run 'claude auth login'"
+			result.SourceDetail = fmt.Sprintf("http_status=%d", resp.StatusCode)
 			return result
 		}
 		result.Message = netclient.FormatError(resp, nil)
