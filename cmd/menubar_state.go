@@ -139,8 +139,9 @@ func menubarProviderLine(result usage.UsageResult) string {
 	}
 	five := bucketVal(result, "5h", "used")
 	seven := bucketVal(result, "7d", "used")
+	month := bucketVal(result, "1m", "used")
 	status := classifyMenubarStatus(result.Status)
-	line := fmt.Sprintf("[%s] %s · 5h %s · 7d %s", status, provider, five, seven)
+	line := fmt.Sprintf("[%s] %s · 5h %s · 7d %s · 1m %s", status, provider, five, seven, month)
 	if msg := strings.TrimSpace(result.Message); msg != "" && status != "ok" {
 		line += " · " + truncateMenubarText(msg, 28)
 	}
@@ -161,6 +162,7 @@ func menubarProviderDetails(result usage.UsageResult) []string {
 		"Status: " + classifyMenubarStatus(result.Status),
 		"5h: " + bucketVal(result, "5h", "used"),
 		"7d: " + bucketVal(result, "7d", "used"),
+		"1m: " + bucketVal(result, "1m", "used"),
 	}
 	if plan := strings.TrimSpace(result.Plan); plan != "" {
 		details = append(details, "Plan: "+plan)

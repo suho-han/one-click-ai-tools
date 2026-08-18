@@ -74,9 +74,9 @@ func printMonitorScreen(results []usage.UsageResult, now time.Time, compact bool
 	fmt.Printf("oct monitor  |  %s\n", now.Format("2006-01-02 15:04:05"))
 	fmt.Println(strings.Repeat("-", width))
 	if compact {
-		fmt.Printf("%-14s %-8s %-8s %-8s %-10s\n", "provider", "5h", "7d", "sev", "status")
+		fmt.Printf("%-14s %-8s %-8s %-8s %-8s %-10s\n", "provider", "5h", "7d", "1m", "sev", "status")
 	} else {
-		fmt.Printf("%-14s %-8s %-8s %-8s %-10s %-10s %-8s %s\n", "provider", "5h", "7d", "sev", "used", "limit", "status", "message")
+		fmt.Printf("%-14s %-8s %-8s %-8s %-8s %-10s %-10s %-8s %s\n", "provider", "5h", "7d", "1m", "sev", "used", "limit", "status", "message")
 	}
 
 	mode := strings.ToLower(strings.TrimSpace(viper.GetString("usage_display_mode")))
@@ -87,6 +87,7 @@ func printMonitorScreen(results []usage.UsageResult, now time.Time, compact bool
 	for _, r := range results {
 		five := bucketVal(r, "5h", mode)
 		seven := bucketVal(r, "7d", mode)
+		month := bucketVal(r, "1m", mode)
 		sev := colorizeSeverityLabel(usageSeverity(r))
 		u := r.Used
 		if mode == "remaining" {
@@ -98,18 +99,20 @@ func printMonitorScreen(results []usage.UsageResult, now time.Time, compact bool
 		statusLabel := colorizeMonitorStatus(r.Status)
 		providerLabel := colorizeMonitorProvider(monitorProviderDisplayLabel(r.Provider))
 		if compact {
-			fmt.Printf("%s %s %s %s %s\n",
+			fmt.Printf("%s %s %s %s %s %s\n",
 				padANSI(providerLabel, 14),
 				padANSI(five, 8),
 				padANSI(seven, 8),
+				padANSI(month, 8),
 				padANSI(sev, 8),
 				padANSI(statusLabel, 10),
 			)
 		} else {
-			fmt.Printf("%s %s %s %s %s %s %s %s\n",
+			fmt.Printf("%s %s %s %s %s %s %s %s %s\n",
 				padANSI(providerLabel, 14),
 				padANSI(five, 8),
 				padANSI(seven, 8),
+				padANSI(month, 8),
 				padANSI(sev, 8),
 				padANSI(u, 10),
 				padANSI(r.Limit, 10),
@@ -309,7 +312,7 @@ func sortMonitorResults(results []usage.UsageResult, sortBy string, desc bool) [
 			if v, ok := strconvParseSafe(r.Used); ok {
 				return v
 			}
-		case "5h", "7d":
+		case "5h", "7d", "1m":
 			if raw, ok := r.Buckets[metric]; ok {
 				if v, ok := strconvParseSafe(raw); ok {
 					return v
@@ -322,7 +325,7 @@ func sortMonitorResults(results []usage.UsageResult, sortBy string, desc bool) [
 		a, b := out[i], out[j]
 		var less bool
 		switch k {
-		case "used", "5h", "7d":
+		case "used", "5h", "7d", "1m":
 			av := getMetric(a, k)
 			bv := getMetric(b, k)
 			if av == bv {
@@ -390,7 +393,7 @@ func init() {
 	monitorCmd.Flags().Duration("interval", 30*time.Second, "refresh interval")
 	monitorCmd.Flags().String("state-path", "", "snapshot file path (default: ~/.oct/state/usage-latest.json)")
 	monitorCmd.Flags().Bool("once", false, "run one cycle and exit")
-	monitorCmd.Flags().String("sort-by", "", "sort key: provider|used|5h|7d (default: preserve configured order)")
+	monitorCmd.Flags().String("sort-by", "", "sort key: provider|used|5h|7d|1m (default: preserve configured order)")
 	monitorCmd.Flags().Bool("desc", false, "sort descending")
 	monitorCmd.Flags().Int("top", 0, "show top N providers (0=all)")
 	monitorCmd.Flags().Bool("compact", false, "compact monitor output")
