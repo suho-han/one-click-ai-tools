@@ -360,6 +360,9 @@ func usageSummaryDisplay(r UsageResult, mode string) string {
 	if val, ok := visibleBucketValue(r, "7d", mode); ok {
 		parts = append(parts, "7d "+val)
 	}
+	if val, ok := visibleBucketValue(r, "1m", mode); ok {
+		parts = append(parts, "1m "+val)
+	}
 	if len(parts) > 0 {
 		return strings.Join(parts, " · ")
 	}
