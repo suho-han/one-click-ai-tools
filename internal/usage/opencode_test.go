@@ -14,10 +14,10 @@ func TestResolveOpenCodeGoAPIKey_Env(t *testing.T) {
 	tmp := t.TempDir()
 	os.Setenv("OPENCODE_API_KEY", "test-key-from-env")
 	defer os.Unsetenv("OPENCODE_API_KEY")
-	
+
 	// Set HOME to avoid reading real auth.json
 	os.Setenv("HOME", tmp)
-	
+
 	key, source := resolveOpenCodeGoAPIKey()
 	if key != "test-key-from-env" {
 		t.Errorf("expected key 'test-key-from-env', got '%s'", key)
@@ -29,22 +29,22 @@ func TestResolveOpenCodeGoAPIKey_Env(t *testing.T) {
 
 func TestResolveOpenCodeGoAPIKey_AuthJSON(t *testing.T) {
 	tmp := t.TempDir()
-	
+
 	// Unset env to force auth.json lookup
 	os.Unsetenv("OPENCODE_API_KEY")
 	defer os.Unsetenv("OPENCODE_API_KEY")
-	
+
 	// Mock userHomeDir to use tmp directory
 	origUserHomeDir := userHomeDir
 	userHomeDir = func() (string, error) { return tmp, nil }
 	defer func() { userHomeDir = origUserHomeDir }()
-	
+
 	// Create mock auth.json
 	authDir := filepath.Join(tmp, ".local", "share", "opencode")
 	if err := os.MkdirAll(authDir, 0755); err != nil {
 		t.Fatal(err)
 	}
-	
+
 	authContent := `{
 		"opencode-go": {
 			"type": "api",
@@ -55,7 +55,7 @@ func TestResolveOpenCodeGoAPIKey_AuthJSON(t *testing.T) {
 	if err := os.WriteFile(authPath, []byte(authContent), 0644); err != nil {
 		t.Fatal(err)
 	}
-	
+
 	key, source := resolveOpenCodeGoAPIKey()
 	if key != "test-key-from-auth-json" {
 		t.Errorf("expected key 'test-key-from-auth-json', got '%s'", key)
@@ -67,16 +67,16 @@ func TestResolveOpenCodeGoAPIKey_AuthJSON(t *testing.T) {
 
 func TestResolveOpenCodeGoAPIKey_NotFound(t *testing.T) {
 	tmp := t.TempDir()
-	
+
 	// Unset env and ensure no auth.json exists
 	os.Unsetenv("OPENCODE_API_KEY")
 	defer os.Unsetenv("OPENCODE_API_KEY")
-	
+
 	// Mock userHomeDir to use tmp directory
 	origUserHomeDir := userHomeDir
 	userHomeDir = func() (string, error) { return tmp, nil }
 	defer func() { userHomeDir = origUserHomeDir }()
-	
+
 	key, source := resolveOpenCodeGoAPIKey()
 	if key != "" {
 		t.Errorf("expected empty key, got '%s'", key)
@@ -88,15 +88,15 @@ func TestResolveOpenCodeGoAPIKey_NotFound(t *testing.T) {
 
 func TestFetchOpenCodeUsage_NoAPIKey(t *testing.T) {
 	tmp := t.TempDir()
-	
+
 	os.Unsetenv("OPENCODE_API_KEY")
 	defer os.Unsetenv("OPENCODE_API_KEY")
-	
+
 	// Mock userHomeDir to use tmp directory
 	origUserHomeDir := userHomeDir
 	userHomeDir = func() (string, error) { return tmp, nil }
 	defer func() { userHomeDir = origUserHomeDir }()
-	
+
 	result := FetchOpenCodeUsage()
 	if result.Status != "warn" {
 		t.Errorf("expected status 'warn', got '%s'", result.Status)
@@ -117,7 +117,7 @@ func TestFetchOpenCodeUsage_Success(t *testing.T) {
 		if !strings.HasPrefix(auth, "Bearer ") {
 			t.Errorf("expected Authorization header to start with 'Bearer ', got '%s'", auth)
 		}
-		
+
 		// Return mock response
 		resp := openCodeGoUsageResponse{
 			Usage: map[string]openCodeGoWindowUsage{
@@ -130,16 +130,16 @@ func TestFetchOpenCodeUsage_Success(t *testing.T) {
 		json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
-	
+
 	// Override endpoint for testing
 	originalEndpoint := openCodeGoUsageEndpoint
 	defer func() { openCodeGoUsageEndpoint = originalEndpoint }()
 	openCodeGoUsageEndpoint = server.URL
-	
+
 	// Set API key
 	os.Setenv("OPENCODE_API_KEY", "test-key")
 	defer os.Unsetenv("OPENCODE_API_KEY")
-	
+
 	result := FetchOpenCodeUsage()
 	if result.Status != "ok" {
 		t.Errorf("expected status 'ok', got '%s'", result.Status)
@@ -153,11 +153,54 @@ func TestFetchOpenCodeUsage_Success(t *testing.T) {
 	if result.Buckets["7d"] != "65" {
 		t.Errorf("expected 7d bucket '65', got '%s'", result.Buckets["7d"])
 	}
-	if result.Buckets["30d"] != "80" {
-		t.Errorf("expected 30d bucket '80', got '%s'", result.Buckets["30d"])
+	if result.Buckets["1m"] != "80" {
+		t.Errorf("expected 1m bucket '80', got '%s'", result.Buckets["1m"])
 	}
 	if result.BucketResets["5h"] != "2026-08-17T21:00:00Z" {
 		t.Errorf("expected 5h reset '2026-08-17T21:00:00Z', got '%s'", result.BucketResets["5h"])
+	}
+}
+
+func TestFetchOpenCodeUsage_RollingRateLimited(t *testing.T) {
+	// Regression test: the live API can report a window as "rate-limited"
+	// (rather than "ok") once it's exhausted, e.g. rolling at 100%. The
+	// bucket must still surface instead of being silently dropped, and the
+	// overall status should downgrade to "warn" to flag it.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := openCodeGoUsageResponse{
+			Usage: map[string]openCodeGoWindowUsage{
+				"rolling": {Status: "rate-limited", Percent: 100, ResetsAt: "2026-08-18T18:23:37Z"},
+				"weekly":  {Status: "ok", Percent: 65.0, ResetsAt: "2026-08-24T00:00:00Z"},
+				"monthly": {Status: "ok", Percent: 32.0, ResetsAt: "2026-09-17T06:57:28Z"},
+			},
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	originalEndpoint := openCodeGoUsageEndpoint
+	defer func() { openCodeGoUsageEndpoint = originalEndpoint }()
+	openCodeGoUsageEndpoint = server.URL
+
+	os.Setenv("OPENCODE_API_KEY", "test-key")
+	defer os.Unsetenv("OPENCODE_API_KEY")
+
+	result := FetchOpenCodeUsage()
+	if result.Status != "warn" {
+		t.Errorf("expected status 'warn', got '%s'", result.Status)
+	}
+	if result.Buckets["5h"] != "100" {
+		t.Errorf("expected 5h bucket '100', got '%s'", result.Buckets["5h"])
+	}
+	if result.Used != "100" {
+		t.Errorf("expected used '100', got '%s'", result.Used)
+	}
+	if !strings.Contains(result.Message, "5h rate-limited") {
+		t.Errorf("expected message to mention '5h rate-limited', got '%s'", result.Message)
+	}
+	if result.Buckets["7d"] != "65" || result.Buckets["1m"] != "32" {
+		t.Errorf("expected 7d/1m buckets to still populate, got 7d=%s 1m=%s", result.Buckets["7d"], result.Buckets["1m"])
 	}
 }
 
@@ -168,16 +211,16 @@ func TestFetchOpenCodeUsage_APIError(t *testing.T) {
 		w.Write([]byte(`{"error": "invalid token"}`))
 	}))
 	defer server.Close()
-	
+
 	// Override endpoint for testing
 	originalEndpoint := openCodeGoUsageEndpoint
 	defer func() { openCodeGoUsageEndpoint = originalEndpoint }()
 	openCodeGoUsageEndpoint = server.URL
-	
+
 	// Set API key
 	os.Setenv("OPENCODE_API_KEY", "invalid-key")
 	defer os.Unsetenv("OPENCODE_API_KEY")
-	
+
 	result := FetchOpenCodeUsage()
 	if result.Status != "error" {
 		t.Errorf("expected status 'error', got '%s'", result.Status)
@@ -197,16 +240,16 @@ func TestFetchOpenCodeUsage_EmptyUsage(t *testing.T) {
 		json.NewEncoder(w).Encode(resp)
 	}))
 	defer server.Close()
-	
+
 	// Override endpoint for testing
 	originalEndpoint := openCodeGoUsageEndpoint
 	defer func() { openCodeGoUsageEndpoint = originalEndpoint }()
 	openCodeGoUsageEndpoint = server.URL
-	
+
 	// Set API key
 	os.Setenv("OPENCODE_API_KEY", "test-key")
 	defer os.Unsetenv("OPENCODE_API_KEY")
-	
+
 	result := FetchOpenCodeUsage()
 	if result.Status != "error" {
 		t.Errorf("expected status 'error', got '%s'", result.Status)

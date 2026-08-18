@@ -110,23 +110,49 @@ func FetchOpenCodeUsage() UsageResult {
 	result.Buckets = map[string]string{}
 	result.BucketResets = map[string]string{}
 
-	if rolling, ok := resp.Usage["rolling"]; ok && rolling.Status == "ok" {
-		result.Buckets["5h"] = fmt.Sprintf("%.0f", rolling.Percent)
-		result.BucketResets["5h"] = rolling.ResetsAt
-		result.Used = fmt.Sprintf("%.0f", rolling.Percent)
+	// windows maps the API's response keys to the bucket labels used across
+	// oct's usage/menubar display (5h rolling, 7d weekly, 1m monthly).
+	windows := []struct {
+		apiKey string
+		bucket string
+	}{
+		{"rolling", "5h"},
+		{"weekly", "7d"},
+		{"monthly", "1m"},
 	}
 
-	if weekly, ok := resp.Usage["weekly"]; ok && weekly.Status == "ok" {
-		result.Buckets["7d"] = fmt.Sprintf("%.0f", weekly.Percent)
-		result.BucketResets["7d"] = weekly.ResetsAt
+	// A window's status can be "rate-limited" rather than "ok" while still
+	// reporting a meaningful percent (e.g. 100% when exhausted), so every
+	// window with a non-empty status is surfaced instead of only "ok" ones.
+	var nonOK []string
+	for _, w := range windows {
+		win, ok := resp.Usage[w.apiKey]
+		if !ok || strings.TrimSpace(win.Status) == "" {
+			continue
+		}
+		result.Buckets[w.bucket] = fmt.Sprintf("%.0f", win.Percent)
+		if win.ResetsAt != "" {
+			result.BucketResets[w.bucket] = win.ResetsAt
+		}
+		if !strings.EqualFold(win.Status, "ok") {
+			nonOK = append(nonOK, fmt.Sprintf("%s %s", w.bucket, win.Status))
+		}
 	}
 
-	if monthly, ok := resp.Usage["monthly"]; ok && monthly.Status == "ok" {
-		result.Buckets["30d"] = fmt.Sprintf("%.0f", monthly.Percent)
-		result.BucketResets["30d"] = monthly.ResetsAt
+	switch {
+	case result.Buckets["5h"] != "":
+		result.Used = result.Buckets["5h"]
+	case result.Buckets["7d"] != "":
+		result.Used = result.Buckets["7d"]
+	case result.Buckets["1m"] != "":
+		result.Used = result.Buckets["1m"]
 	}
 
 	result.Message = "Fetched from OpenCode Go API"
+	if len(nonOK) > 0 {
+		result.Status = "warn"
+		result.Message += " (" + strings.Join(nonOK, ", ") + ")"
+	}
 	if os.Getenv("OCT_USAGE_DEBUG") == "1" {
 		result.SourceDetail = fmt.Sprintf("auth_source=%s endpoint=%s", source, endpoint)
 	}
