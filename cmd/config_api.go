@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/suho-han/one-click-ai-tools/internal/schedule"
 	"github.com/suho-han/one-click-ai-tools/internal/update"
+	"github.com/suho-han/one-click-ai-tools/internal/usage"
 )
 
 type configToolStatus struct {
@@ -237,11 +238,7 @@ func normalizeConfigUpdateHour(rawHour *int) (int, bool, error) {
 }
 
 func normalizedConfigUsageMode(rawMode string) string {
-	rawMode = strings.TrimSpace(strings.ToLower(rawMode))
-	if rawMode != "used" && rawMode != "remaining" {
-		return "remaining"
-	}
-	return rawMode
+	return usage.NormalizeDisplayMode(rawMode)
 }
 
 func normalizedMenubarTitleMode(rawMode string) string {
