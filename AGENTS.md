@@ -69,8 +69,16 @@ Run `bash scripts/next-version.sh` to preview the computed version and the feat/
 
 ### CI: automatic release on every push to main
 
+**Currently disabled** (`gh workflow disable auto-release.yml`) after it fired on its own first commit and had to be rolled back (deleted release/tag, force-pushed the version-bump commit back off `main`). Re-enable with `gh workflow enable auto-release.yml` once you're ready to rely on it again; until then, cut releases manually with `bash scripts/release-package.sh auto` (or `vX.Y.Z`).
+
 `.github/workflows/auto-release.yml` runs the above on every push to `main`: it computes the next version, and if there's anything release-worthy it runs `scripts/release-package.sh` end to end (commit, tag, `go test ./...`, push, publish) with no human step. If nothing release-worthy landed, the job exits cleanly without releasing.
 
 This means **every push to main that contains a `feat`/`fix`/`perf`/breaking commit becomes a public GitHub Release automatically** -- this repo has no PR gate, so there is no review point before that happens. Before pushing a commit you don't want released immediately, consider whether it belongs in a topic branch instead.
 
 Mechanism note: a tag pushed by the workflow's `GITHUB_TOKEN` does not trigger the `goreleaser` workflow's normal `push: tags` event (GitHub suppresses further workflow runs triggered by `GITHUB_TOKEN`, to prevent infinite loops). `release-package.sh` detects `CI=true` and instead dispatches `goreleaser` explicitly via `gh workflow run ... -f release_mode=release -f git_ref=vX.Y.Z`, which *is* exempt from that restriction.
+
+### Batch related changes into one push, don't push after every commit
+
+Because auto-release fires on every push, pushing after each individual commit turns each one into its own release (`v0.1.4`, `v0.1.5`, `v0.1.6`, ... for what should have been one coherent change). **Commit as many times as you like locally, but hold the push until the batch of related `feat`/`fix`/`perf` work is actually ready to ship, then push once.** One push should read as one meaningful release, not one commit's worth of diff.
+
+(Reference: [gajae-code](https://github.com/Yeachan-Heo/gajae-code) achieves the same outcome differently -- it decouples "land on main" from "cut a release" with a cron-scheduled nightly build plus a separate human-triggered stable-tag release. We didn't adopt that scheduling infrastructure here since it's sized for a multi-package monorepo; the equivalent for this repo's single-binary CLI is simply this push-batching discipline.)
