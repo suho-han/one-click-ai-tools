@@ -328,7 +328,7 @@ extension UsageSnapshot {
         if provider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "codex" {
             labels = visibleMetricValue(buckets["7d"]) == nil ? ["5h"] : ["7d"]
         } else {
-            labels = ["5h", "7d"]
+            labels = ["5h", "7d", "1m"]
         }
 
         return labels.compactMap { label in
