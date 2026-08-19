@@ -70,18 +70,23 @@ func printMonitorScreen(results []usage.UsageResult, now time.Time, compact bool
 	}
 	msgWidth := monitorMessageWidth(width)
 
+	mode := usage.NormalizeDisplayMode(viper.GetString("usage_display_mode"))
+	// The "used"/"limit" column header names the mode currently filling it,
+	// since bucketVal/usageRemaining below invert the numbers to "remaining"
+	// without any other marker in this fixed-width layout (unlike the
+	// `oct usage` table's "% left" suffix).
+	usedColumnLabel := "used"
+	if mode == usage.DisplayModeRemaining {
+		usedColumnLabel = "remaining"
+	}
+
 	fmt.Print("\033[H\033[2J") // clear screen
 	fmt.Printf("oct monitor  |  %s\n", now.Format("2006-01-02 15:04:05"))
 	fmt.Println(strings.Repeat("-", width))
 	if compact {
 		fmt.Printf("%-14s %-8s %-8s %-8s %-8s %-10s\n", "provider", "5h", "7d", "1m", "sev", "status")
 	} else {
-		fmt.Printf("%-14s %-8s %-8s %-8s %-8s %-10s %-10s %-8s %s\n", "provider", "5h", "7d", "1m", "sev", "used", "limit", "status", "message")
-	}
-
-	mode := strings.ToLower(strings.TrimSpace(viper.GetString("usage_display_mode")))
-	if mode != "used" && mode != "remaining" {
-		mode = "used"
+		fmt.Printf("%-14s %-8s %-8s %-8s %-8s %-10s %-10s %-8s %s\n", "provider", "5h", "7d", "1m", "sev", usedColumnLabel, "limit", "status", "message")
 	}
 
 	for _, r := range results {
@@ -90,7 +95,7 @@ func printMonitorScreen(results []usage.UsageResult, now time.Time, compact bool
 		month := bucketVal(r, "1m", mode)
 		sev := colorizeSeverityLabel(usageSeverity(r))
 		u := r.Used
-		if mode == "remaining" {
+		if mode == usage.DisplayModeRemaining {
 			if rem, ok := usageRemaining(r.Used, r.Unit); ok {
 				u = rem
 			}
@@ -359,12 +364,18 @@ func usageRemaining(raw string, unit string) (string, bool) {
 	return fmt.Sprintf("%.1f", rem), true
 }
 
+// bucketVal resolves a bucket's display value for oct monitor's fixed-width
+// columns and the legacy menubar's provider line/details. It intentionally
+// omits the "% left" label that usage.BucketValue adds for the card-style
+// `oct usage` table -- these are narrow, column-aligned surfaces where an
+// extra label would break alignment -- but applies the identical used/
+// remaining inversion so the underlying numbers never disagree with it.
 func bucketVal(r usage.UsageResult, key, mode string) string {
 	v := "-"
 	if x, ok := r.Buckets[key]; ok && x != "" {
 		v = x
 	}
-	if mode == "remaining" {
+	if mode == usage.DisplayModeRemaining {
 		if rem, ok := usageRemaining(v, r.Unit); ok {
 			v = rem
 		}
