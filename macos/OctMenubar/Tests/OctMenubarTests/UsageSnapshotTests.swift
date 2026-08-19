@@ -54,6 +54,44 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.providers[1], ProviderCard(name: "opencode", status: .warn, metrics: [], message: "No data: No local OpenCode session logs found"))
     }
 
+    func testUsageSnapshotSurfacesOpenCodeMonthlyBucket() throws {
+        // Regression test: visibleMetrics() used to only look at "5h"/"7d",
+        // so OpenCode Go's monthly quota (bucket "1m") never rendered even
+        // though `oct usage --json` reports it.
+        let json = #"""
+        {
+          "summary": {
+            "total": 1,
+            "ok": 1,
+            "warn": 0,
+            "error": 0
+          },
+          "results": [
+            {
+              "provider": "opencode",
+              "status": "ok",
+              "used": "2",
+              "unit": "percent",
+              "buckets": {
+                "5h": "2",
+                "7d": "84",
+                "1m": "42"
+              },
+              "message": "Fetched from OpenCode Go API"
+            }
+          ]
+        }
+        """#
+
+        let response = try JSONDecoder().decode(UsageResponse.self, from: Data(json.utf8))
+        let snapshot = UsageSnapshot.from(response: response, refreshDate: .now, refreshInterval: 60)
+
+        XCTAssertEqual(
+            snapshot.providers[0].metrics,
+            [.init(label: "5h", value: "2"), .init(label: "7d", value: "84"), .init(label: "1m", value: "42")]
+        )
+    }
+
     func testUsageSnapshotSupportsCompactStatusItemTitle() throws {
         let json = #"""
         {
