@@ -17,6 +17,7 @@
 ## Release (로컬 자동화)
 - GitHub Release
   - `bash scripts/release-package.sh vX.Y.Z`
+  - 또는 `bash scripts/release-package.sh auto` — 마지막 릴리스 태그 이후 커밋 메시지(Conventional Commits)로 버전을 자동 계산. 규칙/근거는 AGENTS.md "Automatic version bump" 참고. `bash scripts/next-version.sh` 단독 실행으로 미리보기 가능.
 
 동작:
 - `cmd/root.go` 버전 갱신
