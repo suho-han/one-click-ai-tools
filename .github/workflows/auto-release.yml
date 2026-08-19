@@ -1,0 +1,72 @@
+name: auto-release
+
+# Computes the next version from Conventional Commits since the last release
+# tag (scripts/next-version.sh) and, if there's anything release-worthy
+# (feat/fix/perf/breaking), runs scripts/release-package.sh end to end with
+# no human step: commit, tag, test, push, publish.
+#
+# This repo pushes straight to main with no PR gate, so this workflow makes
+# every such push become a public GitHub Release automatically. See
+# AGENTS.md "CI: automatic release on every push to main" before changing
+# this file.
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  auto-release:
+    runs-on: ubuntu-latest
+    # The release commit itself never has anything new to release (its own
+    # diff is just cmd/root.go), and GitHub already suppresses further
+    # `push` runs triggered by GITHUB_TOKEN -- this condition is just a fast
+    # skip so we don't spend a job checking out + building for nothing.
+    if: ${{ !startsWith(github.event.head_commit.message, 'chore(release):') }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 'stable'
+
+      - name: Compute next version
+        id: version
+        run: |
+          set +e
+          VERSION="$(bash scripts/next-version.sh)"
+          status=$?
+          set -e
+          if [[ $status -ne 0 ]]; then
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: No release-worthy commits
+        if: steps.version.outputs.should_release == 'false'
+        run: echo "Nothing release-worthy since the last tag (only chore/docs/refactor/... commits, or no new commits). Skipping."
+
+      - name: Configure release commit identity
+        if: steps.version.outputs.should_release == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Cut and publish release
+        if: steps.version.outputs.should_release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/release-package.sh "${{ steps.version.outputs.version }}"
