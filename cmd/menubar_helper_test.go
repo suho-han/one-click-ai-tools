@@ -83,7 +83,7 @@ func TestResolveMenubarHelperLaunchRunsSwiftPackageWhenHelperBinaryIsMissing(t *
 	}
 
 	launch, searched := resolveMenubarHelperLaunch(
-		map[string]string{"PATH": filepath.Dir(swift)},
+		map[string]string{"PATH": filepath.Dir(swift), "HOME": temp},
 		filepath.Join(repo, "oct"),
 		workingDir,
 	)

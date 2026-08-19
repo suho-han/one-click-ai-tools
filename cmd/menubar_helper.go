@@ -115,7 +115,13 @@ func menubarHelperCandidates(env map[string]string, execPath string, workingDir 
 		}
 	}
 
-	if home, err := os.UserHomeDir(); err == nil && strings.TrimSpace(home) != "" {
+	home := strings.TrimSpace(env["HOME"])
+	if home == "" {
+		if h, err := os.UserHomeDir(); err == nil {
+			home = strings.TrimSpace(h)
+		}
+	}
+	if home != "" {
 		appendCandidate(filepath.Join(home, ".local", "bin", "OctMenubarApp"))
 	}
 
