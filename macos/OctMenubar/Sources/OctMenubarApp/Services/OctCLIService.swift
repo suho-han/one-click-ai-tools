@@ -31,11 +31,19 @@ struct OctCLIService {
     }
 
     func fetchUsageSnapshot(now: Date = Date()) throws -> UsageSnapshot {
-        let titleMode = (try? fetchConfigurationSnapshot().menubarTitleMode) ?? .oct
+        let configuration = try? fetchConfigurationSnapshot()
+        let titleMode = configuration?.menubarTitleMode ?? .oct
+        let usageDisplayMode = configuration?.usageDisplayMode ?? .remaining
         let output = try runAndCapture(arguments: ["usage", "--json"])
         let data = Data(output.utf8)
         let response = try JSONDecoder().decode(UsageResponse.self, from: data)
-        return UsageSnapshot.from(response: response, refreshDate: now, refreshInterval: refreshInterval, titleMode: titleMode)
+        return UsageSnapshot.from(
+            response: response,
+            refreshDate: now,
+            refreshInterval: refreshInterval,
+            titleMode: titleMode,
+            usageDisplayMode: usageDisplayMode
+        )
     }
 
     func fetchConfigurationSnapshot() throws -> ConfigurationSnapshot {
