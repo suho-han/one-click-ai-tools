@@ -65,11 +65,35 @@ fi
 git ls-remote --tags origin | grep "refs/tags/${RELEASE_TAG}$"
 
 echo
-echo "--- Step 5: Waiting for GitHub Release workflow ---"
+echo "--- Step 5: Publishing GitHub Release workflow ---"
 if command -v gh >/dev/null 2>&1; then
   RUN_ID=""
-  for _ in $(seq 1 12); do
-    RUN_ID="$(gh run list --workflow goreleaser --event push --json databaseId,headBranch --limit 20 | python3 -c 'import json, sys
+  if [[ "${CI:-}" == "true" ]]; then
+    # A tag pushed with the workflow's own GITHUB_TOKEN does not trigger the
+    # goreleaser workflow's `push: tags` event -- GitHub suppresses further
+    # workflow runs triggered by GITHUB_TOKEN to prevent infinite loops. This
+    # is the same manual "reissue a release" path documented in
+    # docs/release-checklist.md, just invoked programmatically; it *is*
+    # exempt from that restriction.
+    DISPATCH_AT="$(date -u +%Y-%m-%dT%H:%M:%S)"
+    gh workflow run goreleaser --ref main -f release_mode=release -f "git_ref=${RELEASE_TAG}"
+    for _ in $(seq 1 12); do
+      sleep 5
+      RUN_ID="$(gh run list --workflow goreleaser --event workflow_dispatch --json databaseId,createdAt --limit 5 | python3 -c 'import json, sys
+dispatch_at = sys.argv[1]
+runs = json.load(sys.stdin)
+for run in sorted(runs, key=lambda r: r["createdAt"], reverse=True):
+    if run["createdAt"] >= dispatch_at:
+        print(run["databaseId"])
+        break
+' "$DISPATCH_AT")"
+      if [[ -n "$RUN_ID" ]]; then
+        break
+      fi
+    done
+  else
+    for _ in $(seq 1 12); do
+      RUN_ID="$(gh run list --workflow goreleaser --event push --json databaseId,headBranch --limit 20 | python3 -c 'import json, sys
 release_tag = sys.argv[1]
 runs = json.load(sys.stdin)
 for run in runs:
@@ -77,11 +101,12 @@ for run in runs:
         print(run["databaseId"])
         break
 ' "$RELEASE_TAG")"
-    if [[ -n "$RUN_ID" ]]; then
-      break
-    fi
-    sleep 10
-  done
+      if [[ -n "$RUN_ID" ]]; then
+        break
+      fi
+      sleep 10
+    done
+  fi
   if [[ -n "$RUN_ID" ]]; then
     gh run watch "$RUN_ID" --exit-status
     gh release view "$RELEASE_TAG" --json assets

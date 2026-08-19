@@ -62,6 +62,15 @@ History follows Conventional Commits (examples: `feat(ui): ...`, `fix: ...`, `do
 `scripts/next-version.sh` computes the next release tag from commit subjects since the last release tag (baseline = most recently *created* `vX.Y.Z` tag, not the semver-highest one -- this repo's version reset at v0.1.x makes those different). Rule:
 
 - `major == 0` (current state): `feat` bumps PATCH, a `!`/`BREAKING CHANGE` commit bumps MINOR. Nothing pre-1.0 is a stable public API yet, so breaking changes don't get a MAJOR bump.
-- `major >= 1`: standard SemVer -- `feat` bumps MINOR, breaking bumps MAJOR, everything else (`fix`/`perf`/`chore`/...) bumps PATCH.
+- `major >= 1`: standard SemVer -- `feat` bumps MINOR, breaking bumps MAJOR, `fix`/`perf` bumps PATCH.
+- If every commit since the baseline is something else (`chore`/`docs`/`style`/`refactor`/`test`/`ci`/`build`/...), the script refuses to suggest a version -- there's nothing release-worthy. This is what makes it safe to run unattended (see below): a docs typo fix doesn't cut a public release.
 
 Run `bash scripts/next-version.sh` to preview the computed version and the feat/fix/breaking breakdown (printed to stderr; stdout is just the version string), or `bash scripts/release-package.sh auto` to use it directly for a release. The script refuses to suggest a tag that already exists locally or as a published GitHub Release.
+
+### CI: automatic release on every push to main
+
+`.github/workflows/auto-release.yml` runs the above on every push to `main`: it computes the next version, and if there's anything release-worthy it runs `scripts/release-package.sh` end to end (commit, tag, `go test ./...`, push, publish) with no human step. If nothing release-worthy landed, the job exits cleanly without releasing.
+
+This means **every push to main that contains a `feat`/`fix`/`perf`/breaking commit becomes a public GitHub Release automatically** -- this repo has no PR gate, so there is no review point before that happens. Before pushing a commit you don't want released immediately, consider whether it belongs in a topic branch instead.
+
+Mechanism note: a tag pushed by the workflow's `GITHUB_TOKEN` does not trigger the `goreleaser` workflow's normal `push: tags` event (GitHub suppresses further workflow runs triggered by `GITHUB_TOKEN`, to prevent infinite loops). `release-package.sh` detects `CI=true` and instead dispatches `goreleaser` explicitly via `gh workflow run ... -f release_mode=release -f git_ref=vX.Y.Z`, which *is* exempt from that restriction.

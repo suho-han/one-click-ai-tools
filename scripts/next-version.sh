@@ -15,11 +15,16 @@
 #     any "!" or "BREAKING CHANGE" commit -> bump MINOR (0.x has no stable
 #       public API yet, so breaking changes don't get a major bump)
 #     any "feat" commit                   -> bump PATCH
-#     otherwise (fix/perf/chore/docs/...) -> bump PATCH
+#     any "fix"/"perf" commit (no feat)   -> bump PATCH
 #   major >= 1:
 #     any "!" or "BREAKING CHANGE" commit -> bump MAJOR
 #     any "feat" commit                   -> bump MINOR
-#     otherwise (fix/perf/chore/docs/...) -> bump PATCH
+#     any "fix"/"perf" commit (no feat)   -> bump PATCH
+#   In both cases: if every commit since the baseline is something else
+#   (chore/docs/style/refactor/test/ci/build/...), there is nothing
+#   release-worthy -> the script errors out instead of bumping. This is what
+#   makes `scripts/release-package.sh auto` safe to wire into CI on every
+#   push to main: a docs typo fix doesn't cut a public release.
 #
 # Usage: bash scripts/next-version.sh
 #        VERSION="$(bash scripts/next-version.sh)"
@@ -74,19 +79,19 @@ while IFS= read -r sha; do
 done <<< "$commits"
 
 reason=""
+releasable=1
 if [[ "$MAJOR" -eq 0 ]]; then
   if [[ "$n_breaking" -gt 0 ]]; then
     MINOR=$((MINOR + 1)); PATCH=0
     reason="breaking change (0.x: bumps minor, not major)"
-  else
+  elif [[ "$n_feat" -gt 0 ]]; then
     PATCH=$((PATCH + 1))
-    if [[ "$n_feat" -gt 0 ]]; then
-      reason="feat (0.x: bumps patch, not minor)"
-    elif [[ "$n_fix" -gt 0 ]]; then
-      reason="fix/perf"
-    else
-      reason="other commits only (chore/docs/refactor/...)"
-    fi
+    reason="feat (0.x: bumps patch, not minor)"
+  elif [[ "$n_fix" -gt 0 ]]; then
+    PATCH=$((PATCH + 1))
+    reason="fix/perf"
+  else
+    releasable=0
   fi
 else
   if [[ "$n_breaking" -gt 0 ]]; then
@@ -95,10 +100,19 @@ else
   elif [[ "$n_feat" -gt 0 ]]; then
     MINOR=$((MINOR + 1)); PATCH=0
     reason="feat"
-  else
+  elif [[ "$n_fix" -gt 0 ]]; then
     PATCH=$((PATCH + 1))
-    reason="fix/perf/other"
+    reason="fix/perf"
+  else
+    releasable=0
   fi
+fi
+
+if [[ "$releasable" -eq 0 ]]; then
+  echo "baseline: ${BASELINE}" >&2
+  echo "commits since baseline: breaking=${n_breaking} feat=${n_feat} fix/perf=${n_fix} other=${n_other}" >&2
+  echo "ERROR: no feat/fix/perf/breaking commits since ${BASELINE} (only chore/docs/refactor/... found); nothing release-worthy" >&2
+  exit 1
 fi
 
 NEXT="v${MAJOR}.${MINOR}.${PATCH}"
