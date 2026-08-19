@@ -27,7 +27,9 @@ enum MenubarTitleMode: String, Codable, CaseIterable, Identifiable {
         case .oct:
             return "oct"
         case .compact:
-            return "Remaining %"
+            // Shows whichever Usage Display Mode is configured (used or
+            // remaining), not always remaining -- see UsageDisplayMode.
+            return "Compact %"
         }
     }
 }

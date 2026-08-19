@@ -86,7 +86,12 @@ struct ProviderCard: Equatable, Identifiable {
         return provider.first.map { String($0).uppercased() } ?? "?"
     }
 
-    var compactRemainingValue: String {
+    // metrics[0].value is already resolved for the configured usage display
+    // mode (see UsageSnapshot.visibleMetrics), so this only reformats it as a
+    // rounded compact percentage -- it must NOT re-invert used/remaining, or
+    // "remaining" mode would double-invert back to a used value while still
+    // labeled "remaining" (the exact bug this file fixes).
+    var compactMetricValue: String {
         guard let metric = metrics.first else {
             return "?"
         }
@@ -94,18 +99,17 @@ struct ProviderCard: Equatable, Identifiable {
             .replacingOccurrences(of: "% left", with: "")
             .replacingOccurrences(of: "%", with: "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let used = Double(raw) else {
+        guard let value = Double(raw) else {
             return "?"
         }
-        let remaining = min(max(100 - used, 0), 100)
-        return "\(Int(remaining.rounded()))%"
+        return "\(Int(value.rounded()))%"
     }
 
-    var compactRemainingAccessibilityLabel: String {
+    var compactAccessibilityLabel: String {
         guard let metric = metrics.first else {
             return "\(name) usage unavailable"
         }
-        return "\(name) \(metric.label) \(compactRemainingValue) remaining"
+        return "\(name) \(metric.label) \(metric.value)"
     }
 
     func accentColor(useProviderAccentColors: Bool) -> Color {
@@ -206,6 +210,7 @@ extension UsageSnapshot {
         refreshDate: Date,
         refreshInterval: TimeInterval,
         titleMode: MenubarTitleMode = .oct,
+        usageDisplayMode: UsageDisplayMode = .remaining,
         timeZone: TimeZone = .autoupdatingCurrent
     ) -> UsageSnapshot {
         let formatter = DateFormatter()
@@ -219,13 +224,13 @@ extension UsageSnapshot {
                 plan: normalizedPlan(result.plan),
                 planSource: normalizedPlanSource(result.planSource),
                 status: effectiveStatus(for: result),
-                metrics: visibleMetrics(for: result.provider, from: result.buckets),
+                metrics: visibleMetrics(for: result.provider, unit: result.unit, buckets: result.buckets, mode: usageDisplayMode),
                 message: composedMessage(for: result)
             )
         }
         let summary = projectedSummary(for: providers)
         let status = aggregateStatus(summary: summary)
-        let statusItem = statusItemPresentation(for: status, providers: providers, titleMode: titleMode)
+        let statusItem = statusItemPresentation(for: status, providers: providers, titleMode: titleMode, usageDisplayMode: usageDisplayMode)
         return UsageSnapshot(
             statusItemTitle: statusItem.title,
             statusItemAccessibilityLabel: statusItem.accessibilityLabel,
@@ -261,18 +266,20 @@ extension UsageSnapshot {
     private static func statusItemPresentation(
         for status: ProviderStatus,
         providers: [ProviderCard],
-        titleMode: MenubarTitleMode
+        titleMode: MenubarTitleMode,
+        usageDisplayMode: UsageDisplayMode
     ) -> (title: String, accessibilityLabel: String) {
         guard titleMode == .compact else {
             return ("oct", "oct usage \(status.rawValue)")
         }
-        let parts = providers.map { "\($0.compactLabel)-\($0.compactRemainingValue)" }
+        let parts = providers.map { "\($0.compactLabel)-\($0.compactMetricValue)" }
         let title = parts.joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !title.isEmpty else {
             return ("oct", "oct usage unavailable")
         }
-        let accessibilityParts = providers.map(\.compactRemainingAccessibilityLabel)
-        return (title, "Remaining usage: \(accessibilityParts.joined(separator: ", "))")
+        let accessibilityParts = providers.map(\.compactAccessibilityLabel)
+        let prefix = usageDisplayMode == .remaining ? "Remaining usage" : "Used"
+        return (title, "\(prefix): \(accessibilityParts.joined(separator: ", "))")
     }
 
     private static func classifyStatus(_ raw: String) -> String {
@@ -319,23 +326,72 @@ extension UsageSnapshot {
         message.hasPrefix("partial:") || message.contains("partial data")
     }
 
-    private static func visibleMetrics(for provider: String, from buckets: [String: String]?) -> [UsageMetric] {
+    // visibleMetrics resolves each bucket's value for `mode` here, once, so
+    // every consumer (the popover card strip and the compact status-item
+    // title, via ProviderCard.compactMetricValue) reads an already-correct
+    // number instead of re-deriving used/remaining itself. That mirrors
+    // internal/usage.BucketValue on the Go side -- see AGENTS.md.
+    private static func visibleMetrics(for provider: String, unit: String?, buckets: [String: String]?, mode: UsageDisplayMode) -> [UsageMetric] {
         guard let buckets else {
             return []
         }
 
-        let labels: [String]
+        let isPercent = (unit ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "percent"
+
+        let timeLabels: [String]
         if provider.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "codex" {
-            labels = visibleMetricValue(buckets["7d"]) == nil ? ["5h"] : ["7d"]
+            timeLabels = visibleMetricValue(buckets["7d"]) == nil ? ["5h"] : ["7d"]
         } else {
-            labels = ["5h", "7d", "1m"]
+            timeLabels = ["5h", "7d", "1m"]
         }
 
-        return labels.compactMap { label in
-            guard let value = visibleMetricValue(buckets[label]) else {
+        let timeMetrics: [UsageMetric] = timeLabels.compactMap { label in
+            guard let raw = visibleMetricValue(buckets[label]) else {
                 return nil
             }
-            return UsageMetric(label: label, value: value)
+            return UsageMetric(label: label, value: displayValue(raw: raw, isPercent: isPercent, mode: mode))
+        }
+        if !timeMetrics.isEmpty {
+            return timeMetrics
+        }
+
+        // No 5h/7d/1m bucket present: fall back to a single pre-computed
+        // percentage bucket ("quota", e.g. Copilot) or per-model buckets
+        // ("model:x", e.g. Antigravity/Gemini), mirroring the Go usage
+        // table's fallback so the popover doesn't render zero metrics for
+        // providers that don't key their buckets by time window.
+        if let quota = visibleMetricValue(buckets["quota"]) {
+            return [UsageMetric(label: "quota", value: displayValue(raw: quota, isPercent: true, mode: mode))]
+        }
+
+        let modelKeys = buckets.keys.filter { $0.hasPrefix("model:") }.sorted()
+        return modelKeys.compactMap { key in
+            guard let raw = visibleMetricValue(buckets[key]) else {
+                return nil
+            }
+            let label = String(key.dropFirst("model:".count))
+            return UsageMetric(label: label.isEmpty ? "model" : label, value: displayValue(raw: raw, isPercent: isPercent, mode: mode))
+        }
+    }
+
+    // displayValue applies the same used/remaining convention as the Go
+    // table: "used" mode passes the raw string through unmodified (just adds
+    // "%"), "remaining" mode always reformats to one decimal place with a
+    // "% left" suffix. Non-percent buckets (request/session counts) are
+    // never inverted -- there's no valid "remaining" reading for a bare count.
+    private static func displayValue(raw: String, isPercent: Bool, mode: UsageDisplayMode) -> String {
+        guard isPercent else {
+            return raw
+        }
+        switch mode {
+        case .used:
+            return raw + "%"
+        case .remaining:
+            guard let used = Double(raw) else {
+                return raw + "%"
+            }
+            let remaining = min(max(100 - used, 0), 100)
+            return String(format: "%.1f%% left", remaining)
         }
     }
 

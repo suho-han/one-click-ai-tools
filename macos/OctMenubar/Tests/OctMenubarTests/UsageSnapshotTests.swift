@@ -41,6 +41,7 @@ final class UsageSnapshotTests: XCTestCase {
             response: response,
             refreshDate: date,
             refreshInterval: 60,
+            usageDisplayMode: .used,
             timeZone: TimeZone(secondsFromGMT: 9 * 60 * 60)!
         )
 
@@ -50,7 +51,7 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.nextRefreshLabel, "02:13:44")
         XCTAssertEqual(snapshot.autoRefreshLabel, "Auto refresh: every 1m")
         XCTAssertEqual(snapshot.providers.count, 2)
-        XCTAssertEqual(snapshot.providers[0], ProviderCard(name: "codex", status: .ok, metrics: [.init(label: "7d", value: "35.0")], message: "Usage extracted from local Codex session logs"))
+        XCTAssertEqual(snapshot.providers[0], ProviderCard(name: "codex", status: .ok, metrics: [.init(label: "7d", value: "35.0%")], message: "Usage extracted from local Codex session logs"))
         XCTAssertEqual(snapshot.providers[1], ProviderCard(name: "opencode", status: .warn, metrics: [], message: "No data: No local OpenCode session logs found"))
     }
 
@@ -84,11 +85,11 @@ final class UsageSnapshotTests: XCTestCase {
         """#
 
         let response = try JSONDecoder().decode(UsageResponse.self, from: Data(json.utf8))
-        let snapshot = UsageSnapshot.from(response: response, refreshDate: .now, refreshInterval: 60)
+        let snapshot = UsageSnapshot.from(response: response, refreshDate: .now, refreshInterval: 60, usageDisplayMode: .used)
 
         XCTAssertEqual(
             snapshot.providers[0].metrics,
-            [.init(label: "5h", value: "2"), .init(label: "7d", value: "84"), .init(label: "1m", value: "42")]
+            [.init(label: "5h", value: "2%"), .init(label: "7d", value: "84%"), .init(label: "1m", value: "42%")]
         )
     }
 
@@ -125,11 +126,53 @@ final class UsageSnapshotTests: XCTestCase {
         """#
 
         let response = try JSONDecoder().decode(UsageResponse.self, from: Data(json.utf8))
-        let snapshot = UsageSnapshot.from(response: response, refreshDate: .now, refreshInterval: 60, titleMode: .compact)
+        let snapshot = UsageSnapshot.from(response: response, refreshDate: .now, refreshInterval: 60, titleMode: .compact, usageDisplayMode: .remaining)
 
         XCTAssertEqual(snapshot.statusItemTitle, "C-45% X-25%")
-        XCTAssertTrue(snapshot.statusItemAccessibilityLabel.contains("claude-code 5h 45% remaining"))
-        XCTAssertTrue(snapshot.statusItemAccessibilityLabel.contains("codex 7d 25% remaining"))
+        XCTAssertTrue(snapshot.statusItemAccessibilityLabel.contains("claude-code 5h 45.0% left"))
+        XCTAssertTrue(snapshot.statusItemAccessibilityLabel.contains("codex 7d 25.0% left"))
+
+        // The same numbers, read from the same metrics, must appear in the
+        // popover card strip below the title -- this is the regression guard
+        // for the bug where the compact title always showed "remaining"
+        // while the card body always showed the raw "used" value beneath it.
+        XCTAssertEqual(snapshot.providers[0].metrics, [.init(label: "5h", value: "45.0% left")])
+        XCTAssertEqual(snapshot.providers[1].metrics, [.init(label: "7d", value: "25.0% left")])
+    }
+
+    func testUsageSnapshotCompactStatusItemTitleHonorsUsedMode() throws {
+        let json = #"""
+        {
+          "summary": {
+            "total": 1,
+            "ok": 1,
+            "warn": 0,
+            "error": 0
+          },
+          "results": [
+            {
+              "provider": "claude-code",
+              "status": "ok",
+              "used": "55.0",
+              "unit": "percent",
+              "buckets": {
+                "5h": "55.0"
+              }
+            }
+          ]
+        }
+        """#
+
+        let response = try JSONDecoder().decode(UsageResponse.self, from: Data(json.utf8))
+        let snapshot = UsageSnapshot.from(response: response, refreshDate: .now, refreshInterval: 60, titleMode: .compact, usageDisplayMode: .used)
+
+        // Regression guard for the legacy menubar-style bug: the compact
+        // title used to always show "remaining" regardless of the configured
+        // mode. In "used" mode the title and card body must both show 55%,
+        // not the remaining 45%.
+        XCTAssertEqual(snapshot.statusItemTitle, "C-55%")
+        XCTAssertTrue(snapshot.statusItemAccessibilityLabel.contains("claude-code 5h 55.0%"))
+        XCTAssertEqual(snapshot.providers[0].metrics, [.init(label: "5h", value: "55.0%")])
     }
 
     func testUsageSnapshotSummaryUsesProjectedProviderStatuses() throws {
@@ -197,9 +240,9 @@ final class UsageSnapshotTests: XCTestCase {
         """#
 
         let response = try JSONDecoder().decode(UsageResponse.self, from: Data(json.utf8))
-        let snapshot = UsageSnapshot.from(response: response, refreshDate: .now, refreshInterval: 60)
+        let snapshot = UsageSnapshot.from(response: response, refreshDate: .now, refreshInterval: 60, usageDisplayMode: .used)
 
-        XCTAssertEqual(snapshot.providers[0].metrics, [.init(label: "7d", value: "2.0")])
+        XCTAssertEqual(snapshot.providers[0].metrics, [.init(label: "7d", value: "2.0%")])
     }
 
     func testUsageSnapshotShowsLegacyCodexFiveHourBucketWhenWeeklyMissing() throws {
@@ -227,9 +270,66 @@ final class UsageSnapshotTests: XCTestCase {
         """#
 
         let response = try JSONDecoder().decode(UsageResponse.self, from: Data(json.utf8))
-        let snapshot = UsageSnapshot.from(response: response, refreshDate: .now, refreshInterval: 60)
+        let snapshot = UsageSnapshot.from(response: response, refreshDate: .now, refreshInterval: 60, usageDisplayMode: .used)
 
-        XCTAssertEqual(snapshot.providers[0].metrics, [.init(label: "5h", value: "4.0")])
+        XCTAssertEqual(snapshot.providers[0].metrics, [.init(label: "5h", value: "4.0%")])
+    }
+
+    func testUsageSnapshotSurfacesModelBucketsWhenNoTimeWindowPresent() throws {
+        // Regression test: Antigravity/Gemini keys its buckets "model:<name>"
+        // instead of "5h"/"7d"/"1m", so visibleMetrics used to return zero
+        // metrics for it even though `oct usage` (the Go table) shows them
+        // via its own model-bucket fallback.
+        let json = #"""
+        {
+          "summary": { "total": 1, "ok": 1, "warn": 0, "error": 0 },
+          "results": [
+            {
+              "provider": "antigravity",
+              "status": "ok",
+              "used": "12.4",
+              "unit": "percent",
+              "buckets": { "model:gemini-2.5-pro": "12.4" },
+              "message": "Usage fetched from Google Code Assist quota API"
+            }
+          ]
+        }
+        """#
+
+        let response = try JSONDecoder().decode(UsageResponse.self, from: Data(json.utf8))
+        let usedSnapshot = UsageSnapshot.from(response: response, refreshDate: .now, refreshInterval: 60, usageDisplayMode: .used)
+        XCTAssertEqual(usedSnapshot.providers[0].metrics, [.init(label: "gemini-2.5-pro", value: "12.4%")])
+
+        let remainingSnapshot = UsageSnapshot.from(response: response, refreshDate: .now, refreshInterval: 60, usageDisplayMode: .remaining)
+        XCTAssertEqual(remainingSnapshot.providers[0].metrics, [.init(label: "gemini-2.5-pro", value: "87.6% left")])
+    }
+
+    func testUsageSnapshotSurfacesQuotaBucketWhenNoTimeWindowPresent() throws {
+        // Regression test: Copilot keys its pre-computed percentage as a
+        // single "quota" bucket (unit is "AIC", a count, not "percent"), so
+        // visibleMetrics used to return zero metrics for it.
+        let json = #"""
+        {
+          "summary": { "total": 1, "ok": 1, "warn": 0, "error": 0 },
+          "results": [
+            {
+              "provider": "copilot",
+              "status": "ok",
+              "used": "117",
+              "unit": "AIC",
+              "buckets": { "quota": "58.3" },
+              "message": "Usage fetched from GitHub Copilot quota API"
+            }
+          ]
+        }
+        """#
+
+        let response = try JSONDecoder().decode(UsageResponse.self, from: Data(json.utf8))
+        let usedSnapshot = UsageSnapshot.from(response: response, refreshDate: .now, refreshInterval: 60, usageDisplayMode: .used)
+        XCTAssertEqual(usedSnapshot.providers[0].metrics, [.init(label: "quota", value: "58.3%")])
+
+        let remainingSnapshot = UsageSnapshot.from(response: response, refreshDate: .now, refreshInterval: 60, usageDisplayMode: .remaining)
+        XCTAssertEqual(remainingSnapshot.providers[0].metrics, [.init(label: "quota", value: "41.7% left")])
     }
 
     func testUsageSnapshotKeepsPlanOutOfProviderMessage() throws {
@@ -407,7 +507,7 @@ final class UsageSnapshotTests: XCTestCase {
 
         XCTAssertEqual(draft.menubarTitleMode, .compact)
         XCTAssertEqual(decoded.menubarTitleMode, .compact)
-        XCTAssertEqual(MenubarTitleMode.compact.label, "Remaining %")
+        XCTAssertEqual(MenubarTitleMode.compact.label, "Compact %")
     }
 
     func testResolveExecutablePrefersExplicitOverride() throws {
