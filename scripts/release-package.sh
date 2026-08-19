@@ -6,8 +6,13 @@ cd "$ROOT_DIR"
 
 VERSION_ARG="${1:-}"
 if [[ -z "$VERSION_ARG" ]]; then
-  echo "Usage: bash scripts/release-package.sh vX.Y.Z"
+  echo "Usage: bash scripts/release-package.sh vX.Y.Z|auto"
   exit 1
+fi
+
+if [[ "$VERSION_ARG" == "auto" ]]; then
+  VERSION_ARG="$(bash scripts/next-version.sh)"
+  echo "Auto-detected version (see scripts/next-version.sh for the bump rule): ${VERSION_ARG}"
 fi
 
 VERSION="${VERSION_ARG#v}"

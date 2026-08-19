@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# Advisory Conventional Commits check (warns, never blocks the commit).
+#
+# scripts/next-version.sh derives the release version from commit subjects
+# (feat/fix/breaking), so a malformed subject just falls into the "other"
+# bucket and still gets a safe patch bump -- this hook exists to catch typos
+# early, not to gate commits.
+#
+# Enable with:
+#   git config core.hooksPath .githooks
+
+msg_file="$1"
+subject="$(head -n1 "$msg_file")"
+
+case "$subject" in
+  "Merge "*|"Revert "*|"fixup!"*|"squash!"*) exit 0 ;;
+esac
+
+pattern='^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([a-zA-Z0-9_/.-]+\))?!?: .+'
+
+if [[ ! "$subject" =~ $pattern ]]; then
+  cat >&2 <<EOF
+warning: commit subject doesn't match Conventional Commits format
+  expected: type(scope): summary
+  types:    feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert
+  got:      ${subject}
+  (advisory only -- commit will proceed; see AGENTS.md)
+EOF
+fi
+
+exit 0
