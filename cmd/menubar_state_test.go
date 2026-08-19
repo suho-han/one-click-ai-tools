@@ -98,7 +98,7 @@ func TestMenubarProviderLineIncludesBadgeBucketsAndStatus(t *testing.T) {
 			"5h": "88",
 			"7d": "64",
 		},
-	})
+	}, "used")
 
 	for _, want := range []string{"[warn]", "Codex", "5h 88%", "7d 64%"} {
 		if !strings.Contains(line, want) {
@@ -107,14 +107,104 @@ func TestMenubarProviderLineIncludesBadgeBucketsAndStatus(t *testing.T) {
 	}
 }
 
+func TestMenubarProviderLineRespectsRemainingMode(t *testing.T) {
+	line := menubarProviderLine(usage.UsageResult{
+		Provider: "Codex",
+		Status:   "warn",
+		Used:     "88",
+		Unit:     "percent",
+		Buckets: map[string]string{
+			"5h": "88",
+			"7d": "64",
+		},
+	}, "remaining")
+
+	for _, want := range []string{"5h 12", "7d 36"} {
+		if !strings.Contains(line, want) {
+			t.Fatalf("line = %q, want substring %q", line, want)
+		}
+	}
+	if strings.Contains(line, "5h 88%") || strings.Contains(line, "7d 64%") {
+		t.Fatalf("line = %q, still shows used-mode values under remaining mode", line)
+	}
+}
+
 func TestMenubarProviderLineOmitsMessageForOKStatus(t *testing.T) {
 	line := menubarProviderLine(usage.UsageResult{
 		Provider: "Copilot",
 		Status:   "ok",
 		Message:  "should stay hidden",
-	})
+	}, "used")
 	if strings.Contains(line, "should stay hidden") {
 		t.Fatalf("line = %q, want ok provider message omitted", line)
+	}
+}
+
+func TestMenubarUsageSnapshotTitleAndBodyAgreeInRemainingMode(t *testing.T) {
+	t.Cleanup(viper.Reset)
+	viper.Reset()
+	viper.Set("menubar_title_mode", "compact")
+	viper.Set("usage_display_mode", "remaining")
+
+	snap := buildMenubarUsageSnapshot([]usage.UsageResult{
+		{Provider: "claude-code", Status: "ok", Used: "55.0", Unit: "percent", Buckets: map[string]string{"5h": "55.0"}},
+	}, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC))
+
+	// Title mode "compact" and the provider dropdown line must report the
+	// same remaining percentage; regression guard for the bug where the
+	// legacy menubar's title always showed remaining while the body always
+	// showed used, regardless of usage_display_mode.
+	if got, want := snap.Title, "C-45%"; got != want {
+		t.Fatalf("Title = %q, want %q", got, want)
+	}
+	if len(snap.ProviderLines) != 1 || !strings.Contains(snap.ProviderLines[0], "5h 45") {
+		t.Fatalf("ProviderLines = %v, want 5h remaining value matching title", snap.ProviderLines)
+	}
+}
+
+func TestMenubarUsageSnapshotTitleAndBodyAgreeForQuotaOnlyProvider(t *testing.T) {
+	// Copilot has no 5h/7d/1m buckets, only a single pre-computed "quota"
+	// percentage. Regression guard: CompactTitle already renders a real
+	// number for this shape (usage.FallbackMetricsSummary fixed
+	// compactValueForMode's percent-unit gate), so the dropdown line/details
+	// directly beneath it must show the same number instead of "5h - · 7d -
+	// · 1m -" dashes for the identical result.
+	t.Cleanup(viper.Reset)
+	viper.Reset()
+	viper.Set("menubar_title_mode", "compact")
+	viper.Set("usage_display_mode", "remaining")
+
+	result := usage.UsageResult{
+		Provider: "copilot",
+		Status:   "ok",
+		Used:     "117",
+		Limit:    "200",
+		Unit:     "AIC",
+		Buckets:  map[string]string{"quota": "58.3"},
+	}
+
+	snap := buildMenubarUsageSnapshot([]usage.UsageResult{result}, time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC))
+
+	if got, want := snap.Title, "P-42%"; got != want {
+		t.Fatalf("Title = %q, want %q", got, want)
+	}
+	if len(snap.ProviderLines) != 1 || !strings.Contains(snap.ProviderLines[0], "quota 41.7% left") {
+		t.Fatalf("ProviderLines = %v, want quota remaining value matching title", snap.ProviderLines)
+	}
+	if strings.Contains(snap.ProviderLines[0], "5h - ") {
+		t.Fatalf("ProviderLines = %v, still shows blank 5h/7d/1m dashes instead of the quota fallback", snap.ProviderLines)
+	}
+
+	details := menubarProviderDetails(result, "remaining")
+	found := false
+	for _, line := range details {
+		if strings.Contains(line, "quota 41.7% left") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("details = %#v, want a line reporting the quota fallback matching the title", details)
 	}
 }
 
@@ -171,7 +261,7 @@ func TestMenubarProviderDetailsIncludesDeepStatus(t *testing.T) {
 			"5h": "88",
 			"7d": "64",
 		},
-	})
+	}, "used")
 
 	for _, want := range []string{"Provider: Codex", "Status: warn", "5h: 88%", "7d: 64%", "Plan: plus", "Plan source: codex auth.jwt id_token", "Used: 88", "Limit: 100", "Source: local", "Detail: session logs", "Message: approaching threshold"} {
 		found := false
