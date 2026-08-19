@@ -23,6 +23,7 @@ Use `internal/ui/assets/` for icon/image assets and keep generated artifacts in 
 - `bash scripts/install.sh`: install the latest GitHub Release binary locally.
 - `bash scripts/verify-release-integrity.sh`: validate release version/build integrity.
 - `bash scripts/release-package.sh vX.Y.Z`: tag and publish a GitHub Release through CI.
+- `bash scripts/release-package.sh auto`: same, but computes the version from Conventional Commits since the last release tag (see "Automatic version bump" below).
 
 Use caution with `go run main.go agent-update`; it can execute real `brew`/`npm` updates on your machine.
 
@@ -54,3 +55,13 @@ History follows Conventional Commits (examples: `feat(ui): ...`, `fix: ...`, `do
 - Keep commits focused by concern (UI, usage, update logic, docs).
 - PRs should include: purpose, key changes, test evidence (`go test ./...` output), and screenshots/log snippets for terminal UI changes.
 - Link related issues and note any behavior that triggers system package updates.
+- Optional advisory check: `git config core.hooksPath .githooks` enables a `commit-msg` hook that warns (never blocks) when a subject doesn't match the Conventional Commits format above.
+
+## Automatic version bump
+
+`scripts/next-version.sh` computes the next release tag from commit subjects since the last release tag (baseline = most recently *created* `vX.Y.Z` tag, not the semver-highest one -- this repo's version reset at v0.1.x makes those different). Rule:
+
+- `major == 0` (current state): `feat` bumps PATCH, a `!`/`BREAKING CHANGE` commit bumps MINOR. Nothing pre-1.0 is a stable public API yet, so breaking changes don't get a MAJOR bump.
+- `major >= 1`: standard SemVer -- `feat` bumps MINOR, breaking bumps MAJOR, everything else (`fix`/`perf`/`chore`/...) bumps PATCH.
+
+Run `bash scripts/next-version.sh` to preview the computed version and the feat/fix/breaking breakdown (printed to stderr; stdout is just the version string), or `bash scripts/release-package.sh auto` to use it directly for a release. The script refuses to suggest a tag that already exists locally or as a published GitHub Release.
