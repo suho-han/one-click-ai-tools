@@ -261,6 +261,7 @@ func TestFetchClaudeUsage_FallbackToCredentialsFile(t *testing.T) {
 
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp)
 
 	// Create .claude directory and credentials file
 	claudeDir := filepath.Join(tmp, ".claude")
