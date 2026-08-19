@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/suho-han/one-click-ai-tools/internal/ui"
 	"github.com/suho-han/one-click-ai-tools/internal/update"
+	"github.com/suho-han/one-click-ai-tools/internal/usage"
 )
 
 type toolItem struct {
@@ -265,10 +266,7 @@ func runInteractiveConfig() ([]string, []string, string, bool, error) {
 		}
 		order = append(order, it.tool.BinaryName)
 	}
-	mode := strings.ToLower(strings.TrimSpace(viper.GetString("usage_display_mode")))
-	if mode != "used" && mode != "remaining" {
-		mode = "remaining"
-	}
+	mode := usage.NormalizeDisplayMode(viper.GetString("usage_display_mode"))
 	mode = promptUsageMode(mode)
 	return selected, order, mode, false, nil
 }
