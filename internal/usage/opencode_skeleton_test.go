@@ -90,6 +90,7 @@ func TestFetchOpenCodeUsage_NoLogs(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
 	t.Setenv("USERPROFILE", tmp)
+	t.Setenv("OPENCODE_API_KEY", "")
 
 	result := FetchOpenCodeUsage()
 	if result.Provider != "opencode" {
