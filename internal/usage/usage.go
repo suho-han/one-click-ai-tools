@@ -16,6 +16,26 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+// Display modes for the "used" vs "remaining" toggle (usage_display_mode
+// config key). All UI surfaces (oct usage, oct monitor, both menubars) should
+// resolve the raw config value through NormalizeDisplayMode so an invalid or
+// missing value falls back the same way everywhere.
+const (
+	DisplayModeUsed      = "used"
+	DisplayModeRemaining = "remaining"
+)
+
+// NormalizeDisplayMode canonicalizes a usage_display_mode value. Invalid or
+// empty input falls back to "remaining", matching root.go's viper default,
+// so a missing/corrupt config can't make one UI surface disagree with another.
+func NormalizeDisplayMode(raw string) string {
+	mode := strings.ToLower(strings.TrimSpace(raw))
+	if mode != DisplayModeUsed && mode != DisplayModeRemaining {
+		return DisplayModeRemaining
+	}
+	return mode
+}
+
 type UsageResult struct {
 	Provider     string            `json:"provider"`
 	Plan         string            `json:"plan,omitempty"`
@@ -91,10 +111,7 @@ func PrintTable(results []UsageResult) {
 func RenderTable(w io.Writer, results []UsageResult) {
 	width := terminalWidth()
 
-	displayMode := strings.ToLower(strings.TrimSpace(viper.GetString("usage_display_mode")))
-	if displayMode != "used" && displayMode != "remaining" {
-		displayMode = "used"
-	}
+	displayMode := NormalizeDisplayMode(viper.GetString("usage_display_mode"))
 
 	cardWidth := tableCardWidth(width)
 	for i, r := range results {
@@ -314,7 +331,7 @@ func tableSourceLabel(source string) string {
 
 func formatBucketDisplay(r UsageResult, rawValue, mode string) string {
 	value := rawValue
-	if mode == "remaining" && strings.EqualFold(r.Unit, "percent") {
+	if mode == DisplayModeRemaining && strings.EqualFold(r.Unit, "percent") {
 		if rem, ok := remainingFromUsed(rawValue); ok {
 			value = rem
 		}
@@ -376,7 +393,7 @@ func usageSummaryDisplay(r UsageResult, mode string) string {
 	if used == "" || strings.EqualFold(used, "n/a") || hasNoDataSignal(msg) {
 		return "—"
 	}
-	if mode == "remaining" && strings.EqualFold(r.Unit, "percent") {
+	if mode == DisplayModeRemaining && strings.EqualFold(r.Unit, "percent") {
 		if rem, ok := remainingFromUsed(used); ok {
 			used = rem
 		}
@@ -391,14 +408,35 @@ func usageSummaryDisplay(r UsageResult, mode string) string {
 	limit := strings.TrimSpace(r.Limit)
 	if limit != "" && !strings.EqualFold(limit, "n/a") {
 		if quota := strings.TrimSpace(r.Buckets["quota"]); quota != "" {
-			return used + "/" + limit + " " + unit + " used (" + quota + "%)"
+			// "quota" (e.g. Copilot) is always a pre-computed used-percentage
+			// even though r.Unit is a count unit like "AIC", not "percent" --
+			// it still has to honor the used/remaining toggle like every
+			// other percent-based bucket, or it silently ignores the setting.
+			return used + "/" + limit + " " + unit + " (" + quotaModeLabel(quota, mode) + ")"
 		}
 		return used + "/" + limit + " " + unit
 	}
 	return used + " " + unit
 }
 
-func visibleBucketValue(r UsageResult, bucket string, mode string) (string, bool) {
+func quotaModeLabel(quota string, mode string) string {
+	if mode == DisplayModeRemaining {
+		if rem, ok := remainingFromUsed(quota); ok {
+			return rem + "% left"
+		}
+	}
+	return quota + "% used"
+}
+
+// BucketValue resolves a single bucket's display value for the given mode,
+// applying the used/remaining inversion and "% left" labeling used by the
+// `oct usage` card table. `oct monitor` and the legacy menubar's fixed-width
+// surfaces intentionally use their own terser bucketVal (cmd/monitor.go)
+// instead -- see its doc comment -- but both apply the identical numeric
+// inversion, so the two never disagree on the underlying number, only on
+// whether it's labeled.
+// ok is false when there's no usable value for this bucket.
+func BucketValue(r UsageResult, bucket string, mode string) (string, bool) {
 	raw := ""
 	if r.Buckets != nil {
 		raw = strings.TrimSpace(r.Buckets[bucket])
@@ -407,8 +445,16 @@ func visibleBucketValue(r UsageResult, bucket string, mode string) (string, bool
 		return "", false
 	}
 	value := formatBucketDisplay(r, raw, mode)
-	if mode == "remaining" && strings.EqualFold(r.Unit, "percent") {
+	if mode == DisplayModeRemaining && strings.EqualFold(r.Unit, "percent") {
 		value += " left"
+	}
+	return value, true
+}
+
+func visibleBucketValue(r UsageResult, bucket string, mode string) (string, bool) {
+	value, ok := BucketValue(r, bucket, mode)
+	if !ok {
+		return "", false
 	}
 	if resetLabel := bucketResetDisplay(r, bucket); resetLabel != "" {
 		value += " (" + resetLabel + ")"
@@ -502,6 +548,27 @@ func modelBucketDisplays(r UsageResult, mode string) []string {
 		out = append(out, label+" "+value)
 	}
 	return out
+}
+
+// FallbackMetricsSummary returns a display string for providers that don't
+// populate the 5h/7d/1m buckets: Copilot's single pre-computed "quota"
+// percentage, or Antigravity's per-model "model:*" buckets. ok is false when
+// neither applies, meaning the caller has nothing to show here.
+//
+// This exists so every UI surface -- the `oct usage` table (via
+// usageSummaryDisplay), the legacy menubar's provider line/details
+// (cmd/menubar_state.go), and the Swift menubar's popover (mirrored in
+// visibleMetrics) -- falls back to the same value instead of some surfaces
+// showing real numbers while others show blank/dashed buckets for the exact
+// same result.
+func FallbackMetricsSummary(r UsageResult, mode string) (string, bool) {
+	if quota := strings.TrimSpace(r.Buckets["quota"]); quota != "" {
+		return "quota " + quotaModeLabel(quota, mode), true
+	}
+	if modelParts := modelBucketDisplays(r, mode); len(modelParts) > 0 {
+		return strings.Join(modelParts, " · "), true
+	}
+	return "", false
 }
 
 func PrintJSON(results []UsageResult) error {

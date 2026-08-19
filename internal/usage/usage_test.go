@@ -227,6 +227,52 @@ func TestRenderTableRespectsRemainingModeForPercentBuckets(t *testing.T) {
 	}
 }
 
+func TestUsageSummaryDisplayRespectsModeForQuotaBucket(t *testing.T) {
+	// Copilot-style result: percent-toggle doesn't apply to r.Used/r.Unit
+	// (a raw AIC count), but the pre-computed "quota" bucket is still a
+	// used-percentage and must honor usage_display_mode like every other
+	// percent bucket instead of always being labeled "used".
+	r := UsageResult{
+		Provider: "copilot",
+		Used:     "117",
+		Limit:    "200",
+		Unit:     "AIC",
+		Buckets:  map[string]string{"quota": "58.3"},
+	}
+
+	if got, want := usageSummaryDisplay(r, DisplayModeUsed), "117/200 AIC (58.3% used)"; got != want {
+		t.Fatalf("usageSummaryDisplay(used) = %q, want %q", got, want)
+	}
+	if got, want := usageSummaryDisplay(r, DisplayModeRemaining), "117/200 AIC (41.7% left)"; got != want {
+		t.Fatalf("usageSummaryDisplay(remaining) = %q, want %q", got, want)
+	}
+}
+
+func TestCompactTitleHandlesQuotaBucketDespiteNonPercentUnit(t *testing.T) {
+	// Copilot stores its pre-computed percentage under Buckets["quota"] while
+	// r.Unit is "AIC" (a count unit), not "percent". Regression guard for a
+	// bug where CompactTitle's percent-unit gate ran before the quota check,
+	// so the Go-side compact title (and, transitively, the legacy menubar)
+	// always rendered "P-?" for Copilot while the Swift menubar -- fixed to
+	// read the same quota bucket -- rendered a real number. Values here
+	// match TestUsageSnapshotSurfacesQuotaBucketWhenNoTimeWindowPresent in
+	// macos/OctMenubar so the two stay in lockstep.
+	r := UsageResult{
+		Provider: "copilot",
+		Used:     "117",
+		Limit:    "200",
+		Unit:     "AIC",
+		Buckets:  map[string]string{"quota": "58.3"},
+	}
+
+	if got, want := CompactTitle([]UsageResult{r}, DisplayModeUsed), "P-58%"; got != want {
+		t.Fatalf("CompactTitle(used) = %q, want %q", got, want)
+	}
+	if got, want := CompactTitle([]UsageResult{r}, DisplayModeRemaining), "P-42%"; got != want {
+		t.Fatalf("CompactTitle(remaining) = %q, want %q", got, want)
+	}
+}
+
 func TestRenderCompactRemainingUsesProviderInitialsAndRemainingPercent(t *testing.T) {
 	var buf bytes.Buffer
 	RenderCompactRemaining(&buf, []UsageResult{
