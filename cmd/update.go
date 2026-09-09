@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -40,9 +41,24 @@ type releaseAsset struct {
 	URL  string
 }
 
+// selfUpdateHTTPClient is the client for GitHub release downloads. Timeout is
+// zero because archive bodies are large; per-call deadlines are applied in
+// fetchLatestReleaseTag / installReleaseAsset / verifyReleaseAssetChecksum
+// and connection phases are bounded by the transport below.
 var (
 	selfUpdateCommand    = exec.Command
-	selfUpdateHTTPClient = &http.Client{Timeout: 30 * time.Second}
+	checksumBaseURL      = "https://github.com"
+	selfUpdateHTTPClient = &http.Client{
+		Transport: &http.Transport{
+			Proxy:                 http.ProxyFromEnvironment,
+			TLSHandshakeTimeout:   10 * time.Second,
+			ResponseHeaderTimeout: 30 * time.Second,
+			DialContext: (&net.Dialer{
+				Timeout:   15 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
+		},
+	}
 )
 
 var selfUpdateOpts selfUpdateOptions
@@ -121,6 +137,8 @@ func installedViaBrew() bool {
 }
 
 func fetchLatestReleaseTag(ctx context.Context, repo string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", repo)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -218,11 +236,14 @@ func installReleaseAsset(ctx context.Context, repo string, asset releaseAsset) e
 	defer os.RemoveAll(tmpDir)
 
 	archivePath := filepath.Join(tmpDir, asset.Name)
-	if err := downloadReleaseFile(ctx, asset.URL, archivePath); err != nil {
+	downloadCtx, cancelDownload := context.WithTimeout(ctx, 2*time.Minute)
+	err = downloadReleaseFile(downloadCtx, asset.URL, archivePath)
+	cancelDownload()
+	if err != nil {
 		return err
 	}
 
-	if err := verifyReleaseAssetChecksum(ctx, repo, asset, archivePath, false); err != nil {
+	if err := verifyReleaseAssetChecksum(ctx, repo, asset, archivePath); err != nil {
 		return err
 	}
 
@@ -273,31 +294,30 @@ func downloadReleaseFile(ctx context.Context, url, dest string) error {
 	return err
 }
 
-func verifyReleaseAssetChecksum(ctx context.Context, repo string, asset releaseAsset, archivePath string, require bool) error {
-	checksumURL := fmt.Sprintf("https://github.com/%s/releases/download/%s/checksums.txt", repo, releaseTagFromAssetURL(asset.URL))
+// verifyReleaseAssetChecksum is fail-closed: any failure to obtain or match
+// the published checksum aborts the install.
+func verifyReleaseAssetChecksum(ctx context.Context, repo string, asset releaseAsset, archivePath string) error {
+	checksumURL := fmt.Sprintf("%s/%s/releases/download/%s/checksums.txt", checksumBaseURL, repo, releaseTagFromAssetURL(asset.URL))
 	checksumPath := archivePath + ".checksums.txt"
-	if err := downloadReleaseFile(ctx, checksumURL, checksumPath); err != nil {
-		if require {
-			return err
-		}
-		return nil
+	checksumCtx, cancelChecksum := context.WithTimeout(ctx, 30*time.Second)
+	err := downloadReleaseFile(checksumCtx, checksumURL, checksumPath)
+	cancelChecksum()
+	if err != nil {
+		return fmt.Errorf("checksums.txt unavailable for %s: %w (refusing to install without verification)", asset.Name, err)
 	}
 
 	data, err := os.ReadFile(checksumPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("checksums.txt unreadable for %s: %w", asset.Name, err)
 	}
 	expected := checksumForAsset(string(data), asset.Name)
 	if expected == "" {
-		if require {
-			return fmt.Errorf("checksum entry not found for %s", asset.Name)
-		}
-		return nil
+		return fmt.Errorf("checksum entry not found for %s (refusing to install)", asset.Name)
 	}
 
 	actual, err := fileSHA256(archivePath)
 	if err != nil {
-		return err
+		return fmt.Errorf("checksum computation failed for %s: %w", asset.Name, err)
 	}
 	if actual != expected {
 		return fmt.Errorf("checksum mismatch for %s", asset.Name)
