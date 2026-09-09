@@ -7,14 +7,6 @@ import (
 	"github.com/suho-han/one-click-ai-tools/internal/execenv"
 )
 
-func commandEnv() []string {
-	return execenv.Environ()
-}
-
-func withPathEnv(env []string, pathValue string) []string {
-	return execenv.WithPathEnv(env, pathValue)
-}
-
 func bootstrapPATH(base string) string {
 	return execenv.BuildPATH(base)
 }

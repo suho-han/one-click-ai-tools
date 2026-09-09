@@ -77,22 +77,6 @@ const (
 	alpha16Max = uint32(0xffff)
 )
 
-// PrintIcon renders an icon with fallback chain: native image -> ansi asset -> text.
-func PrintIcon(name string, size int) {
-	switch getRendererChoice() {
-	case rendererNativeImage:
-		if printNativeImage(name, size) {
-			return
-		}
-		fallthrough
-	case rendererAnsiAsset:
-		if printANSIFromPNG(name, size) {
-			return
-		}
-	}
-	printTextFallback(name)
-}
-
 // InlineIcon returns a compact ANSI icon for inline list rendering.
 func InlineIcon(name string, width int) string {
 	if getRendererChoice() == rendererText {
