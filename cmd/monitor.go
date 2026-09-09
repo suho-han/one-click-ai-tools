@@ -18,7 +18,7 @@ var monitorCmd = &cobra.Command{
 	Use:     "monitor",
 	GroupID: "core",
 	Short:   "Always-on usage monitoring screen",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		interval, _ := cmd.Flags().GetDuration("interval")
 		statePath, _ := cmd.Flags().GetString("state-path")
 		once, _ := cmd.Flags().GetBool("once")
@@ -35,7 +35,8 @@ var monitorCmd = &cobra.Command{
 			results, err := usage.GetUsage()
 			now := time.Now()
 			if err != nil {
-				fmt.Printf("[%s] error: %v\n", now.Format("2006-01-02 15:04:05"), err)
+				// Transient fetch failure: report and keep the loop alive.
+				fmt.Fprintf(cmd.ErrOrStderr(), "[%s] error: %v\n", now.Format("2006-01-02 15:04:05"), err)
 				return
 			}
 			if strings.TrimSpace(sortBy) != "" {
@@ -46,13 +47,13 @@ var monitorCmd = &cobra.Command{
 			}
 			printMonitorScreen(results, now, compact)
 			if err := usage.SaveSnapshot(statePath, results, now); err != nil {
-				fmt.Printf("snapshot write error: %v\n", err)
+				fmt.Fprintf(cmd.ErrOrStderr(), "snapshot write error: %v\n", err)
 			}
 		}
 
 		runOnce()
 		if once {
-			return
+			return nil
 		}
 
 		ticker := time.NewTicker(interval)
@@ -60,6 +61,7 @@ var monitorCmd = &cobra.Command{
 		for range ticker.C {
 			runOnce()
 		}
+		return nil
 	},
 }
 

@@ -68,11 +68,8 @@ var updateCmd = &cobra.Command{
 	GroupID: "maintenance",
 	Short:   "Update oct package",
 	Long:    `Update oct (one-click-tools) itself to the latest GitHub Release version.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		if err := runSelfUpdate(cmd, selfUpdateOpts); err != nil {
-			fmt.Printf("oct update failed: %v\n", err)
-			os.Exit(1)
-		}
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runSelfUpdate(cmd, selfUpdateOpts)
 	},
 }
 

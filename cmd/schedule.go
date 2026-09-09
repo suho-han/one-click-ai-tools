@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -13,99 +14,89 @@ var scheduleCmd = &cobra.Command{
 	Use:     "schedule",
 	GroupID: "manage",
 	Short:   "Manage scheduled maintenance tasks",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := schedule.GetScheduler()
 		if err != nil {
-			fmt.Println(err)
-			return
+			return fmt.Errorf("scheduler unavailable: %w", err)
 		}
 		task, err := selectedScheduleTask(cmd)
 		if err != nil {
-			fmt.Println(err)
-			return
+			return fmt.Errorf("invalid task: %w", err)
 		}
 		status, _ := s.Status(task)
-		fmt.Printf("Schedule status (%s): %s\n", task, status)
+		fmt.Fprintf(cmd.OutOrStdout(), "Schedule status (%s): %s\n", task, status)
+		return nil
 	},
 }
 
 var enableCmd = &cobra.Command{
 	Use:   "enable",
 	Short: "Enable a scheduled maintenance task",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := schedule.GetScheduler()
 		if err != nil {
-			fmt.Println(err)
-			return
+			return fmt.Errorf("scheduler unavailable: %w", err)
 		}
 
 		rawInterval, _ := cmd.Flags().GetString("interval")
 		interval, err := schedule.ParseInterval(rawInterval)
 		if err != nil {
-			fmt.Println(err)
-			return
+			return fmt.Errorf("invalid interval: %w", err)
 		}
 		hourStr, _ := cmd.Flags().GetString("hour")
 		hour, err := schedule.ParseHour(hourStr)
 		if err != nil {
-			fmt.Println(err)
-			return
+			return fmt.Errorf("invalid hour: %w", err)
 		}
 		task, err := selectedScheduleTask(cmd)
 		if err != nil {
-			fmt.Println(err)
-			return
+			return fmt.Errorf("invalid task: %w", err)
 		}
 
 		if err := s.Enable(task, interval, hour); err != nil {
-			fmt.Printf("Failed to enable schedule: %v\n", err)
-			return
+			return fmt.Errorf("failed to enable schedule: %w", err)
 		}
-		fmt.Printf("Schedule enabled for %s (%s)\n", task, schedule.FormatSchedule(interval, hour))
+		fmt.Fprintf(cmd.OutOrStdout(), "Schedule enabled for %s (%s)\n", task, schedule.FormatSchedule(interval, hour))
+		return nil
 	},
 }
 
 var disableCmd = &cobra.Command{
 	Use:   "disable",
 	Short: "Disable a scheduled maintenance task",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := schedule.GetScheduler()
 		if err != nil {
-			fmt.Println(err)
-			return
+			return fmt.Errorf("scheduler unavailable: %w", err)
 		}
 		task, err := selectedScheduleTask(cmd)
 		if err != nil {
-			fmt.Println(err)
-			return
+			return fmt.Errorf("invalid task: %w", err)
 		}
 
 		if err := s.Disable(task); err != nil {
-			fmt.Printf("Failed to disable schedule: %v\n", err)
-			return
+			return fmt.Errorf("failed to disable schedule: %w", err)
 		}
-		fmt.Printf("Schedule disabled for %s\n", task)
+		fmt.Fprintf(cmd.OutOrStdout(), "Schedule disabled for %s\n", task)
+		return nil
 	},
 }
 
 var scheduleConfigCmd = &cobra.Command{
 	Use:   "config",
 	Short: "Show or update saved session-refresh schedule config",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		task, err := selectedScheduleTask(cmd)
 		if err != nil {
-			fmt.Println(err)
-			return
+			return fmt.Errorf("invalid task: %w", err)
 		}
 		if task != schedule.SessionRefreshTask {
-			fmt.Println("schedule config currently supports session-refresh only")
-			return
+			return errors.New("schedule config currently supports session-refresh only")
 		}
 
 		s, err := schedule.GetScheduler()
 		if err != nil {
-			fmt.Println(err)
-			return
+			return fmt.Errorf("scheduler unavailable: %w", err)
 		}
 
 		enabled, interval, hour := sessionRefreshScheduleConfig()
@@ -113,8 +104,8 @@ var scheduleConfigCmd = &cobra.Command{
 		changed := cmd.Flags().Changed("enabled") || cmd.Flags().Changed("interval") || cmd.Flags().Changed("hour")
 
 		if !changed {
-			fmt.Printf("Schedule config (%s): enabled=%v interval=%s hour=%02d status=%s\n", task, enabled, interval, hour, status)
-			return
+			fmt.Fprintf(cmd.OutOrStdout(), "Schedule config (%s): enabled=%v interval=%s hour=%02d status=%s\n", task, enabled, interval, hour, status)
+			return nil
 		}
 
 		explicitDisable := false
@@ -129,8 +120,7 @@ var scheduleConfigCmd = &cobra.Command{
 			rawInterval, _ := cmd.Flags().GetString("interval")
 			interval, err = schedule.ParseInterval(rawInterval)
 			if err != nil {
-				fmt.Println(err)
-				return
+				return fmt.Errorf("invalid interval: %w", err)
 			}
 		}
 
@@ -138,8 +128,7 @@ var scheduleConfigCmd = &cobra.Command{
 			hourStr, _ := cmd.Flags().GetString("hour")
 			hour, err = schedule.ParseHour(hourStr)
 			if err != nil {
-				fmt.Println(err)
-				return
+				return fmt.Errorf("invalid hour: %w", err)
 			}
 		}
 
@@ -147,28 +136,26 @@ var scheduleConfigCmd = &cobra.Command{
 		viper.Set("session_refresh_interval", interval)
 		viper.Set("session_refresh_hour", hour)
 		if err := persistViperConfig(); err != nil {
-			fmt.Printf("failed to write config: %v\n", err)
-			return
+			return fmt.Errorf("failed to write config: %w", err)
 		}
 
 		if enabled {
 			if err := s.Enable(task, interval, hour); err != nil {
-				fmt.Printf("Failed to enable schedule: %v\n", err)
-				return
+				return fmt.Errorf("failed to enable schedule: %w", err)
 			}
-			fmt.Printf("Schedule config updated and enabled for %s (%s)\n", task, schedule.FormatSchedule(interval, hour))
-			return
+			fmt.Fprintf(cmd.OutOrStdout(), "Schedule config updated and enabled for %s (%s)\n", task, schedule.FormatSchedule(interval, hour))
+			return nil
 		}
 		if explicitDisable {
 			if err := s.Disable(task); err != nil {
-				fmt.Printf("Failed to disable schedule: %v\n", err)
-				return
+				return fmt.Errorf("failed to disable schedule: %w", err)
 			}
-			fmt.Printf("Schedule config updated and disabled for %s\n", task)
-			return
+			fmt.Fprintf(cmd.OutOrStdout(), "Schedule config updated and disabled for %s\n", task)
+			return nil
 		}
 
-		fmt.Printf("Schedule config updated for %s (%s, not enabled)\n", task, schedule.FormatSchedule(interval, hour))
+		fmt.Fprintf(cmd.OutOrStdout(), "Schedule config updated for %s (%s, not enabled)\n", task, schedule.FormatSchedule(interval, hour))
+		return nil
 	},
 }
 

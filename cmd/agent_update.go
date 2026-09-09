@@ -1,9 +1,6 @@
 package cmd
 
 import (
-	"fmt"
-	"os"
-
 	"github.com/spf13/cobra"
 	"github.com/suho-han/one-click-ai-tools/internal/update"
 )
@@ -17,12 +14,9 @@ var agentUpdateCmd = &cobra.Command{
 	Use:     "agent-update",
 	GroupID: "maintenance",
 	Short:   "Update AI tools",
-	Long:    `Update all or selected AI tools (Claude Code, OpenAI Codex, etc.) parallelly.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		if err := update.Run(update.Options{DryRun: agentUpdateDryRun, Explain: agentUpdateExplain}); err != nil {
-			fmt.Fprintf(os.Stderr, "Update failed: %v\n", err)
-			os.Exit(1)
-		}
+	Long:    `Update all or selected AI tools (Claude Code, OpenAI Codex, etc.).`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return update.Run(update.Options{DryRun: agentUpdateDryRun, Explain: agentUpdateExplain})
 	},
 }
 
