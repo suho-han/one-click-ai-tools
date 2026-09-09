@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -32,8 +31,6 @@ type configModel struct {
 	cancelled bool
 	done      bool
 }
-
-var ansiPattern = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
 func newConfigModel(enabledTools []string, agentOrder []string) configModel {
 	orderedTools := update.GetOrderedTools(agentOrder)
@@ -415,11 +412,6 @@ func printSummaryBorder(innerWidth int) {
 
 func printSummaryContent(content string) {
 	fmt.Printf("  %s\n", content)
-}
-
-func visibleLen(s string) int {
-	clean := ansiPattern.ReplaceAllString(s, "")
-	return len([]rune(clean))
 }
 
 var configCmd = &cobra.Command{

@@ -97,10 +97,6 @@ func linuxLogPath(home, logFile string) string {
 	return path.Join(home, ".oct", "logs", logFile)
 }
 
-func filepathJoin(elem ...string) string {
-	return path.Join(elem...)
-}
-
 func cronExpression(interval string, hour int) string {
 	switch interval {
 	case WeeklyInterval:

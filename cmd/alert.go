@@ -109,11 +109,7 @@ var alertTestCmd = &cobra.Command{
 		}
 
 		cfg := buildAlertConfigFromViper(true)
-		statePath := viper.GetString("usage_alert_state_path")
-		if statePath == "" {
-			statePath = ""
-		}
-		cfg.StatePath = statePath
+		cfg.StatePath = viper.GetString("usage_alert_state_path")
 
 		r := usage.UsageResult{Provider: provider, Unit: "percent", Used: fmt.Sprintf("%.1f", value), Buckets: map[string]string{window: fmt.Sprintf("%.1f", value)}}
 		now := time.Now()

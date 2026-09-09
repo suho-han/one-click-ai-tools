@@ -10,14 +10,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/spf13/viper"
 	"github.com/suho-han/one-click-ai-tools/internal/ui"
 )
-
-var brewInstallMu sync.Mutex
 
 type Options struct {
 	DryRun  bool
@@ -112,15 +109,7 @@ func Run(opts ...Options) error {
 
 		versionBefore := manager.GetInstalledVersion(tool)
 		start := time.Now()
-		var output []byte
-		var err error
-		if manager == Brew {
-			brewInstallMu.Lock()
-			output, err = runInstallWithFallback(ctx, manager, tool)
-			brewInstallMu.Unlock()
-		} else {
-			output, err = runInstallWithFallback(ctx, manager, tool)
-		}
+		output, err := runInstallWithFallback(ctx, manager, tool)
 		duration := time.Since(start).Round(time.Second)
 		versionAfter := manager.GetInstalledVersion(tool)
 
