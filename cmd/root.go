@@ -3,6 +3,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -18,14 +19,30 @@ var rootCmd = &cobra.Command{
 	Short:   "One-Click Tools for AI Engineers",
 	Long:    `A high-performance CLI tool to manage and update AI-related command-line tools across different platforms.`,
 	Version: "0.1.5",
+	// Errors are reported once by runCLI/Execute on stderr; cobra must not
+	// print them (or usage) itself.
+	SilenceErrors: true,
+	SilenceUsage:  true,
 }
 
+// runCLI runs the root command with explicit streams and returns the process
+// exit code, keeping error output on the same stderr the caller can observe.
+func runCLI(args []string, stdout, stderr io.Writer) int {
+	rootCmd.SetOut(stdout)
+	rootCmd.SetErr(stderr)
+	rootCmd.SetArgs(args)
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Fprintf(stderr, "oct: %v\n", err)
+		return 1
+	}
+	return 0
+}
+
+// Execute is the binary entrypoint. Errors reach stderr exactly once (cobra
+// is silenced; runCLI prints the returned error).
 func Execute() {
 	reorderRootCommands()
-	if err := rootCmd.Execute(); err != nil {
-		fmt.Println(err)
-		os.Exit(1)
-	}
+	os.Exit(runCLI(os.Args[1:], os.Stdout, os.Stderr))
 }
 
 func init() {
@@ -78,7 +95,7 @@ func initConfig() {
 	} else {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			fmt.Println(err)
+			fmt.Fprintf(os.Stderr, "failed to resolve home directory: %v\n", err)
 			os.Exit(1)
 		}
 
