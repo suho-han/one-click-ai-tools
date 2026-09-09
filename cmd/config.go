@@ -426,28 +426,27 @@ var configCmd = &cobra.Command{
 	Use:     "config",
 	GroupID: "manage",
 	Short:   "Manage configuration (interactive selection if no sub-command)",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		newEnabledTools, newOrder, usageMode, cancelled, err := runInteractiveConfig()
 		if err != nil {
-			fmt.Printf("Prompt failed: %v\n", err)
-			return
+			return fmt.Errorf("configuration prompt failed: %w", err)
 		}
 		if cancelled {
-			fmt.Println("Configuration cancelled.")
-			return
+			fmt.Fprintln(cmd.OutOrStdout(), "Configuration cancelled.")
+			return nil
 		}
 		viper.Set("enabled_tools", newEnabledTools)
 		viper.Set("agent_order", newOrder)
 		viper.Set("usage_display_mode", usageMode)
 		if err := writeConfig(); err != nil {
-			fmt.Printf("Failed to write config: %v\n", err)
-			return
+			return fmt.Errorf("failed to write config: %w", err)
 		}
-		fmt.Println("Config updated successfully.")
+		fmt.Fprintln(cmd.OutOrStdout(), "Config updated successfully.")
 		if len(newEnabledTools) > 0 {
 			setupTokens(newEnabledTools)
 		}
 		printConfigSummary(newEnabledTools, usageMode)
+		return nil
 	},
 }
 
@@ -460,7 +459,7 @@ var configSetToolsCmd = &cobra.Command{
 	Use:   "tools <tool1,tool2,...>",
 	Short: "Set enabled tools",
 	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		tools := strings.Split(args[0], ",")
 		var validTools []string
 		for _, tool := range tools {
@@ -474,17 +473,16 @@ var configSetToolsCmd = &cobra.Command{
 				}
 			}
 			if !found {
-				fmt.Printf("Unknown tool: %s\n", tool)
-				return
+				return fmt.Errorf("unknown tool: %s", tool)
 			}
 		}
 
 		viper.Set("enabled_tools", validTools)
 		if err := writeConfig(); err != nil {
-			fmt.Printf("Failed to write config: %v\n", err)
-			return
+			return fmt.Errorf("failed to write config: %w", err)
 		}
-		fmt.Println("Config updated.")
+		fmt.Fprintln(cmd.OutOrStdout(), "Config updated.")
+		return nil
 	},
 }
 
@@ -492,18 +490,17 @@ var configSetUsageModeCmd = &cobra.Command{
 	Use:   "usage-mode <used|remaining>",
 	Short: "Set usage display mode",
 	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		mode := strings.ToLower(strings.TrimSpace(args[0]))
 		if mode != "used" && mode != "remaining" {
-			fmt.Println("Invalid usage mode. Use: used or remaining")
-			return
+			return fmt.Errorf("invalid usage mode %q: use used or remaining", mode)
 		}
 		viper.Set("usage_display_mode", mode)
 		if err := writeConfig(); err != nil {
-			fmt.Printf("Failed to write config: %v\n", err)
-			return
+			return fmt.Errorf("failed to write config: %w", err)
 		}
-		fmt.Printf("Usage display mode set to %s.\n", mode)
+		fmt.Fprintf(cmd.OutOrStdout(), "Usage display mode set to %s.\n", mode)
+		return nil
 	},
 }
 
@@ -511,25 +508,24 @@ var configSetMenubarTitleModeCmd = &cobra.Command{
 	Use:   "menubar-title-mode <oct|compact>",
 	Short: "Set menubar title display mode",
 	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		mode := strings.ToLower(strings.TrimSpace(args[0]))
 		if mode != "oct" && mode != "compact" {
-			fmt.Println("Invalid menubar title mode. Use: oct or compact")
-			return
+			return fmt.Errorf("invalid menubar title mode %q: use oct or compact", mode)
 		}
 		viper.Set("menubar_title_mode", mode)
 		if err := writeConfig(); err != nil {
-			fmt.Printf("Failed to write config: %v\n", err)
-			return
+			return fmt.Errorf("failed to write config: %w", err)
 		}
-		fmt.Printf("Menubar title mode set to %s.\n", mode)
+		fmt.Fprintf(cmd.OutOrStdout(), "Menubar title mode set to %s.\n", mode)
+		return nil
 	},
 }
 
 var configResetCmd = &cobra.Command{
 	Use:   "reset",
 	Short: "Reset configuration to defaults",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		viper.Set("enabled_tools", []string{})
 		viper.Set("usage_display_mode", "remaining")
 		viper.Set("menubar_title_mode", "oct")
@@ -537,10 +533,10 @@ var configResetCmd = &cobra.Command{
 		viper.Set("session_refresh_interval", "daily")
 		viper.Set("session_refresh_hour", 9)
 		if err := writeConfig(); err != nil {
-			fmt.Printf("Failed to write config: %v\n", err)
-			return
+			return fmt.Errorf("failed to write config: %w", err)
 		}
-		fmt.Println("Config reset to defaults.")
+		fmt.Fprintln(cmd.OutOrStdout(), "Config reset to defaults.")
+		return nil
 	},
 }
 

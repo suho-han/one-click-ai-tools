@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -32,10 +33,14 @@ var alertConfigCmd = &cobra.Command{
 var alertConfigShowCmd = &cobra.Command{
 	Use:   "show",
 	Short: "Show effective usage alert config",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg := buildAlertConfigFromViper(viper.GetBool("usage_alert_enabled"))
-		payload, _ := json.MarshalIndent(cfg, "", "  ")
-		fmt.Println(string(payload))
+		payload, err := json.MarshalIndent(cfg, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to encode alert config: %w", err)
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), string(payload))
+		return nil
 	},
 }
 
@@ -43,18 +48,17 @@ var alertConfigSetCmd = &cobra.Command{
 	Use:   "set <key> <value>",
 	Short: "Set usage alert config value",
 	Args:  cobra.ExactArgs(2),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		key := strings.TrimSpace(args[0])
 		val := strings.TrimSpace(args[1])
 		if err := setAlertConfigValue(key, val); err != nil {
-			fmt.Println(err.Error())
-			return
+			return fmt.Errorf("invalid alert config: %w", err)
 		}
 		if err := persistViperConfig(); err != nil {
-			fmt.Printf("failed to write config: %v\n", err)
-			return
+			return fmt.Errorf("failed to write config: %w", err)
 		}
-		fmt.Println("alert config updated.")
+		fmt.Fprintln(cmd.OutOrStdout(), "alert config updated.")
+		return nil
 	},
 }
 
@@ -62,7 +66,7 @@ var alertConfigSetProviderThresholdCmd = &cobra.Command{
 	Use:   "set-provider-threshold <window> <value>",
 	Short: "Set provider threshold with interactive provider selection",
 	Args:  cobra.ExactArgs(2),
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		window := strings.TrimSpace(args[0])
 		value := strings.TrimSpace(args[1])
 		provider, _ := cmd.Flags().GetString("provider")
@@ -70,31 +74,28 @@ var alertConfigSetProviderThresholdCmd = &cobra.Command{
 		if provider == "" {
 			picked, err := pickProviderInteractive(providerOptions())
 			if err != nil {
-				fmt.Printf("provider selection failed: %v\n", err)
-				return
+				return fmt.Errorf("provider selection failed: %w", err)
 			}
 			provider = picked
 		}
 		if provider == "" {
-			fmt.Println("provider is required")
-			return
+			return errors.New("provider is required")
 		}
 		if err := setAlertConfigValue(fmt.Sprintf("provider.%s.%s", provider, strings.ToLower(window)), value); err != nil {
-			fmt.Println(err.Error())
-			return
+			return fmt.Errorf("invalid alert config: %w", err)
 		}
 		if err := persistViperConfig(); err != nil {
-			fmt.Printf("failed to write config: %v\n", err)
-			return
+			return fmt.Errorf("failed to write config: %w", err)
 		}
-		fmt.Printf("alert provider threshold updated: provider=%s window=%s value=%s\n", provider, strings.ToLower(window), value)
+		fmt.Fprintf(cmd.OutOrStdout(), "alert provider threshold updated: provider=%s window=%s value=%s\n", provider, strings.ToLower(window), value)
+		return nil
 	},
 }
 
 var alertTestCmd = &cobra.Command{
 	Use:   "test",
 	Short: "Test usage alert decision with synthetic input",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		provider, _ := cmd.Flags().GetString("provider")
 		window, _ := cmd.Flags().GetString("window")
 		value, _ := cmd.Flags().GetFloat64("value")
@@ -121,8 +122,7 @@ var alertTestCmd = &cobra.Command{
 			cfg.QuietHours = "00:00-23:59"
 		}
 		if err := notify.MaybeSendUsageAlerts([]usage.UsageResult{r}, cfg, now); err != nil {
-			fmt.Printf("test failed: %v\n", err)
-			return
+			return fmt.Errorf("alert test failed: %w", err)
 		}
 
 		threshold := cfg.ThresholdPct
@@ -138,8 +138,9 @@ var alertTestCmd = &cobra.Command{
 		}
 
 		priority := alertPriorityLabel(value, threshold, cfg.CriticalPct)
-		fmt.Printf("provider=%s window=%s value=%.1f threshold=%.1f priority=%s quiet_hours=%s critical=%.1f\n", provider, window, value, threshold, priority, cfg.QuietHours, cfg.CriticalPct)
-		fmt.Println("test executed (notification may be suppressed by cooldown/quiet hours/snooze).")
+		fmt.Fprintf(cmd.OutOrStdout(), "provider=%s window=%s value=%.1f threshold=%.1f priority=%s quiet_hours=%s critical=%.1f\n", provider, window, value, threshold, priority, cfg.QuietHours, cfg.CriticalPct)
+		fmt.Fprintln(cmd.OutOrStdout(), "test executed (notification may be suppressed by cooldown/quiet hours/snooze).")
+		return nil
 	},
 }
 
@@ -148,37 +149,35 @@ var alertSnoozeCmd = &cobra.Command{Use: "snooze", Short: "Manage alert snooze"}
 var alertSnoozeSetCmd = &cobra.Command{
 	Use:   "set",
 	Short: "Set snooze duration",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		duration, _ := cmd.Flags().GetDuration("duration")
 		provider, _ := cmd.Flags().GetString("provider")
 		window, _ := cmd.Flags().GetString("window")
 		if duration <= 0 {
-			fmt.Println("duration must be > 0, e.g. --duration 2h")
-			return
+			return errors.New("duration must be > 0, e.g. --duration 2h")
 		}
 		statePath := getAlertStatePath()
 		until := time.Now().Add(duration)
 		if err := notify.SetSnooze(statePath, provider, window, until); err != nil {
-			fmt.Printf("failed to set snooze: %v\n", err)
-			return
+			return fmt.Errorf("failed to set snooze: %w", err)
 		}
-		fmt.Printf("snooze set key=%s until=%s\n", snoozeDisplayKey(provider, window), until.Format(time.RFC3339))
+		fmt.Fprintf(cmd.OutOrStdout(), "snooze set key=%s until=%s\n", snoozeDisplayKey(provider, window), until.Format(time.RFC3339))
+		return nil
 	},
 }
 
 var alertSnoozeShowCmd = &cobra.Command{
 	Use:   "show",
 	Short: "Show active snoozes",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		statePath := getAlertStatePath()
 		m, err := notify.GetSnooze(statePath)
 		if err != nil {
-			fmt.Printf("failed to load snooze: %v\n", err)
-			return
+			return fmt.Errorf("failed to load snooze: %w", err)
 		}
 		if len(m) == 0 {
-			fmt.Println("no active snooze")
-			return
+			fmt.Fprintln(cmd.OutOrStdout(), "no active snooze")
+			return nil
 		}
 		now := time.Now()
 		keys := make([]string, 0, len(m))
@@ -192,23 +191,24 @@ var alertSnoozeShowCmd = &cobra.Command{
 			if now.Before(until) {
 				status = "active"
 			}
-			fmt.Printf("%s -> %s (%s)\n", k, until.Format(time.RFC3339), status)
+			fmt.Fprintf(cmd.OutOrStdout(), "%s -> %s (%s)\n", k, until.Format(time.RFC3339), status)
 		}
+		return nil
 	},
 }
 
 var alertSnoozeClearCmd = &cobra.Command{
 	Use:   "clear",
 	Short: "Clear snooze",
-	Run: func(cmd *cobra.Command, args []string) {
+	RunE: func(cmd *cobra.Command, args []string) error {
 		provider, _ := cmd.Flags().GetString("provider")
 		window, _ := cmd.Flags().GetString("window")
 		statePath := getAlertStatePath()
 		if err := notify.ClearSnooze(statePath, provider, window); err != nil {
-			fmt.Printf("failed to clear snooze: %v\n", err)
-			return
+			return fmt.Errorf("failed to clear snooze: %w", err)
 		}
-		fmt.Printf("snooze cleared key=%s\n", snoozeDisplayKey(provider, window))
+		fmt.Fprintf(cmd.OutOrStdout(), "snooze cleared key=%s\n", snoozeDisplayKey(provider, window))
+		return nil
 	},
 }
 
