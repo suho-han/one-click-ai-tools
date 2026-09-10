@@ -178,3 +178,39 @@ func boolPtr(value bool) *bool {
 func intPtr(value int) *int {
 	return &value
 }
+
+func TestConfigSnapshotExposesMenubarRefreshInterval(t *testing.T) {
+	t.Cleanup(viper.Reset)
+	viper.Reset()
+
+	// Default: missing config value normalizes to the menubar default "1m".
+	got := buildConfigSnapshot("/tmp/oct.yaml")
+	if got.MenubarRefreshInterval != "1m" {
+		t.Fatalf("default MenubarRefreshInterval = %q, want 1m", got.MenubarRefreshInterval)
+	}
+
+	viper.Set("menubar_refresh_interval", "90s")
+	got = buildConfigSnapshot("/tmp/oct.yaml")
+	if got.MenubarRefreshInterval != "90s" {
+		t.Fatalf("MenubarRefreshInterval = %q, want 90s", got.MenubarRefreshInterval)
+	}
+
+	viper.Set("menubar_refresh_interval", "bogus")
+	got = buildConfigSnapshot("/tmp/oct.yaml")
+	if got.MenubarRefreshInterval != "1m" {
+		t.Fatalf("invalid MenubarRefreshInterval = %q, want fallback 1m", got.MenubarRefreshInterval)
+	}
+
+	// JSON shape: the key must be present for the Swift app.
+	data, err := json.Marshal(buildConfigSnapshot("/tmp/oct.yaml"))
+	if err != nil {
+		t.Fatalf("marshal snapshot: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("decode snapshot: %v", err)
+	}
+	if _, ok := decoded["menubar_refresh_interval"]; !ok {
+		t.Fatalf("snapshot JSON missing menubar_refresh_interval key: %s", data)
+	}
+}

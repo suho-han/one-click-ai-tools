@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 	"github.com/suho-han/one-click-ai-tools/internal/schedule"
@@ -23,6 +24,7 @@ type configSnapshot struct {
 	ConfigFile             string             `json:"config_file"`
 	UsageDisplayMode       string             `json:"usage_display_mode"`
 	MenubarTitleMode       string             `json:"menubar_title_mode"`
+	MenubarRefreshInterval string             `json:"menubar_refresh_interval"`
 	SessionRefreshEnabled  bool               `json:"session_refresh_enabled"`
 	SessionRefreshInterval string             `json:"session_refresh_interval"`
 	SessionRefreshHour     int                `json:"session_refresh_hour"`
@@ -70,6 +72,7 @@ func buildConfigSnapshot(configFile string) configSnapshot {
 		ConfigFile:             configFile,
 		UsageDisplayMode:       normalizedConfigUsageMode(viper.GetString("usage_display_mode")),
 		MenubarTitleMode:       normalizedMenubarTitleMode(viper.GetString("menubar_title_mode")),
+		MenubarRefreshInterval: normalizedMenubarRefreshInterval(viper.GetString("menubar_refresh_interval")),
 		SessionRefreshEnabled:  viper.GetBool("session_refresh_enabled"),
 		SessionRefreshInterval: normalizedConfigRefreshInterval(viper.GetString("session_refresh_interval")),
 		SessionRefreshHour:     normalizedConfigRefreshHour(viper.GetInt("session_refresh_hour")),
@@ -247,6 +250,21 @@ func normalizedMenubarTitleMode(rawMode string) string {
 		return "oct"
 	}
 	return rawMode
+}
+
+// normalizedMenubarRefreshInterval mirrors the Go menubar's own parser
+// (menubarRefreshInterval): Go-duration strings, defaulting to "1m" when
+// empty or invalid, so the Swift app receives exactly what the legacy
+// menubar would act on.
+func normalizedMenubarRefreshInterval(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "1m"
+	}
+	if _, err := time.ParseDuration(raw); err != nil {
+		return "1m"
+	}
+	return raw
 }
 
 func normalizedConfigRefreshInterval(rawInterval string) string {
