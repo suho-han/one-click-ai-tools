@@ -7,10 +7,11 @@ enum MenubarPreferences {
 @main
 struct OctMenubarApp: App {
     @NSApplicationDelegateAdaptor(StatusBarController.self) private var statusBarController
+    @StateObject private var configurationStore = ConfigurationStore()
 
     var body: some Scene {
         Settings {
-            SettingsView()
+            SettingsView(configurationStore: configurationStore)
         }
     }
 }

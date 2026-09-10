@@ -113,7 +113,7 @@ func TestVerifyReleaseAssetChecksum(t *testing.T) {
 			name:        "unreadable archive fails",
 			status:      http.StatusOK,
 			checksums:   fmt.Sprintf("%s  %s\n", validHash, asset.Name),
-			archivePath: "does-not-exist",
+			archivePath: filepath.Join(t.TempDir(), "missing-archive.bin"), // never written
 			wantErr:     "checksum computation failed",
 		},
 	}
