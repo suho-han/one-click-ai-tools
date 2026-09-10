@@ -258,9 +258,18 @@ func truncateText(s string, max int) string {
 		return s
 	}
 	if max <= 3 {
-		return s[:max]
+		return truncateAtRuneBoundary(s, max)
 	}
-	return s[:max-3] + "..."
+	return truncateAtRuneBoundary(s, max-3) + "..."
+}
+
+// truncateAtRuneBoundary cuts s to at most max bytes without splitting a
+// multi-byte rune.
+func truncateAtRuneBoundary(s string, max int) string {
+	for max > 0 && !utf8.RuneStart(s[max]) {
+		max--
+	}
+	return s[:max]
 }
 
 func tableCardWidth(width int) int {

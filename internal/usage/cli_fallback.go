@@ -3,6 +3,7 @@ package usage
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -22,7 +23,12 @@ func commandOutput(parent context.Context, timeout time.Duration, name string, a
 	cmd.Stderr = &out
 
 	if err := cmd.Run(); err != nil {
-		return "", err
+		trimmed := strings.TrimSpace(out.String())
+		if trimmed == "" {
+			return "", err
+		}
+		// Keep the command's own diagnostics visible, matching plan.go.
+		return "", fmt.Errorf("%w: %s", err, trimmed)
 	}
 
 	return strings.TrimSpace(out.String()), nil

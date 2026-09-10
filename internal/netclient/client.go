@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type Client struct {
@@ -136,6 +137,10 @@ func truncateBody(s string, max int) string {
 	s = strings.TrimSpace(s)
 	if len(s) <= max {
 		return s
+	}
+	// Cut on a rune boundary so multi-byte text stays valid UTF-8.
+	for max > 0 && !utf8.RuneStart(s[max]) {
+		max--
 	}
 	return s[:max] + "..."
 }

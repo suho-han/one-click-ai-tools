@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -137,7 +136,11 @@ func FetchCopilotUsage(ctx context.Context) UsageResult {
 		if err == nil {
 			defer respUser.Body.Close()
 			if respUser.StatusCode == http.StatusOK {
-				bodyUser, _ := io.ReadAll(respUser.Body)
+				bodyUser, err := readAllCapped(respUser.Body)
+				if err != nil {
+					result.Message = fmt.Sprintf("read /user response failed: %v", err)
+					return result
+				}
 				var userData struct {
 					Login string `json:"login"`
 				}
@@ -185,7 +188,11 @@ func FetchCopilotUsage(ctx context.Context) UsageResult {
 	// probing it twice per refresh for plan detection.
 	result.PlanSource = "github billing api exposes usage only, not plan"
 
-	body, _ := io.ReadAll(resp.Body)
+	body, err := readAllCapped(resp.Body)
+	if err != nil {
+		result.Message = fmt.Sprintf("read billing response failed: %v", err)
+		return result
+	}
 	var data struct {
 		UsageItems []struct {
 			Product     string  `json:"product"`
@@ -265,7 +272,10 @@ func fetchCopilotQuotaUsage(ctx context.Context, base UsageResult, token string)
 		return base, false
 	}
 
-	body, _ := io.ReadAll(resp.Body)
+	body, err := readAllCapped(resp.Body)
+	if err != nil {
+		return base, false
+	}
 	var payload copilotUserResponse
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return base, false

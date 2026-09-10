@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -195,7 +194,10 @@ func fetchCodexBackendUsage(ctx context.Context, base UsageResult) (UsageResult,
 		return base, false
 	}
 
-	body, _ := io.ReadAll(resp.Body)
+	body, err := readAllCapped(resp.Body)
+	if err != nil {
+		return base, false
+	}
 	var payload codexBackendUsageResponse
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return base, false
