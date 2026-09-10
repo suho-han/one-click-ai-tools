@@ -16,7 +16,7 @@ var agentUpdateCmd = &cobra.Command{
 	Short:   "Update AI tools",
 	Long:    `Update all or selected AI tools (Claude Code, OpenAI Codex, etc.).`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return update.Run(update.Options{DryRun: agentUpdateDryRun, Explain: agentUpdateExplain})
+		return update.Run(cmd.Context(), update.Options{DryRun: agentUpdateDryRun, Explain: agentUpdateExplain})
 	},
 }
 

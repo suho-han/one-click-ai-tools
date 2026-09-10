@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"time"
@@ -25,7 +26,7 @@ type usageModel struct {
 func (m usageModel) Init() tea.Cmd {
 	return tea.Batch(
 		func() tea.Msg {
-			res, err := usageFetcher()
+			res, err := usageFetcher(context.Background())
 			if err != nil {
 				return err
 			}
@@ -138,7 +139,7 @@ Legacy aliases 'gemini' and 'gemini-cli' still map to 'agy' for compatibility.`,
 		}
 
 		if jsonMode || compactMode {
-			results, err := usageFetcher()
+			results, err := usageFetcher(cmd.Context())
 			if err != nil {
 				return fmt.Errorf("fetch usage: %w", err)
 			}

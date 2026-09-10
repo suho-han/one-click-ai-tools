@@ -1,6 +1,7 @@
 package usage
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -11,7 +12,7 @@ func withMockAntigravityUsageCommand(t *testing.T, output string, err error) {
 	t.Helper()
 	old := antigravityUsageCommandOutput
 	t.Cleanup(func() { antigravityUsageCommandOutput = old })
-	antigravityUsageCommandOutput = func(timeout time.Duration, name string, args ...string) (string, error) {
+	antigravityUsageCommandOutput = func(ctx context.Context, timeout time.Duration, name string, args ...string) (string, error) {
 		if timeout != 20*time.Second {
 			t.Fatalf("timeout = %v, want 20s", timeout)
 		}
@@ -41,7 +42,7 @@ func TestParseAntigravityCLIUsage(t *testing.T) {
 func TestFetchAntigravityUsageUsesAgyPrintUsage(t *testing.T) {
 	withMockAntigravityUsageCommand(t, "Gemini Models\tWeekly Limit Remaining\t100%\t2026-09-10T17:41:25Z\nClaude and GPT models\tWeekly Limit Remaining\t87.5%\t2026-09-10T17:41:25Z\n", nil)
 
-	result := FetchAntigravityUsage()
+	result := FetchAntigravityUsage(t.Context())
 	if result.Provider != "antigravity" {
 		t.Fatalf("expected provider antigravity, got %q", result.Provider)
 	}
@@ -68,7 +69,7 @@ func TestFetchAntigravityUsageUsesAgyPrintUsage(t *testing.T) {
 func TestFetchAntigravityUsageNoCLIUsage(t *testing.T) {
 	withMockAntigravityUsageCommand(t, "", errors.New("agy failed"))
 
-	result := FetchAntigravityUsage()
+	result := FetchAntigravityUsage(t.Context())
 	if result.Status != "warn" {
 		t.Fatalf("expected warn status, got %q", result.Status)
 	}
@@ -86,7 +87,7 @@ func TestFetchAntigravityUsageNoCLIUsage(t *testing.T) {
 func TestFetchGeminiUsageDelegatesToAntigravity(t *testing.T) {
 	withMockAntigravityUsageCommand(t, "Gemini Models\tWeekly Limit Remaining\t99%\t2026-09-10T17:41:25Z\n", nil)
 
-	result := FetchGeminiUsage()
+	result := FetchGeminiUsage(t.Context())
 	if result.Provider != "antigravity" {
 		t.Fatalf("expected provider antigravity, got %q", result.Provider)
 	}

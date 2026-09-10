@@ -2,6 +2,7 @@ package usage
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,7 +15,7 @@ import (
 	"github.com/suho-han/one-click-ai-tools/internal/netclient"
 )
 
-func FetchCodexUsage() UsageResult {
+func FetchCodexUsage(ctx context.Context) UsageResult {
 	result := UsageResult{
 		Provider:   "codex",
 		Plan:       "unknown",
@@ -27,9 +28,9 @@ func FetchCodexUsage() UsageResult {
 		Status:     "error",
 	}
 
-	result = withPlanDetection(result, detectCodexPlan)
+	result = withPlanDetection(ctx, result, detectCodexPlan)
 
-	if backendResult, ok := fetchCodexBackendUsage(result); ok {
+	if backendResult, ok := fetchCodexBackendUsage(ctx, result); ok {
 		return backendResult
 	}
 
@@ -160,7 +161,7 @@ type codexBackendRateLimitWindow struct {
 	ResetAt            *int64   `json:"reset_at"`
 }
 
-func fetchCodexBackendUsage(base UsageResult) (UsageResult, bool) {
+func fetchCodexBackendUsage(ctx context.Context, base UsageResult) (UsageResult, bool) {
 	endpoint := strings.TrimSpace(os.Getenv("OCT_CODEX_USAGE_ENDPOINT"))
 	if endpoint == "" {
 		endpoint = "https://chatgpt.com/backend-api/wham/usage"
@@ -171,7 +172,7 @@ func fetchCodexBackendUsage(base UsageResult) (UsageResult, bool) {
 		return base, false
 	}
 
-	req, err := http.NewRequest("GET", endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil {
 		return base, false
 	}

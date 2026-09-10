@@ -1,6 +1,7 @@
 package update
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,7 +14,7 @@ func commandBase(path string) string {
 }
 
 func TestDetectManagerCursorAgent(t *testing.T) {
-	manager := DetectManager(Tool{
+	manager := DetectManager(t.Context(), Tool{
 		Name:          "Cursor",
 		Package:       "cursor-agent",
 		BinaryName:    "cursor-agent",
@@ -54,7 +55,7 @@ func TestDetectManagerClaudeNative(t *testing.T) {
 		return "", errExecutableNotFound
 	}
 
-	manager := DetectManager(Tool{
+	manager := DetectManager(t.Context(), Tool{
 		Name:       "Claude Code",
 		Package:    "@anthropic-ai/claude-code",
 		BinaryName: "claude",
@@ -69,7 +70,7 @@ func TestDetectManagerAntigravityInstaller(t *testing.T) {
 	reset := stubManagerDetection(t)
 	defer reset()
 
-	manager := DetectManager(Tool{
+	manager := DetectManager(t.Context(), Tool{
 		Name:          "Antigravity CLI",
 		Package:       "github.com/google-antigravity/antigravity-cli",
 		BinaryName:    "agy",
@@ -92,7 +93,7 @@ func TestDetectManagerAntigravityUpdater(t *testing.T) {
 		return "", errExecutableNotFound
 	}
 
-	manager := DetectManager(Tool{
+	manager := DetectManager(t.Context(), Tool{
 		Name:          "Antigravity CLI",
 		Package:       "github.com/google-antigravity/antigravity-cli",
 		BinaryName:    "agy",
@@ -115,7 +116,7 @@ func TestDetectManagerOpenCodeNative(t *testing.T) {
 		return "", errExecutableNotFound
 	}
 
-	manager := DetectManager(Tool{
+	manager := DetectManager(t.Context(), Tool{
 		Name:       "OpenCode",
 		Package:    "opencode-ai",
 		BinaryName: "opencode",
@@ -137,7 +138,7 @@ func TestDetectManagerCopilotNative(t *testing.T) {
 		return "", errExecutableNotFound
 	}
 
-	manager := DetectManager(Tool{
+	manager := DetectManager(t.Context(), Tool{
 		Name:        "GitHub Copilot",
 		Package:     "@github/copilot",
 		BinaryName:  "copilot",
@@ -261,7 +262,7 @@ func TestDetectManagerByPackagePrefix(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		got := DetectManager(Tool{Package: tc.pkg, BinaryName: "dummy"})
+		got := DetectManager(t.Context(), Tool{Package: tc.pkg, BinaryName: "dummy"})
 		if got != tc.want {
 			t.Fatalf("DetectManager(%q) = %q, want %q", tc.pkg, got, tc.want)
 		}
@@ -308,7 +309,7 @@ func TestDetectManagerPrefersBinaryProvenanceOverPackageLists(t *testing.T) {
 		}
 		return "", errExecutableNotFound
 	}
-	commandOutput = func(name string, args ...string) ([]byte, error) {
+	commandOutput = func(ctx context.Context, name string, args ...string) ([]byte, error) {
 		switch name {
 		case "brew":
 			if len(args) >= 1 && args[0] == "--prefix" {
@@ -325,7 +326,7 @@ func TestDetectManagerPrefersBinaryProvenanceOverPackageLists(t *testing.T) {
 		return nil, errExecutableNotFound
 	}
 
-	got := DetectManager(Tool{Package: "@openai/codex", BinaryName: "codex", BrewPackage: "codex"})
+	got := DetectManager(t.Context(), Tool{Package: "@openai/codex", BinaryName: "codex", BrewPackage: "codex"})
 	if got != Brew {
 		t.Fatalf("DetectManager() = %q, want %q", got, Brew)
 	}
@@ -341,7 +342,7 @@ func TestDetectManagerUsesPnpmPrefixOwnership(t *testing.T) {
 		}
 		return "", errExecutableNotFound
 	}
-	commandOutput = func(name string, args ...string) ([]byte, error) {
+	commandOutput = func(ctx context.Context, name string, args ...string) ([]byte, error) {
 		switch name {
 		case "pnpm":
 			if len(args) >= 1 && args[0] == "bin" {
@@ -355,7 +356,7 @@ func TestDetectManagerUsesPnpmPrefixOwnership(t *testing.T) {
 		return nil, errExecutableNotFound
 	}
 
-	got := DetectManager(Tool{Package: "@anthropic-ai/claude-code", BinaryName: "claude"})
+	got := DetectManager(t.Context(), Tool{Package: "@anthropic-ai/claude-code", BinaryName: "claude"})
 	if got != Pnpm {
 		t.Fatalf("DetectManager() = %q, want %q", got, Pnpm)
 	}
@@ -388,14 +389,14 @@ func TestDetectManagerUsesNpmNodeModulesSymlinkOwnership(t *testing.T) {
 		}
 		return "", errExecutableNotFound
 	}
-	commandOutput = func(name string, args ...string) ([]byte, error) {
+	commandOutput = func(ctx context.Context, name string, args ...string) ([]byte, error) {
 		if name == "python3" && len(args) >= 3 && args[0] == "-m" && args[1] == "site" && args[2] == "--user-base" {
 			return []byte(filepath.Join(home, ".local") + "\n"), nil
 		}
 		return nil, errExecutableNotFound
 	}
 
-	got := DetectManager(Tool{Package: "@openai/codex", BinaryName: "codex"})
+	got := DetectManager(t.Context(), Tool{Package: "@openai/codex", BinaryName: "codex"})
 	if got != Npm {
 		t.Fatalf("DetectManager() = %q, want %q", got, Npm)
 	}
@@ -411,14 +412,14 @@ func TestDetectManagerUsesGoInstallBinaryOwnership(t *testing.T) {
 		}
 		return "", errExecutableNotFound
 	}
-	commandOutput = func(name string, args ...string) ([]byte, error) {
+	commandOutput = func(ctx context.Context, name string, args ...string) ([]byte, error) {
 		if name == "go" && len(args) >= 2 && args[0] == "env" && args[1] == "GOPATH" {
 			return []byte("/home/test/go\n"), nil
 		}
 		return nil, errExecutableNotFound
 	}
 
-	got := DetectManager(Tool{Package: "go:github.com/example/mytool", BinaryName: "mytool"})
+	got := DetectManager(t.Context(), Tool{Package: "go:github.com/example/mytool", BinaryName: "mytool"})
 	if got != GoInstall {
 		t.Fatalf("DetectManager() = %q, want %q", got, GoInstall)
 	}
@@ -434,11 +435,11 @@ func TestDetectManagerReturnsUnknownWhenPackageAndProvenanceAreAmbiguous(t *test
 		}
 		return "", errExecutableNotFound
 	}
-	commandOutput = func(name string, args ...string) ([]byte, error) {
+	commandOutput = func(ctx context.Context, name string, args ...string) ([]byte, error) {
 		return nil, errExecutableNotFound
 	}
 
-	got := DetectManager(Tool{Package: "mystery-tool", BinaryName: "mystery"})
+	got := DetectManager(t.Context(), Tool{Package: "mystery-tool", BinaryName: "mystery"})
 	if got != Unknown {
 		t.Fatalf("DetectManager() = %q, want %q", got, Unknown)
 	}
@@ -448,9 +449,9 @@ func TestResolveManagerForInstallFallsBackToDefaultManager(t *testing.T) {
 	reset := stubManagerDetection(t)
 	defer reset()
 
-	got := ResolveManagerForInstall(Tool{Package: "mystery-tool", BinaryName: "mystery"})
+	got := ResolveManagerForInstall(t.Context(), Tool{Package: "mystery-tool", BinaryName: "mystery"})
 	if got != Npm {
-		t.Fatalf("ResolveManagerForInstall() = %q, want %q", got, Npm)
+		t.Fatalf("ResolveManagerForInstall(t.Context(), ) = %q, want %q", got, Npm)
 	}
 }
 
@@ -473,8 +474,8 @@ func TestBuiltInToolManagerSupportMatrix(t *testing.T) {
 		if !ok {
 			t.Fatalf("missing support-matrix expectation for %q", tool.BinaryName)
 		}
-		if got := ResolveManagerForInstall(tool); got != want {
-			t.Fatalf("ResolveManagerForInstall(%s) = %q, want %q", tool.BinaryName, got, want)
+		if got := ResolveManagerForInstall(t.Context(), tool); got != want {
+			t.Fatalf("ResolveManagerForInstall(t.Context(), %s) = %q, want %q", tool.BinaryName, got, want)
 		}
 	}
 }
@@ -484,7 +485,7 @@ func stubManagerDetection(t *testing.T) func() {
 	origLookup := binaryLookup
 	origOutput := commandOutput
 	binaryLookup = func(string) (string, error) { return "", errExecutableNotFound }
-	commandOutput = func(string, ...string) ([]byte, error) { return nil, errExecutableNotFound }
+	commandOutput = func(context.Context, string, ...string) ([]byte, error) { return nil, errExecutableNotFound }
 	return func() {
 		binaryLookup = origLookup
 		commandOutput = origOutput

@@ -1,6 +1,7 @@
 package usage
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
@@ -61,7 +62,7 @@ func TestDetectCopilotBillingPlanSource_Reports404AsNoPublicPlanField(t *testing
 		usageCommandOutput = origOutput
 		netclient.DefaultClient = origClient
 	}()
-	usageCommandOutput = func(timeout time.Duration, name string, args ...string) (string, error) {
+	usageCommandOutput = func(ctx context.Context, timeout time.Duration, name string, args ...string) (string, error) {
 		return "test-token", nil
 	}
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -83,7 +84,7 @@ func TestDetectCopilotBillingPlanSource_Reports404AsNoPublicPlanField(t *testing
 		t.Fatal("missing http client")
 	}
 	netclient.DefaultClient.HTTPClient.Transport = rewriteHostTransport{base: origTransport, target: server.URL}
-	source := detectCopilotBillingPlanSource()
+	source := detectCopilotBillingPlanSource(t.Context())
 	if !strings.Contains(source, "404") || !strings.Contains(source, "no public plan field") {
 		t.Fatalf("source = %q", source)
 	}

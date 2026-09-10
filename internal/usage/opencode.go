@@ -1,6 +1,7 @@
 package usage
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -70,7 +71,7 @@ func resolveOpenCodeGoAPIKey() (string, string) {
 
 // FetchOpenCodeUsage fetches OpenCode Go quota from the remote API.
 // It uses the OpenCode Go usage endpoint with the API key from auth.json or env.
-func FetchOpenCodeUsage() UsageResult {
+func FetchOpenCodeUsage(ctx context.Context) UsageResult {
 	result := UsageResult{
 		Provider:   "opencode",
 		Plan:       "opencode-go",
@@ -98,7 +99,7 @@ func FetchOpenCodeUsage() UsageResult {
 		endpoint = openCodeGoUsageEndpoint
 	}
 
-	resp, err := fetchOpenCodeGoUsage(endpoint, apiKey)
+	resp, err := fetchOpenCodeGoUsage(ctx, endpoint, apiKey)
 	if err != nil {
 		result.Status = "error"
 		result.Used = "n/a"
@@ -161,10 +162,10 @@ func FetchOpenCodeUsage() UsageResult {
 }
 
 // fetchOpenCodeGoUsage calls the OpenCode Go usage API and parses the response.
-func fetchOpenCodeGoUsage(endpoint, apiKey string) (*openCodeGoUsageResponse, error) {
+func fetchOpenCodeGoUsage(ctx context.Context, endpoint, apiKey string) (*openCodeGoUsageResponse, error) {
 	client := &http.Client{Timeout: 15 * time.Second}
 
-	req, err := http.NewRequest("GET", endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}

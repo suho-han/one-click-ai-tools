@@ -1,6 +1,7 @@
 package usage
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -74,7 +75,7 @@ type commandCodeSummaryResponse struct {
 	TotalCount int     `json:"totalCount"`
 }
 
-func FetchCommandCodeUsage() UsageResult {
+func FetchCommandCodeUsage(ctx context.Context) UsageResult {
 	result := UsageResult{
 		Provider:   "commandcode",
 		Plan:       "unknown",
@@ -93,7 +94,7 @@ func FetchCommandCodeUsage() UsageResult {
 		return result
 	}
 
-	usageData, err := fetchCommandCodeUsageData(apiKey)
+	usageData, err := fetchCommandCodeUsageData(ctx, apiKey)
 	if err != nil {
 		result.Status = "error"
 		result.Message = fmt.Sprintf("API error: %v", err)
@@ -181,9 +182,9 @@ func (d commandCodeUsageData) SubscriptionPlanID() string {
 	return ""
 }
 
-func fetchCommandCodeUsageData(apiKey string) (commandCodeUsageData, error) {
+func fetchCommandCodeUsageData(ctx context.Context, apiKey string) (commandCodeUsageData, error) {
 	var data commandCodeUsageData
-	if err := fetchCommandCodeJSON(apiKey, "/alpha/whoami", nil, &data.Whoami); err != nil {
+	if err := fetchCommandCodeJSON(ctx, apiKey, "/alpha/whoami", nil, &data.Whoami); err != nil {
 		return data, err
 	}
 
@@ -191,12 +192,12 @@ func fetchCommandCodeUsageData(apiKey string) (commandCodeUsageData, error) {
 	if orgID := data.orgID(); orgID != "" {
 		params["orgId"] = orgID
 	}
-	if err := fetchCommandCodeJSON(apiKey, "/alpha/billing/credits", params, &data.Credits); err != nil {
+	if err := fetchCommandCodeJSON(ctx, apiKey, "/alpha/billing/credits", params, &data.Credits); err != nil {
 		return data, err
 	}
 
 	var subscription commandCodeSubscriptionResponse
-	if err := fetchCommandCodeJSON(apiKey, "/alpha/billing/subscriptions", params, &subscription); err == nil {
+	if err := fetchCommandCodeJSON(ctx, apiKey, "/alpha/billing/subscriptions", params, &subscription); err == nil {
 		data.Subscription = &subscription
 	}
 
@@ -205,14 +206,14 @@ func fetchCommandCodeUsageData(apiKey string) (commandCodeUsageData, error) {
 		summaryParams["since"] = strings.TrimSpace(subscription.Data.CurrentPeriodStart)
 	}
 	var summary commandCodeSummaryResponse
-	if err := fetchCommandCodeJSON(apiKey, "/alpha/usage/summary", summaryParams, &summary); err == nil {
+	if err := fetchCommandCodeJSON(ctx, apiKey, "/alpha/usage/summary", summaryParams, &summary); err == nil {
 		data.Summary = &summary
 	}
 
 	return data, nil
 }
 
-func fetchCommandCodeJSON(apiKey, endpoint string, params map[string]string, target any) error {
+func fetchCommandCodeJSON(ctx context.Context, apiKey, endpoint string, params map[string]string, target any) error {
 	base := strings.TrimRight(resolveCommandCodeAPIBaseURL(), "/")
 	endpoint = strings.TrimLeft(endpoint, "/")
 	reqURL := base + "/" + endpoint
@@ -228,7 +229,7 @@ func fetchCommandCodeJSON(apiKey, endpoint string, params map[string]string, tar
 		}
 	}
 
-	req, err := http.NewRequest("GET", reqURL, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
 	if err != nil {
 		return fmt.Errorf("failed to create request: %w", err)
 	}

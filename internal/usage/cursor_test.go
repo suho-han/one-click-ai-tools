@@ -39,7 +39,7 @@ func TestFetchCursorUsageRemote(t *testing.T) {
 	_ = os.Setenv("USERPROFILE", tempHome)
 	_ = os.Setenv("APPDATA", filepath.Join(tempHome, "AppData", "Roaming"))
 
-	result := FetchCursorUsage()
+	result := FetchCursorUsage(t.Context())
 	if result.Status != "ok" {
 		t.Fatalf("expected ok status, got %q", result.Status)
 	}
@@ -92,7 +92,7 @@ func TestFetchCursorUsageLocalFallback(t *testing.T) {
 		_ = os.Setenv("APPDATA", filepath.Join(tempHome, "AppData", "Roaming"))
 	}
 
-	result := FetchCursorUsage()
+	result := FetchCursorUsage(t.Context())
 	if result.Source != "local" {
 		t.Fatalf("expected local source, got %q", result.Source)
 	}
@@ -158,7 +158,7 @@ func TestFetchCursorUsageLocalAuth(t *testing.T) {
 	}
 	_ = os.Setenv("OCT_USAGE_DEBUG", "1")
 
-	result := FetchCursorUsage()
+	result := FetchCursorUsage(t.Context())
 	if result.Status != "ok" {
 		t.Fatalf("expected ok status, got %q (msg: %s)", result.Status, result.Message)
 	}
@@ -195,7 +195,7 @@ func TestFetchCursorUsageRemoteFailureFallsBackWithReason(t *testing.T) {
 	})
 
 	_ = os.Setenv("OCT_CURSOR_USAGE_URL", "http://127.0.0.1:1/unreachable")
-	result := FetchCursorUsage()
+	result := FetchCursorUsage(t.Context())
 
 	if result.Source != "local" {
 		t.Fatalf("expected local fallback source, got %q", result.Source)

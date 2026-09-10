@@ -1,6 +1,7 @@
 package usage
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,8 +20,8 @@ import (
 // mockSecurityCommand replaces the security command with a test function
 func mockSecurityCommand(t *testing.T, mockOutput string) func() {
 	t.Helper()
-	origCommand := exec.Command
-	execCommand = func(name string, args ...string) *exec.Cmd {
+	origCommand := execCommand
+	execCommand = func(ctx context.Context, name string, args ...string) *exec.Cmd {
 		if name == "security" {
 			cs := []string{"-test.run=TestSecurityHelper", "--"}
 			cs = append(cs, args...)
@@ -28,7 +29,7 @@ func mockSecurityCommand(t *testing.T, mockOutput string) func() {
 			cmd.Env = []string{"GO_WANT_SECURITY_OUTPUT=" + mockOutput}
 			return cmd
 		}
-		return origCommand(name, args...)
+		return exec.Command(name, args...)
 	}
 	return func() { execCommand = origCommand }
 }
@@ -44,7 +45,7 @@ func TestSecurityHelper(t *testing.T) {
 func mockClaudeUsageCommand(t *testing.T, output string, err error) func() {
 	t.Helper()
 	orig := claudeUsageCommandOutput
-	claudeUsageCommandOutput = func(timeout time.Duration, name string, args ...string) (string, error) {
+	claudeUsageCommandOutput = func(ctx context.Context, timeout time.Duration, name string, args ...string) (string, error) {
 		if timeout != 20*time.Second {
 			t.Fatalf("timeout = %v, want 20s", timeout)
 		}
@@ -100,7 +101,7 @@ func TestFetchClaudeUsageBuckets(t *testing.T) {
 		netclient.DefaultClient.MaxRetries = oldRetries
 	}()
 
-	result := FetchClaudeUsage()
+	result := FetchClaudeUsage(t.Context())
 
 	if result.Status != "ok" {
 		t.Fatalf("expected status ok, got %s (message=%s)", result.Status, result.Message)
@@ -143,7 +144,7 @@ func TestFetchClaudeUsageFallsBackToCLIWhenAPINoUtilization(t *testing.T) {
 	}
 	netclient.DefaultClient.MaxRetries = 0
 
-	result := FetchClaudeUsage()
+	result := FetchClaudeUsage(t.Context())
 	if result.Status != "ok" {
 		t.Fatalf("expected status ok, got %s", result.Status)
 	}
@@ -197,7 +198,7 @@ func TestFetchClaudeUsageRateLimitedBuckets(t *testing.T) {
 		netclient.DefaultClient.MaxRetries = oldRetries
 	}()
 
-	result := FetchClaudeUsage()
+	result := FetchClaudeUsage(t.Context())
 	if result.Status != "ok" {
 		t.Fatalf("expected status ok, got %s", result.Status)
 	}
@@ -237,7 +238,7 @@ func TestFetchClaudeUsage_ExpiredTokenWithRefreshAvailable(t *testing.T) {
 	restoreCLI := mockClaudeUsageCommand(t, "", errors.New("claude unavailable"))
 	defer restoreCLI()
 
-	result := FetchClaudeUsage()
+	result := FetchClaudeUsage(t.Context())
 
 	if result.Status != "warn" {
 		t.Fatalf("expected status warn for expired token, got %s", result.Status)
@@ -280,7 +281,7 @@ func TestFetchClaudeUsage_ExpiredTokenWithoutRefresh(t *testing.T) {
 	restoreCLI := mockClaudeUsageCommand(t, "", errors.New("claude unavailable"))
 	defer restoreCLI()
 
-	result := FetchClaudeUsage()
+	result := FetchClaudeUsage(t.Context())
 
 	if result.Status != "error" {
 		t.Fatalf("expected status error for fully expired credentials, got %s", result.Status)
@@ -311,7 +312,7 @@ func TestFetchClaudeUsage_EmptyAccessToken(t *testing.T) {
 	restoreCLI := mockClaudeUsageCommand(t, "", errors.New("claude unavailable"))
 	defer restoreCLI()
 
-	result := FetchClaudeUsage()
+	result := FetchClaudeUsage(t.Context())
 
 	if result.Status != "warn" {
 		t.Fatalf("expected status warn for empty token, got %s", result.Status)
@@ -362,7 +363,7 @@ func TestFetchClaudeUsage_FallbackToCredentialsFile(t *testing.T) {
 	}
 	netclient.DefaultClient.MaxRetries = 0
 
-	result := FetchClaudeUsage()
+	result := FetchClaudeUsage(t.Context())
 
 	if result.Status != "ok" {
 		t.Fatalf("expected status ok, got %s (message=%s)", result.Status, result.Message)

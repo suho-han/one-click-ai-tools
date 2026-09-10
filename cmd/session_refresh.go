@@ -48,7 +48,7 @@ then re-runs local usage collection so the report reflects the latest detectable
 
 		var beforeUsage []usage.UsageResult
 		if !dryRun {
-			usageResults, err := sessionRefreshGetUsage()
+			usageResults, err := sessionRefreshGetUsage(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -62,7 +62,7 @@ then re-runs local usage collection so the report reflects the latest detectable
 
 		output := sessionRefreshOutput{RefreshResults: results}
 		if !dryRun {
-			usageResults, err := sessionRefreshGetUsage()
+			usageResults, err := sessionRefreshGetUsage(cmd.Context())
 			if err != nil {
 				return err
 			}

@@ -35,7 +35,15 @@ type Plan struct {
 
 var confirmInstallPrompt = defaultConfirmInstallPrompt
 
-func Run(opts ...Options) error {
+// installTimeout caps the whole update run (probes, brew update, installs,
+// recovery). The clock starts after the interactive confirmation prompt, so
+// user-input waiting is excluded. Swappable in tests.
+var installTimeout = 10 * time.Minute
+
+func Run(ctx context.Context, opts ...Options) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	config := Options{}
 	if len(opts) > 0 {
 		config = opts[0]
@@ -60,7 +68,7 @@ func Run(opts ...Options) error {
 		return nil
 	}
 
-	plans := ExplainPlans(toolsToUpdate)
+	plans := ExplainPlans(ctx, toolsToUpdate)
 	if config.Explain || config.DryRun {
 		printPlans(out, plans)
 	}
@@ -80,9 +88,9 @@ func Run(opts ...Options) error {
 		return nil
 	}
 
-	if runtime.GOOS == "darwin" && anyBrewManaged(toolsToUpdate) {
+	if runtime.GOOS == "darwin" && anyBrewManaged(ctx, toolsToUpdate) {
 		fmt.Fprintln(out, "Updating Homebrew...")
-		if brewOut, err := commandWithEnv("brew", "update").CombinedOutput(); err != nil {
+		if brewOut, err := commandContextWithEnv(ctx, "brew", "update").CombinedOutput(); err != nil {
 			fmt.Fprintf(os.Stderr, "brew update failed: %v\n%s\n", err, brewOut)
 		}
 	}
@@ -90,7 +98,8 @@ func Run(opts ...Options) error {
 	total := len(toolsToUpdate)
 	fmt.Fprintf(out, "Updating %d tools...\n", total)
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(ctx, installTimeout)
+	defer cancel()
 	failureCount := 0
 
 	for i, plan := range plans {
@@ -107,11 +116,17 @@ func Run(opts ...Options) error {
 			fmt.Fprintf(out, "[%d/%d] %s: Updating... (using %s)\n", current, total, tool.Colorize(tool.Name), manager)
 		}
 
-		versionBefore := manager.GetInstalledVersion(tool)
+		// A canceled ceiling must not start new installs or recovery work.
+		if err := ctx.Err(); err != nil {
+			fmt.Fprintf(out, "[%d/%d] %s ✗ Skipped: %v\n", current, total, tool.Colorize(tool.Name), err)
+			failureCount++
+			continue
+		}
+		versionBefore := plan.VersionBefore
 		start := time.Now()
 		output, err := runInstallWithFallback(ctx, manager, tool)
 		duration := time.Since(start).Round(time.Second)
-		versionAfter := manager.GetInstalledVersion(tool)
+		versionAfter := manager.GetInstalledVersion(ctx, tool)
 
 		versionSummary := formatVersionSummary(versionBefore, versionAfter)
 		if err != nil {
@@ -214,13 +229,13 @@ func isAlreadyUpToDate(manager Manager, before, after, output string) bool {
 	return (before != "" && before == after) || manager.IsNoChangeOutput(output)
 }
 
-func ExplainPlans(tools []Tool) []Plan {
+func ExplainPlans(ctx context.Context, tools []Tool) []Plan {
 	plans := make([]Plan, 0, len(tools))
 	for _, tool := range tools {
-		manager, reason := explainResolvedManager(tool)
+		manager, reason := explainResolvedManager(ctx, tool)
 		binary, path := firstResolvedBinary(tool)
-		cmd := manager.InstallCommandCtx(context.Background(), tool)
-		version := manager.GetInstalledVersion(tool)
+		cmd := manager.InstallCommandCtx(ctx, tool)
+		version := manager.GetInstalledVersion(ctx, tool)
 		plans = append(plans, Plan{
 			Tool:           tool,
 			Manager:        manager,
@@ -234,7 +249,7 @@ func ExplainPlans(tools []Tool) []Plan {
 	return plans
 }
 
-func explainResolvedManager(t Tool) (Manager, string) {
+func explainResolvedManager(ctx context.Context, t Tool) (Manager, string) {
 	if m, ok := managerFromPackagePrefix(t.Package); ok {
 		return m, "package prefix"
 	}
@@ -256,11 +271,11 @@ func explainResolvedManager(t Tool) (Manager, string) {
 	if isCursorTool(t) {
 		return CursorAgent, "tool-specific installer"
 	}
-	if m, ok := detectManagerFromBinaryPath(t); ok {
+	if m, ok := detectManagerFromBinaryPath(ctx, t); ok {
 		return m, "active binary path"
 	}
 	for _, manager := range []Manager{Brew, Pnpm, Yarn, Npm} {
-		if matchesInstalledPackage(manager, t) {
+		if matchesInstalledPackage(ctx, manager, t) {
 			return manager, "installed package lookup"
 		}
 	}
@@ -295,9 +310,9 @@ func printPlans(w io.Writer, plans []Plan) {
 	}
 }
 
-func anyBrewManaged(tools []Tool) bool {
+func anyBrewManaged(ctx context.Context, tools []Tool) bool {
 	for _, t := range tools {
-		if ResolveManagerForInstall(t) == Brew {
+		if ResolveManagerForInstall(ctx, t) == Brew {
 			return true
 		}
 	}

@@ -27,7 +27,7 @@ func TestFetchCodexUsageMapsWeeklyBucketOnly(t *testing.T) {
 		t.Fatalf("write failed: %v", err)
 	}
 
-	result := FetchCodexUsage()
+	result := FetchCodexUsage(t.Context())
 	if result.Status != "ok" {
 		t.Fatalf("expected ok, got %s", result.Status)
 	}
@@ -72,7 +72,7 @@ func TestFetchCodexUsageUsesBackendWeeklyOnlyWindow(t *testing.T) {
 	defer server.Close()
 	t.Setenv("OCT_CODEX_USAGE_ENDPOINT", server.URL)
 
-	result := FetchCodexUsage()
+	result := FetchCodexUsage(t.Context())
 	if result.Status != "ok" {
 		t.Fatalf("expected ok, got %s", result.Status)
 	}

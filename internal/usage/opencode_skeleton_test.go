@@ -36,7 +36,7 @@ func TestParseOpenCodeUsageFromJSONL_RateLimitsShape(t *testing.T) {
 	userHomeDir = func() (string, error) { return tempHome, nil }
 	t.Cleanup(func() { userHomeDir = prevHome })
 
-	result := FetchOpenCodeUsage()
+	result := FetchOpenCodeUsage(t.Context())
 	if result.Status != "ok" {
 		t.Fatalf("expected ok, got %q", result.Status)
 	}
@@ -74,7 +74,7 @@ func TestParseOpenCodeUsageFromJSONL_FlatShape(t *testing.T) {
 	userHomeDir = func() (string, error) { return tempHome, nil }
 	t.Cleanup(func() { userHomeDir = prevHome })
 
-	result := FetchOpenCodeUsage()
+	result := FetchOpenCodeUsage(t.Context())
 	if result.Status != "ok" {
 		t.Fatalf("expected ok, got %q", result.Status)
 	}
@@ -92,7 +92,7 @@ func TestFetchOpenCodeUsage_NoLogs(t *testing.T) {
 	t.Setenv("USERPROFILE", tmp)
 	t.Setenv("OPENCODE_API_KEY", "")
 
-	result := FetchOpenCodeUsage()
+	result := FetchOpenCodeUsage(t.Context())
 	if result.Provider != "opencode" {
 		t.Fatalf("expected provider=opencode, got %s", result.Provider)
 	}
@@ -135,7 +135,7 @@ func TestFetchOpenCodeUsage_FromLocalLogs(t *testing.T) {
 	openCodeGoUsageEndpoint = server.URL + "/zen/go/v1/usage"
 	t.Cleanup(func() { openCodeGoUsageEndpoint = prevEndpoint })
 
-	result := FetchOpenCodeUsage()
+	result := FetchOpenCodeUsage(t.Context())
 	if result.Status != "ok" {
 		t.Fatalf("expected status=ok, got %s (%s)", result.Status, result.Message)
 	}
