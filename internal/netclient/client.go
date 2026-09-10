@@ -2,12 +2,14 @@ package netclient
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"math"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -96,6 +98,46 @@ func (c *Client) shouldRetry(resp *http.Response, err error) bool {
 	}
 
 	return false
+}
+
+// GetJSON GETs url with the supplied headers and decodes the 200 body into
+// v. It applies the client's retry policy, honors ctx cancellation and the
+// per-attempt timeout, and returns a descriptive error for any non-200
+// response (body excerpt included).
+func (c *Client) GetJSON(ctx context.Context, url string, headers map[string]string, v any) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create request: %w", err)
+	}
+	for key, value := range headers {
+		req.Header.Set(key, value)
+	}
+
+	resp, err := c.DoWithRetry(req)
+	if err != nil {
+		return fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read response: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncateBody(string(body), 160))
+	}
+	if err := json.Unmarshal(body, v); err != nil {
+		return fmt.Errorf("failed to parse response: %w", err)
+	}
+	return nil
+}
+
+func truncateBody(s string, max int) string {
+	s = strings.TrimSpace(s)
+	if len(s) <= max {
+		return s
+	}
+	return s[:max] + "..."
 }
 
 func FormatError(resp *http.Response, err error) string {
