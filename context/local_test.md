@@ -2,7 +2,7 @@
 
 ## Quick run
 
-Current recommended local Go toolchain: `go1.26.4` (`~/.local/go`)
+Currently recommended local Go toolchain: `go1.26.4` (`~/.local/go`)
 
 ```bash
 go version
@@ -11,9 +11,9 @@ go run main.go usage --json
 ```
 
 Caution:
-- `go run main.go agent-update` performs real package updates.
+- `go run main.go agent-update` executes real package updates.
 
-## Build and run
+## Build & run
 
 ```bash
 go build -o oct main.go
@@ -28,7 +28,7 @@ GOTOOLCHAIN=auto go test ./...
 GOTOOLCHAIN=auto go test -cover ./...
 ```
 
-## npm wrapper validation
+## npm wrapper check
 
 ```bash
 go build -o oct main.go
@@ -52,7 +52,12 @@ go build -o oct.exe main.go
 .\oct.exe usage --json
 ```
 
-Checklist:
-- commands execute and render correctly
-- runs correctly from paths containing spaces
-- `schedule enable/disable` and Task Scheduler registration are valid
+Checkpoints:
+- Commands run and output correctly
+- Works when executed from paths containing spaces
+- `schedule enable/disable` and Task Scheduler registration verified
+
+## Related docs
+
+- [platform_e2e_checklist.md](platform_e2e_checklist.md): full per-platform schedule/install E2E verification checklist
+- [macbook_air_smoke_test.md](macbook_air_smoke_test.md): quick smoke test on the primary macOS host

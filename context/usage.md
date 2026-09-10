@@ -83,9 +83,7 @@ Primary paths:
 - `~/.config/opencode/sessions`
 - `~/.local/share/opencode/sessions`
 
-## 4) Icon rendering
+## 4) Related docs
 
-Renderer fallback order depends on terminal capability.
-
-- Order: `native_image` -> `ansi_asset` -> `text`
-- Override: `OCT_ICON_RENDERER=native_image|ansi_asset|text`
+- [monitoring.md](monitoring.md): continuous live view instead of one-shot printing (`oct monitor`)
+- [usage_alerts.md](usage_alerts.md): threshold-based OS alert configuration behind `oct usage --notify`
