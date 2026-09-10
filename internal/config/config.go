@@ -42,9 +42,18 @@ func MigrateLegacyConfig() error {
 		if strings.HasPrefix(line, "enabled_tools=") {
 			value := strings.TrimPrefix(line, "enabled_tools=")
 			if value != "all" && value != "" {
-				enabledTools = strings.Split(value, ",")
+				for _, tool := range strings.Split(value, ",") {
+					if tool = strings.TrimSpace(tool); tool != "" {
+						enabledTools = append(enabledTools, tool)
+					}
+				}
 			}
 		}
+	}
+	// A partial read (I/O error) must not migrate an empty enabled_tools and
+	// archive the original away as .bak.
+	if err := scanner.Err(); err != nil {
+		return fmt.Errorf("reading legacy config %s: %w", legacyPath, err)
 	}
 
 	viper.Set("enabled_tools", enabledTools)

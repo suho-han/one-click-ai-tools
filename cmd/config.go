@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -264,55 +266,80 @@ func runInteractiveConfig() ([]string, []string, string, bool, error) {
 		order = append(order, it.tool.BinaryName)
 	}
 	mode := usage.NormalizeDisplayMode(viper.GetString("usage_display_mode"))
-	mode = promptUsageMode(mode)
+	mode, err = promptUsageMode(mode)
+	if err != nil {
+		return nil, nil, "", false, err
+	}
 	return selected, order, mode, false, nil
 }
 
-func promptToken(prompt string) string {
-	fmt.Print(prompt)
-	reader := bufio.NewReader(os.Stdin)
-	text, _ := reader.ReadString('\n')
-	return strings.TrimSpace(text)
+// configPromptReader is shared across the multi-prompt config flow. A fresh
+// bufio.Reader per prompt would buffer (and silently swallow) input meant for
+// the following prompts in the same run.
+var configPromptReader *bufio.Reader
+
+func promptReader() *bufio.Reader {
+	if configPromptReader == nil {
+		configPromptReader = bufio.NewReader(os.Stdin)
+	}
+	return configPromptReader
 }
 
-func promptYesNo(prompt string, defaultYes bool) bool {
+// readPromptLine returns the next line of input. io.EOF counts as an empty
+// line (non-interactive runs); any other read error is surfaced.
+func readPromptLine() (string, error) {
+	text, err := promptReader().ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return "", fmt.Errorf("reading input: %w", err)
+	}
+	return strings.TrimSpace(text), nil
+}
+
+func promptToken(prompt string) (string, error) {
+	fmt.Print(prompt)
+	return readPromptLine()
+}
+
+func promptYesNo(prompt string, defaultYes bool) (bool, error) {
 	defaultLabel := "n"
 	if defaultYes {
 		defaultLabel = "y"
 	}
 	fmt.Printf("%s [default: %s]: ", prompt, defaultLabel)
-	reader := bufio.NewReader(os.Stdin)
-	text, _ := reader.ReadString('\n')
-	text = strings.TrimSpace(strings.ToLower(text))
-	if text == "" {
-		return defaultYes
+	text, err := readPromptLine()
+	if err != nil {
+		return false, err
 	}
-	return text == "y" || text == "yes"
+	text = strings.ToLower(text)
+	if text == "" {
+		return defaultYes, nil
+	}
+	return text == "y" || text == "yes", nil
 }
 
-func promptUsageMode(defaultMode string) string {
+func promptUsageMode(defaultMode string) (string, error) {
 	// Keep interactive default deterministic for consistency.
 	defaultMode = "remaining"
 	fmt.Print("Usage display mode: remaining(r) / used(u) [default: r]: ")
-	reader := bufio.NewReader(os.Stdin)
-	text, _ := reader.ReadString('\n')
-	text = strings.TrimSpace(strings.ToLower(text))
-
+	text, err := readPromptLine()
+	if err != nil {
+		return "", err
+	}
 	if text == "" {
-		return defaultMode
+		return defaultMode, nil
 	}
 	if text == "r" || text == "remaining" {
-		return "remaining"
+		return "remaining", nil
 	}
 	if text == "u" || text == "used" {
-		return "used"
+		return "used", nil
 	}
 
 	// Invalid input falls back to default choice.
-	return defaultMode
+	return defaultMode, nil
 }
 
-func setupTokens(tools []string) {
+func setupTokens(tools []string) error {
 	fmt.Println("\n--- Provider Setup ---")
 	var needsClaudeAuth, needsGeminiAuth bool
 
@@ -336,7 +363,11 @@ func setupTokens(tools []string) {
 			isUpdate := false
 			existingToken := viper.GetString("github_api_token")
 			if existingToken != "" {
-				if !promptYesNo("GitHub API Token is already registered. Do you want to update it?", false) {
+				confirmed, err := promptYesNo("GitHub API Token is already registered. Do you want to update it?", false)
+				if err != nil {
+					return err
+				}
+				if !confirmed {
 					fmt.Println("✓ GitHub Copilot: Using existing token")
 					continue
 				}
@@ -347,18 +378,23 @@ func setupTokens(tools []string) {
 			if isUpdate {
 				promptStr = "Enter new GitHub API Token (leave empty to skip)\n> "
 			}
-			token := promptToken(promptStr)
+			token, err := promptToken(promptStr)
+			if err != nil {
+				return err
+			}
 			if token != "" {
 				viper.Set("github_api_token", token)
-				user := promptToken("Enter GitHub Username: ")
+				user, err := promptToken("Enter GitHub Username: ")
+				if err != nil {
+					return err
+				}
 				if user != "" {
 					viper.Set("github_user", user)
 				}
 				if err := writeConfig(); err != nil {
-					fmt.Printf("Error saving config: %v\n", err)
-				} else {
-					fmt.Println("✓ GitHub Copilot: Token saved")
+					return fmt.Errorf("saving config: %w", err)
 				}
+				fmt.Println("✓ GitHub Copilot: Token saved")
 			} else {
 				if existingToken != "" {
 					fmt.Println("✓ GitHub Copilot: Kept existing token")
@@ -378,6 +414,7 @@ func setupTokens(tools []string) {
 			fmt.Println("Antigravity CLI: Run 'agy' once to authenticate the CLI; oct parses 'agy --print /usage'.")
 		}
 	}
+	return nil
 }
 
 func toolDisplayName(binaryName string) string {
@@ -435,7 +472,9 @@ var configCmd = &cobra.Command{
 		}
 		fmt.Fprintln(cmd.OutOrStdout(), "Config updated successfully.")
 		if len(newEnabledTools) > 0 {
-			setupTokens(newEnabledTools)
+			if err := setupTokens(newEnabledTools); err != nil {
+				return err
+			}
 		}
 		printConfigSummary(newEnabledTools, usageMode)
 		return nil
