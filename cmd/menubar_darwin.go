@@ -3,6 +3,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -90,6 +91,7 @@ func menubarEnvironmentMap() map[string]string {
 }
 
 type menubarUI struct {
+	ctx                  context.Context
 	execPath             string
 	toolNames            []string
 	refreshInterval      time.Duration
@@ -145,6 +147,7 @@ func newMenubarUI() (*menubarUI, error) {
 	systray.SetTooltip("one-click-tools menubar")
 
 	ui := &menubarUI{
+		ctx:             context.Background(),
 		execPath:        execPath,
 		toolNames:       toolNames,
 		refreshInterval: refreshInterval,

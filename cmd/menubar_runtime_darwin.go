@@ -38,13 +38,13 @@ func (ui *menubarUI) run() {
 		case <-ui.refreshItem.ClickedCh:
 			go ui.refreshUsage()
 		case <-ui.usageItem.ClickedCh:
-			_ = runInTerminal(ui.command("usage"))
+			go ui.openInTerminal(ui.command("usage"))
 		case <-ui.sessionRefreshItem.ClickedCh:
-			_ = runInTerminal(ui.command("session-refresh"))
+			go ui.openInTerminal(ui.command("session-refresh"))
 		case <-ui.monitorItem.ClickedCh:
-			_ = runInTerminal(ui.command("monitor", "--once"))
+			go ui.openInTerminal(ui.command("monitor", "--once"))
 		case <-ui.alertItem.ClickedCh:
-			_ = runInTerminal(ui.command("usage", "--notify"))
+			go ui.openInTerminal(ui.command("usage", "--notify"))
 		case <-ui.quitItem.ClickedCh:
 			systray.Quit()
 			return
@@ -69,7 +69,7 @@ func (ui *menubarUI) refreshUsage() {
 	ui.refreshItem.Disable()
 	ui.applySnapshot(buildMenubarLoadingSnapshot(ui.toolNames))
 
-	results, err := menubarFetchUsage(context.Background())
+	results, err := menubarFetchUsage(ui.ctx)
 	now := time.Now()
 	if err != nil {
 		ui.applySnapshot(buildMenubarErrorSnapshot(ui.toolNames, now, err))
@@ -129,6 +129,21 @@ func (ui *menubarUI) syncProviderDetails(group *menubarProviderGroup, details []
 	}
 }
 
+// openInTerminal launches a CLI action in Terminal.app. The menubar has no
+// stderr, so a failed launch (denied automation permission, timeout) is
+// surfaced through the tooltip instead of being swallowed.
+func (ui *menubarUI) openInTerminal(command string) {
+	if err := runInTerminal(command); err != nil {
+		systray.SetTooltip(truncateMenubarText("oct: "+err.Error(), 64))
+	}
+}
+
+// runInTerminalTimeout bounds osascript: it can otherwise block indefinitely
+// on an unanswered automation-permission dialog.
+var runInTerminalTimeout = 30 * time.Second
+
 func runInTerminal(command string) error {
-	return exec.Command("osascript", "-e", buildTerminalAppleScript(command)).Run()
+	ctx, cancel := context.WithTimeout(context.Background(), runInTerminalTimeout)
+	defer cancel()
+	return exec.CommandContext(ctx, "osascript", "-e", buildTerminalAppleScript(command)).Run()
 }

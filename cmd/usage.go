@@ -81,13 +81,17 @@ func usageOrderedTools() []update.Tool {
 	return usage.SelectedTools()
 }
 
-func maybeSendUsageAlerts(results []usage.UsageResult, force bool) {
+func maybeSendUsageAlerts(cmd *cobra.Command, results []usage.UsageResult, force bool) {
 	enabled := force || viper.GetBool("usage_alert_enabled")
 	if !enabled {
 		return
 	}
 	cfg := buildAlertConfigFromViper(true)
-	_ = notify.MaybeSendUsageAlerts(results, cfg, time.Now())
+	// Alerts are best-effort: warn on failure instead of failing the usage
+	// report itself.
+	if err := notify.MaybeSendUsageAlerts(results, cfg, time.Now()); err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "warning: usage alerts failed: %v\n", err)
+	}
 }
 
 func (m usageModel) View() string {
@@ -143,7 +147,7 @@ Legacy aliases 'gemini' and 'gemini-cli' still map to 'agy' for compatibility.`,
 			if err != nil {
 				return fmt.Errorf("fetch usage: %w", err)
 			}
-			maybeSendUsageAlerts(results, notifyMode)
+			maybeSendUsageAlerts(cmd, results, notifyMode)
 			if compactMode {
 				usage.RenderCompactRemaining(os.Stdout, results)
 				return nil
@@ -178,7 +182,7 @@ Legacy aliases 'gemini' and 'gemini-cli' still map to 'agy' for compatibility.`,
 		}
 
 		if len(fm.results) > 0 {
-			maybeSendUsageAlerts(fm.results, notifyMode)
+			maybeSendUsageAlerts(cmd, fm.results, notifyMode)
 			usage.PrintTable(fm.results)
 			fmt.Println("\nTip: Run 'oct usage --help' for authentication instructions.")
 		}

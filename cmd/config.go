@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -574,9 +575,15 @@ var configResetCmd = &cobra.Command{
 var configListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "Show current configuration",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("=== one-click-tools config ===")
-		fmt.Printf("Config file: %s\n\n", viper.ConfigFileUsed())
+	RunE: func(cmd *cobra.Command, args []string) error {
+		out := cmd.OutOrStdout()
+		if configListJSON {
+			encoder := json.NewEncoder(out)
+			encoder.SetIndent("", "  ")
+			return encoder.Encode(buildConfigSnapshot(configPathForDisplay()))
+		}
+		fmt.Fprintln(out, "=== one-click-tools config ===")
+		fmt.Fprintf(out, "Config file: %s\n\n", viper.ConfigFileUsed())
 
 		enabledTools := viper.GetStringSlice("enabled_tools")
 		usageMode := strings.ToLower(strings.TrimSpace(viper.GetString("usage_display_mode")))
@@ -584,12 +591,12 @@ var configListCmd = &cobra.Command{
 			usageMode = "remaining"
 		}
 		titleMode := normalizedMenubarTitleMode(viper.GetString("menubar_title_mode"))
-		fmt.Printf("Usage display mode: %s\n", usageMode)
-		fmt.Printf("Menubar title mode: %s\n", titleMode)
-		fmt.Printf("Session refresh enabled: %v\n", viper.GetBool("session_refresh_enabled"))
-		fmt.Printf("Session refresh interval: %s\n", viper.GetString("session_refresh_interval"))
-		fmt.Printf("Session refresh hour: %d\n\n", viper.GetInt("session_refresh_hour"))
-		fmt.Println("Enabled tools (agent-update):")
+		fmt.Fprintf(out, "Usage display mode: %s\n", usageMode)
+		fmt.Fprintf(out, "Menubar title mode: %s\n", titleMode)
+		fmt.Fprintf(out, "Session refresh enabled: %v\n", viper.GetBool("session_refresh_enabled"))
+		fmt.Fprintf(out, "Session refresh interval: %s\n", viper.GetString("session_refresh_interval"))
+		fmt.Fprintf(out, "Session refresh hour: %d\n\n", viper.GetInt("session_refresh_hour"))
+		fmt.Fprintln(out, "Enabled tools (agent-update):")
 
 		for _, t := range update.Tools {
 			enabled := false
@@ -605,11 +612,12 @@ var configListCmd = &cobra.Command{
 			}
 
 			if enabled {
-				fmt.Printf("  ✓ %s\n", t.Colorize(t.Name))
+				fmt.Fprintf(out, "  ✓ %s\n", t.Colorize(t.Name))
 			} else {
-				fmt.Printf("  ✗ %s\n", t.Colorize(t.Name))
+				fmt.Fprintf(out, "  ✗ %s\n", t.Colorize(t.Name))
 			}
 		}
+		return nil
 	},
 }
 

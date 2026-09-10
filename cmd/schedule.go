@@ -30,7 +30,10 @@ session-refresh) via the platform scheduler (launchd/cron/SchTasks).`,
 		if err != nil {
 			return fmt.Errorf("invalid task: %w", err)
 		}
-		status, _ := s.Status(task)
+		status, err := s.Status(task)
+		if err != nil {
+			return fmt.Errorf("failed to read schedule status: %w", err)
+		}
 		fmt.Fprintf(cmd.OutOrStdout(), "Schedule status (%s): %s\n", task, status)
 		return nil
 	},
@@ -107,7 +110,10 @@ var scheduleConfigCmd = &cobra.Command{
 		}
 
 		enabled, interval, hour := sessionRefreshScheduleConfig()
-		status, _ := s.Status(task)
+		status, err := s.Status(task)
+		if err != nil {
+			return fmt.Errorf("failed to read schedule status: %w", err)
+		}
 		changed := cmd.Flags().Changed("enabled") || cmd.Flags().Changed("interval") || cmd.Flags().Changed("hour")
 
 		if !changed {
