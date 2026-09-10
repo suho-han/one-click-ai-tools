@@ -194,6 +194,13 @@ struct OctCLIService {
             arguments: ["-a", "Terminal", launcherURL.path],
             requireManagedExecutable: false
         )
+
+        // Terminal may not have exec'd the launcher yet when `open` returns;
+        // remove it after a grace period instead of leaking one file per
+        // action into the shared temp directory.
+        DispatchQueue.global().asyncAfter(deadline: .now() + 60) {
+            try? FileManager.default.removeItem(at: launcherURL)
+        }
     }
 
     private func buildShellCommand(arguments: [String]) -> String {

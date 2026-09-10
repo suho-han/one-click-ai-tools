@@ -50,7 +50,15 @@ final class StatusBarController: NSObject, NSApplicationDelegate {
         else {
             return
         }
-        try? "ready\n".write(toFile: path, atomically: true, encoding: .utf8)
+        do {
+            try "ready\n".write(toFile: path, atomically: true, encoding: .utf8)
+        } catch {
+            // A silent failure would stall the parent `oct menubar` wait
+            // until its own timeout with no diagnostic anywhere.
+            FileHandle.standardError.write(
+                Data("oct-menubar: failed to write ready file \(path): \(error)\n".utf8)
+            )
+        }
     }
 
     @objc
