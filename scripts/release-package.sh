@@ -43,20 +43,24 @@ if count != 1:
 path.write_text(updated)
 PY
 
+echo
+echo "--- Step 2: Running tests (before committing the release bump) ---"
+GOTOOLCHAIN=auto go test ./...
+
+echo
+echo "--- Step 3: Verifying release integrity ---"
+RELEASE_TAG="$RELEASE_TAG" bash scripts/verify-release-integrity.sh
+
+echo
+echo "--- Step 4: Committing and tagging ---"
+# Committing and tagging happens only after tests and integrity checks pass;
+# a failing test then leaves no local commit/tag debris to unwind.
 git add cmd/root.go
 git commit -m "chore(release): ${VERSION}"
 git tag -a "$RELEASE_TAG" -m "$RELEASE_TAG"
 
 echo
-echo "--- Step 2: Verifying release integrity ---"
-RELEASE_TAG="$RELEASE_TAG" bash scripts/verify-release-integrity.sh
-
-echo
-echo "--- Step 3: Running tests ---"
-GOTOOLCHAIN=auto go test ./...
-
-echo
-echo "--- Step 4: Pushing git commit and tag ---"
+echo "--- Step 5: Pushing git commit and tag ---"
 git push --follow-tags origin main
 if ! git ls-remote --tags origin | grep -q "refs/tags/${RELEASE_TAG}$"; then
   echo "remote tag missing after --follow-tags; pushing explicit tag ${RELEASE_TAG}"
@@ -65,7 +69,7 @@ fi
 git ls-remote --tags origin | grep "refs/tags/${RELEASE_TAG}$"
 
 echo
-echo "--- Step 5: Publishing GitHub Release workflow ---"
+echo "--- Step 6: Publishing GitHub Release workflow ---"
 if command -v gh >/dev/null 2>&1; then
   RUN_ID=""
   if [[ "${CI:-}" == "true" ]]; then
