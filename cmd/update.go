@@ -46,9 +46,9 @@ type releaseAsset struct {
 // fetchLatestReleaseTag / installReleaseAsset / verifyReleaseAssetChecksum
 // and connection phases are bounded by the transport below.
 var (
-	selfUpdateCommand    = exec.Command
-	checksumBaseURL      = "https://github.com"
-	selfUpdateHTTPClient = &http.Client{
+	selfUpdateCommandContext = exec.CommandContext
+	checksumBaseURL          = "https://github.com"
+	selfUpdateHTTPClient     = &http.Client{
 		Transport: &http.Transport{
 			Proxy:                 http.ProxyFromEnvironment,
 			TLSHandshakeTimeout:   10 * time.Second,
@@ -79,7 +79,7 @@ func runSelfUpdate(cmd *cobra.Command, opts selfUpdateOptions) error {
 			fmt.Fprintln(cmd.OutOrStdout(), "oct is managed by Homebrew. Use: brew upgrade one-click-tools")
 			return nil
 		}
-		brew := selfUpdateCommand("brew", "upgrade", "one-click-tools")
+		brew := selfUpdateCommandContext(cmd.Context(), "brew", "upgrade", "one-click-tools")
 		brew.Stdout = cmd.OutOrStdout()
 		brew.Stderr = cmd.ErrOrStderr()
 		return brew.Run()
@@ -125,12 +125,31 @@ func runSelfUpdate(cmd *cobra.Command, opts selfUpdateOptions) error {
 	return nil
 }
 
+// installedViaBrew reports whether Homebrew manages this install by checking
+// the Cellar formula directory directly; spawning `brew list` costs a full
+// Ruby startup (often 0.5-2s) on every `oct update`.
 func installedViaBrew() bool {
 	if _, err := exec.LookPath("brew"); err != nil {
 		return false
 	}
-	out, err := selfUpdateCommand("brew", "list", "one-click-tools").CombinedOutput()
-	return err == nil && len(out) > 0
+	for _, dir := range brewCellarDirs() {
+		if info, err := os.Stat(dir); err == nil && info.IsDir() {
+			return true
+		}
+	}
+	return false
+}
+
+// brewCellarDirs lists candidate Cellar formula paths, honoring
+// HOMEBREW_PREFIX before the platform defaults.
+func brewCellarDirs() []string {
+	if prefix := strings.TrimSpace(os.Getenv("HOMEBREW_PREFIX")); prefix != "" {
+		return []string{filepath.Join(prefix, "Cellar", "one-click-tools")}
+	}
+	return []string{
+		"/opt/homebrew/Cellar/one-click-tools",
+		"/usr/local/Cellar/one-click-tools",
+	}
 }
 
 func fetchLatestReleaseTag(ctx context.Context, repo string) (string, error) {
@@ -286,9 +305,14 @@ func downloadReleaseFile(ctx context.Context, url, dest string) error {
 	if err != nil {
 		return err
 	}
-	defer out.Close()
-	_, err = io.Copy(out, resp.Body)
-	return err
+	_, copyErr := io.Copy(out, resp.Body)
+	// A close-time flush error would leave a truncated archive or
+	// checksums.txt; surface it instead of dropping it via defer.
+	closeErr := out.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	return closeErr
 }
 
 // verifyReleaseAssetChecksum is fail-closed: any failure to obtain or match
@@ -414,9 +438,12 @@ func writeExtractedBinary(path string, src io.Reader, mode os.FileMode) error {
 	if err != nil {
 		return err
 	}
-	defer out.Close()
-	_, err = io.Copy(out, src)
-	return err
+	_, copyErr := io.Copy(out, src)
+	closeErr := out.Close()
+	if copyErr != nil {
+		return copyErr
+	}
+	return closeErr
 }
 
 func executableName() string {
