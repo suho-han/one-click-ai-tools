@@ -1,8 +1,11 @@
 package notify
 
 import (
+	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -137,6 +140,60 @@ func TestMaybeSendUsageAlertsWithQuietHoursAndEscalation(t *testing.T) {
 	}
 	if notifyCount != baseCount+1 {
 		t.Fatalf("expected escalation notification within cooldown")
+	}
+}
+
+func TestMaybeSendUsageAlertsConcurrentWritersKeepState(t *testing.T) {
+	origNotify := notifyFn
+	defer func() { notifyFn = origNotify }()
+	notifyFn = func(title, message string) error { return nil }
+
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	cfg := UsageAlertConfig{
+		Enabled:         true,
+		ThresholdPct:    80,
+		CooldownMinutes: 120,
+		StatePath:       statePath,
+	}
+
+	const writers = 8
+	var wg sync.WaitGroup
+	for i := 0; i < writers; i++ {
+		wg.Add(1)
+		go func(n int) {
+			defer wg.Done()
+			result := usage.UsageResult{
+				Provider: fmt.Sprintf("provider-%d", n),
+				Unit:     "percent",
+				Used:     "90",
+				Buckets:  map[string]string{"5h": "90"},
+			}
+			if err := MaybeSendUsageAlerts([]usage.UsageResult{result}, cfg, time.Now()); err != nil {
+				t.Errorf("writer %d: %v", n, err)
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	st, err := loadState(statePath)
+	if err != nil {
+		t.Fatalf("loadState after concurrent writers: %v", err)
+	}
+	providers := map[string]bool{}
+	for key := range st.LastSent {
+		providers[strings.SplitN(key, ":", 2)[0]] = true
+	}
+	if len(providers) != writers {
+		t.Fatalf("expected %d providers recorded, got %d (lost updates)", writers, len(providers))
+	}
+	entries, err := os.ReadDir(filepath.Dir(statePath))
+	if err != nil {
+		t.Fatalf("readdir: %v", err)
+	}
+	for _, e := range entries {
+		if strings.Contains(e.Name(), ".tmp-") {
+			t.Fatalf("temp file left behind: %s", e.Name())
+		}
 	}
 }
 
