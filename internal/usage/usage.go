@@ -56,7 +56,7 @@ type UsageResult struct {
 func SelectedTools() []update.Tool {
 	order := viper.GetStringSlice("agent_order")
 	if len(order) == 0 {
-		order = []string{"agy", "claude", "commandcode", "cursor-agent", "copilot", "opencode", "codex"}
+		order = defaultProviderOrder()
 	}
 	enabledTools := viper.GetStringSlice("enabled_tools")
 	orderedTools := update.GetOrderedTools(order)
@@ -73,19 +73,9 @@ var usageFetchTimeout = 15 * time.Second
 // fires get an error UsageResult while finished results are preserved, so
 // callers always receive a usable payload (and `oct usage --json` always
 // emits the full structure).
-// providerFetchers maps tool binary names (and aliases) to their fetcher.
-// Package-level so tests can substitute fetchers.
-var providerFetchers = map[string]func(context.Context) UsageResult{
-	"agy":          FetchAntigravityUsage,
-	"antigravity":  FetchAntigravityUsage,
-	"gemini":       FetchAntigravityUsage,
-	"claude":       FetchClaudeUsage,
-	"commandcode":  FetchCommandCodeUsage,
-	"cursor-agent": FetchCursorUsage,
-	"copilot":      FetchCopilotUsage,
-	"opencode":     FetchOpenCodeUsage,
-	"codex":        FetchCodexUsage,
-}
+// providerFetchers (registry.go) maps binary names and aliases to fetchers;
+// it derives from the provider registry. Package-level var so tests can
+// substitute fetchers wholesale.
 
 func GetUsage(ctx context.Context) ([]UsageResult, error) {
 	if ctx == nil {
@@ -163,28 +153,11 @@ func RenderTable(w io.Writer, results []UsageResult) {
 }
 
 func colorizeProvider(label string, provider string) string {
-	p := strings.ToLower(provider)
-	code := ""
-	switch {
-	case strings.Contains(p, "antigravity"), strings.Contains(p, "gemini"):
-		code = "94"
-	case strings.Contains(p, "claude"):
-		code = "93"
-	case strings.Contains(p, "commandcode"), strings.Contains(p, "command code"):
-		code = "94"
-	case strings.Contains(p, "codex"), strings.Contains(p, "openai"):
-		code = "96"
-	case strings.Contains(p, "copilot"), strings.Contains(p, "github"):
-		code = "95"
-	case strings.Contains(p, "cursor"):
-		code = "94"
-	case strings.Contains(p, "opencode"):
-		code = "97"
-	}
-	if code == "" {
+	entry, ok := matchProvider(provider)
+	if !ok || entry.ColorCode == "" {
 		return label
 	}
-	return "\x1b[1;" + code + "m" + label + "\x1b[0m"
+	return "\x1b[1;" + entry.ColorCode + "m" + label + "\x1b[0m"
 }
 
 func colorizeStatus(label string, status string) string {
@@ -215,19 +188,10 @@ func providerDisplayLabel(provider string) string {
 	if !supportsProviderIcons() {
 		return provider
 	}
-	p := strings.ToLower(strings.TrimSpace(provider))
-	switch {
-	case strings.Contains(p, "antigravity"), strings.Contains(p, "gemini"):
-		return "✨ " + provider
-	case strings.Contains(p, "cursor"):
-		return "▣ " + provider
-	case strings.Contains(p, "opencode"):
-		return "🧩 " + provider
-	case strings.Contains(p, "commandcode"), strings.Contains(p, "command code"):
-		return "⌘ " + provider
-	default:
-		return provider
+	if entry, ok := matchProvider(provider); ok && entry.Label != "" {
+		return entry.Label + provider
 	}
+	return provider
 }
 
 func supportsProviderIcons() bool {

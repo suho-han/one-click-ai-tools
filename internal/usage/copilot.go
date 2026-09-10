@@ -299,7 +299,7 @@ func fetchCopilotQuotaUsage(ctx context.Context, base UsageResult, token string)
 		result.PlanSource = "github copilot_internal/user"
 	}
 	result.Message = "Usage fetched from GitHub Copilot quota API"
-	if os.Getenv("OCT_USAGE_DEBUG") == "1" {
+	if osDebugEnabled() {
 		remaining := snapshot.remainingPercent()
 		result.SourceDetail = fmt.Sprintf("premium_interactions_used=%.0f;limit=%d;remaining_percent=%.1f", used, limit, remaining)
 	}
