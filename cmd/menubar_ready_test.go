@@ -93,3 +93,18 @@ func TestMenubarCommandWritesDaemonStartedOnSuccess(t *testing.T) {
 		t.Fatalf("daemon output = %q, want menubar daemon started", got)
 	}
 }
+
+// TestWarnLegacyMenubarFallback pins that the silent demotion to the legacy
+// menubar now tells the user why (and how to fix it).
+func TestWarnLegacyMenubarFallback(t *testing.T) {
+	var buf bytes.Buffer
+	warnLegacyMenubarFallback(&buf)
+
+	msg := buf.String()
+	if !strings.Contains(msg, "Swift menubar helper not found") {
+		t.Fatalf("warning missing the reason, got: %q", msg)
+	}
+	if !strings.Contains(msg, "build-helper") || !strings.Contains(msg, "install-helper") {
+		t.Fatalf("warning missing remediation commands, got: %q", msg)
+	}
+}
