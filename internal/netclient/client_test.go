@@ -2,6 +2,7 @@ package netclient
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -125,6 +126,57 @@ func TestDoWithRetryAbortsWhenBackoffCanceled(t *testing.T) {
 	}
 	if got := atomic.LoadInt32(&attempts); got != 1 {
 		t.Errorf("Expected 1 attempt when backoff is canceled, got %d", got)
+	}
+}
+
+// fakeNetError lets tests pin the retry policy per error flavor.
+type fakeNetError struct{ timeout, temporary bool }
+
+func (e fakeNetError) Error() string   { return "fake net error" }
+func (e fakeNetError) Timeout() bool   { return e.timeout }
+func (e fakeNetError) Temporary() bool { return e.temporary }
+
+type errTransport struct {
+	err      error
+	attempts *int32
+}
+
+func (t errTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	atomic.AddInt32(t.attempts, 1)
+	return nil, t.err
+}
+
+// TestShouldRetryPolicy pins the transport-error retry semantics: timeouts
+// retry; deprecated Temporary()-only errors and plain errors do not.
+func TestShouldRetryPolicy(t *testing.T) {
+	tests := []struct {
+		name         string
+		err          error
+		wantAttempts int32
+	}{
+		{name: "timeout error retried", err: fakeNetError{timeout: true}, wantAttempts: 4},
+		{name: "temporary-only error not retried", err: fakeNetError{temporary: true}, wantAttempts: 1},
+		{name: "plain error not retried", err: errors.New("boom"), wantAttempts: 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			noRetrySleep(t)
+			var attempts int32
+			client := &Client{
+				HTTPClient: &http.Client{Transport: errTransport{err: tt.err, attempts: &attempts}},
+				MaxRetries: 3,
+			}
+			req, _ := http.NewRequest("GET", "http://example.invalid", nil)
+			resp, err := client.DoWithRetry(req)
+
+			if err == nil {
+				t.Fatalf("DoWithRetry() = %v, want the transport error", resp)
+			}
+			if got := atomic.LoadInt32(&attempts); got != tt.wantAttempts {
+				t.Errorf("attempts = %d, want %d", got, tt.wantAttempts)
+			}
+		})
 	}
 }
 
