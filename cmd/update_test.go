@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -165,5 +166,38 @@ func TestReplaceExecutable(t *testing.T) {
 	}
 	if string(data) != "new" {
 		t.Fatalf("target content = %q", data)
+	}
+}
+
+func TestInstalledViaBrewDetectsCellarFormula(t *testing.T) {
+	if _, err := exec.LookPath("brew"); err != nil {
+		t.Skip("brew not installed; the LookPath guard would always fail")
+	}
+
+	prefix := t.TempDir()
+	t.Setenv("HOMEBREW_PREFIX", prefix)
+	if installedViaBrew() {
+		t.Fatal("expected false without a Cellar formula")
+	}
+	if err := os.MkdirAll(filepath.Join(prefix, "Cellar", "one-click-tools"), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if !installedViaBrew() {
+		t.Fatal("expected true with a Cellar formula")
+	}
+}
+
+func TestWriteExtractedBinaryDetectsCloseErrors(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "oct")
+	if err := writeExtractedBinary(path, strings.NewReader("binary-bytes"), 0o755); err != nil {
+		t.Fatalf("writeExtractedBinary: %v", err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("stat: %v", err)
+	}
+	if info.Size() != int64(len("binary-bytes")) {
+		t.Fatalf("expected full write, got %d bytes", info.Size())
 	}
 }
