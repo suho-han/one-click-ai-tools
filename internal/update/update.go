@@ -68,7 +68,11 @@ func Run(ctx context.Context, opts ...Options) error {
 		return nil
 	}
 
-	plans := ExplainPlans(ctx, toolsToUpdate)
+	// Detection probes the same manager commands from multiple entry points;
+	// share one memoized cache for the detection phase only. The install loop
+	// below keeps the memo-free ctx so post-install version checks re-probe.
+	detectCtx := withProbeMemo(ctx)
+	plans := ExplainPlans(detectCtx, toolsToUpdate)
 	if config.Explain || config.DryRun {
 		printPlans(out, plans)
 	}
@@ -88,7 +92,7 @@ func Run(ctx context.Context, opts ...Options) error {
 		return nil
 	}
 
-	if runtime.GOOS == "darwin" && anyBrewManaged(ctx, toolsToUpdate) {
+	if runtime.GOOS == "darwin" && anyBrewManaged(detectCtx, toolsToUpdate) {
 		fmt.Fprintln(out, "Updating Homebrew...")
 		if brewOut, err := commandContextWithEnv(ctx, "brew", "update").CombinedOutput(); err != nil {
 			fmt.Fprintf(os.Stderr, "brew update failed: %v\n%s\n", err, brewOut)
