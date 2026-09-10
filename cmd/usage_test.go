@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -59,7 +60,7 @@ func captureCommandStdout(t *testing.T, fn func()) string {
 
 func TestUsageCommandPrintsCompactRemainingOutput(t *testing.T) {
 	orig := usageFetcher
-	usageFetcher = func() ([]usage.UsageResult, error) {
+	usageFetcher = func(ctx context.Context) ([]usage.UsageResult, error) {
 		return []usage.UsageResult{
 			{Provider: "codex", Unit: "percent", Used: "80.0", Buckets: map[string]string{"7d": "55.0"}},
 			{Provider: "claude-code", Unit: "percent", Used: "12.0", Buckets: map[string]string{"5h": "12.0"}},
@@ -115,7 +116,7 @@ func TestUsageHelpUsesAntigravityCanonicalWording(t *testing.T) {
 
 func TestUsageCommandReturnsErrorForJSONFetchFailure(t *testing.T) {
 	orig := usageFetcher
-	usageFetcher = func() ([]usage.UsageResult, error) {
+	usageFetcher = func(ctx context.Context) ([]usage.UsageResult, error) {
 		return nil, fmt.Errorf("boom")
 	}
 	defer func() { usageFetcher = orig }()
