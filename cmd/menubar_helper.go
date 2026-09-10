@@ -162,6 +162,16 @@ func swiftExecutableCandidates(env map[string]string) []string {
 	if explicit := strings.TrimSpace(env["OCT_MENUBAR_SWIFT_PATH"]); explicit != "" {
 		appendCandidate(explicit)
 	}
+	// Building the SwiftUI helper needs the macro plugins that full Xcode
+	// toolchains ship; the standalone CLT swift often lacks them (fails with
+	// "SwiftUIMacros ... not found"), so prefer discovered Xcode toolchains
+	// over PATH.
+	if devDir := strings.TrimSpace(env["DEVELOPER_DIR"]); devDir != "" {
+		appendCandidate(filepath.Join(devDir, "usr", "bin", "swift"))
+	}
+	for _, candidate := range xcodeToolchainSwiftCandidates(env) {
+		appendCandidate(candidate)
+	}
 	if rawPath := strings.TrimSpace(env["PATH"]); rawPath != "" {
 		for _, dir := range filepath.SplitList(rawPath) {
 			if strings.TrimSpace(dir) == "" {
@@ -171,6 +181,46 @@ func swiftExecutableCandidates(env map[string]string) []string {
 		}
 	}
 	appendCandidate("/usr/bin/swift")
+	return candidates
+}
+
+// xcodeToolchainSwiftCandidates finds swift front-ends inside installed
+// Xcode.app bundles: standard Applications locations plus the user's
+// Downloads folder, where beta releases commonly sit. Two layouts are probed
+// (Xcode ≤15 puts swift directly under Developer/usr/bin; newer ones nest it
+// in Toolchains/XcodeDefault.xctoolchain).
+func xcodeToolchainSwiftCandidates(env map[string]string) []string {
+	if runtime.GOOS != "darwin" {
+		return nil
+	}
+	roots := []string{"/Applications"}
+	if home := strings.TrimSpace(env["HOME"]); home != "" {
+		roots = append(roots, filepath.Join(home, "Applications"), filepath.Join(home, "Downloads"))
+	}
+
+	var candidates []string
+	for _, root := range roots {
+		// Enumeration works where TCC allows directory reads.
+		for _, pattern := range []string{
+			filepath.Join(root, "Xcode*.app", "Contents", "Developer", "usr", "bin", "swift"),
+			filepath.Join(root, "Xcode*.app", "Contents", "Developer", "Toolchains", "*.xctoolchain", "usr", "bin", "swift"),
+		} {
+			if matches, _ := filepath.Glob(pattern); len(matches) > 0 {
+				candidates = append(candidates, matches...)
+			}
+		}
+	}
+	// ~/Downloads denies directory enumeration behind TCC, but a fully
+	// specified path can still be probed — try well-known bundle names.
+	for _, root := range roots {
+		for _, name := range []string{"Xcode.app", "Xcode-beta.app"} {
+			dev := filepath.Join(root, name, "Contents", "Developer")
+			candidates = append(candidates,
+				filepath.Join(dev, "usr", "bin", "swift"),
+				filepath.Join(dev, "Toolchains", "XcodeDefault.xctoolchain", "usr", "bin", "swift"),
+			)
+		}
+	}
 	return candidates
 }
 
@@ -239,11 +289,39 @@ func buildMenubarHelper(projectDir string) error {
 	if runtime.GOOS != "darwin" {
 		return fmt.Errorf("menubar helper build is supported only on macOS")
 	}
-	cmd := exec.Command("swift", "build")
+	env := map[string]string{}
+	for _, entry := range os.Environ() {
+		if key, value, ok := strings.Cut(entry, "="); ok {
+			env[key] = value
+		}
+	}
+	swiftPath, searched := resolveSwiftExecutablePath(env)
+	if swiftPath == "" {
+		return fmt.Errorf("swift not found (searched: %s)", strings.Join(searched, ", "))
+	}
+	cmd := exec.Command(swiftPath, "build")
 	cmd.Dir = projectDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	// A toolchain swift invoked directly still picks its SDK via
+	// xcode-select (often the CLT SDK, whose SwiftUI lacks the macro
+	// plugins). Point DEVELOPER_DIR at the discovered Xcode so the driver
+	// uses that toolchain's SDK too.
+	if developerDir := xcodeDeveloperDirForSwift(swiftPath); developerDir != "" {
+		cmd.Env = append(os.Environ(), "DEVELOPER_DIR="+developerDir)
+	}
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("swift build failed (%s): %w", swiftPath, err)
+	}
+	return nil
+}
+
+func xcodeDeveloperDirForSwift(swiftPath string) string {
+	normalized := filepath.Clean(swiftPath)
+	if idx := strings.Index(normalized, "/Contents/Developer/"); idx >= 0 {
+		return normalized[:idx+len("/Contents/Developer")]
+	}
+	return ""
 }
 
 func installMenubarHelper(projectDir string) (string, error) {
@@ -273,13 +351,28 @@ func copyExecutableFile(src, dst string) error {
 		return err
 	}
 	defer in.Close()
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+
+	// Write to a temp file and rename: replacing the destination in place
+	// (O_TRUNC) can crash a helper process that is already running from it,
+	// while rename leaves the old inode intact for the running process.
+	tmpDst := dst + ".new"
+	out, err := os.OpenFile(tmpDst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
 	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		os.Remove(tmpDst)
 		return err
 	}
-	return out.Chmod(0o755)
+	if err := out.Chmod(0o755); err != nil {
+		out.Close()
+		os.Remove(tmpDst)
+		return err
+	}
+	if err := out.Close(); err != nil {
+		os.Remove(tmpDst)
+		return err
+	}
+	return os.Rename(tmpDst, dst)
 }
