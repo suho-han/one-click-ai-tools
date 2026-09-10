@@ -29,5 +29,6 @@ per-platform manual matrix.
 - [icons.md](icons.md): provider icon mapping and renderer fallback notes
 - [todo.md](todo.md): living list of future work
 - [code_review_2026-09-10.md](code_review_2026-09-10.md): dated code-review backlog snapshot (v0.1.5 baseline; `file:line` refs drift)
-- [improvement_plan_2026-09-10.md](improvement_plan_2026-09-10.md): execution plan (fix + test design) for the review's Top 10, with review corrections; not yet executed
+- [improvement_plan_2026-09-10.md](improvement_plan_2026-09-10.md): execution plan (fix + test design) for the review's Top 10, with review corrections; executed and pushed
+- [code_review_2026-09-11.md](code_review_2026-09-11.md): second full audit pass (error handling + inefficiencies missed by the first pass); fixes landed, deferred items documented
 - [opencode_quota_feature_spec.md](opencode_quota_feature_spec.md): feature spec for a planned `oct quota` command
