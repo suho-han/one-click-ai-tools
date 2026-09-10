@@ -154,7 +154,7 @@ func FetchOpenCodeUsage(ctx context.Context) UsageResult {
 		result.Status = "warn"
 		result.Message += " (" + strings.Join(nonOK, ", ") + ")"
 	}
-	if os.Getenv("OCT_USAGE_DEBUG") == "1" {
+	if osDebugEnabled() {
 		result.SourceDetail = fmt.Sprintf("auth_source=%s endpoint=%s", source, endpoint)
 	}
 

@@ -202,7 +202,7 @@ func parseCursorAPIResponse(body []byte) (UsageResult, error) {
 	} else {
 		result.Limit = "n/a"
 	}
-	if os.Getenv("OCT_USAGE_DEBUG") == "1" {
+	if osDebugEnabled() {
 		result.SourceDetail = strings.Join(modelParts, ";")
 	}
 
@@ -227,7 +227,7 @@ func FetchCursorLocalUsage() UsageResult {
 	if count > 0 {
 		result.Used = strconv.Itoa(count)
 		result.Message = "Estimated from local Cursor workspace storage"
-		if os.Getenv("OCT_USAGE_DEBUG") == "1" {
+		if osDebugEnabled() {
 			result.SourceDetail = strings.Join(paths, ";")
 		}
 	}
@@ -305,7 +305,7 @@ func parseCursorUsageResponse(body []byte) (UsageResult, error) {
 				}
 			}
 		}
-		if len(modelParts) > 0 && os.Getenv("OCT_USAGE_DEBUG") == "1" {
+		if len(modelParts) > 0 && osDebugEnabled() {
 			result.SourceDetail = strings.Join(modelParts, ";")
 		}
 	}

@@ -166,7 +166,7 @@ func FetchClaudeUsage(ctx context.Context) UsageResult {
 			result.Status = "warn"
 			result.Used = "n/a"
 			result.Message = "Claude usage API rate limited and no local cached usage found"
-			if os.Getenv("OCT_USAGE_DEBUG") == "1" {
+			if osDebugEnabled() {
 				result.SourceDetail = "http_status=429;cache=missing"
 			}
 			return result
@@ -215,7 +215,7 @@ func FetchClaudeUsage(ctx context.Context) UsageResult {
 			result.BucketResets["7d"] = data.SevenDay.ResetsAt
 		}
 	}
-	if os.Getenv("OCT_USAGE_DEBUG") == "1" {
+	if osDebugEnabled() {
 		result.SourceDetail = fmt.Sprintf("five_hour=%.1f;seven_day=%.1f", data.FiveHour.Utilization, data.SevenDay.Utilization)
 	}
 
@@ -446,7 +446,7 @@ func fetchClaudeCachedUsage(base UsageResult, home string, reason string) (Usage
 	if strings.TrimSpace(reason) != "" {
 		result.Message += " (" + reason + ")"
 	}
-	if os.Getenv("OCT_USAGE_DEBUG") == "1" {
+	if osDebugEnabled() {
 		details := []string{
 			"cache_fetched_at_ms=" + fmt.Sprintf("%d", cached.CachedUsageUtilization.FetchedAtMs),
 		}
