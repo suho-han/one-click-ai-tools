@@ -67,6 +67,9 @@ var menubarDoctorCmd = &cobra.Command{
 		} else {
 			fmt.Fprintln(cmd.OutOrStdout(), "- helper: not found")
 		}
+		if report.LaunchMode == "legacy-fallback" {
+			fmt.Fprintln(cmd.OutOrStdout(), "- note: no Swift helper was found, so the menubar runs the legacy systray UI. The Swift helper is the canonical path: build it with 'oct menubar build-helper' and install it with 'oct menubar install-helper'.")
+		}
 		if report.HelperProject != "" {
 			fmt.Fprintf(cmd.OutOrStdout(), "- helper project: %s\n", report.HelperProject)
 		}
