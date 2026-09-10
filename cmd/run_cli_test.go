@@ -94,3 +94,27 @@ func viperResetForTest(t *testing.T) {
 		viper.Reset()
 	})
 }
+
+// TestFlagHeavyCommandsDeclareExamples guards the learning-curve fix: the
+// flag-heavy commands must ship Examples (rendered as "Examples:" in help).
+func TestFlagHeavyCommandsDeclareExamples(t *testing.T) {
+	for _, tc := range []struct{ name, example string }{
+		{"monitor", monitorCmd.Example},
+		{"schedule", scheduleCmd.Example},
+		{"alert", alertCmd.Example},
+	} {
+		if strings.TrimSpace(tc.example) == "" {
+			t.Errorf("%s command has no Example", tc.name)
+		}
+	}
+
+	cfgPath := writeTempConfig(t)
+	viperResetForTest(t)
+	var stdout, stderr bytes.Buffer
+	if code := runCLI([]string{"--config", cfgPath, "monitor", "--help"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("monitor --help exit = %d, stderr: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Examples:") {
+		t.Fatalf("monitor help missing Examples section, got:\n%s", stdout.String())
+	}
+}

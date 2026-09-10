@@ -140,7 +140,7 @@ func TestPrintMonitorScreen_AutoCompactOnNarrowWidth(t *testing.T) {
 	out := captureStdout(t, func() {
 		printMonitorScreen([]usage.UsageResult{
 			{Provider: "codex", Unit: "percent", Used: "88", Limit: "100", Status: "warn", Message: "high usage", Buckets: map[string]string{"5h": "88", "7d": "55"}},
-		}, time.Now(), false)
+		}, time.Now(), false, false)
 	})
 
 	if !strings.Contains(out, "provider") || !strings.Contains(out, "sev") {
@@ -157,7 +157,7 @@ func TestPrintMonitorScreen_TruncatesMessageByWidth(t *testing.T) {
 	out := captureStdout(t, func() {
 		printMonitorScreen([]usage.UsageResult{
 			{Provider: "codex", Unit: "percent", Used: "88", Limit: "100", Status: "warn", Message: longMsg, Buckets: map[string]string{"5h": "88", "7d": "55"}},
-		}, time.Now(), false)
+		}, time.Now(), false, false)
 	})
 
 	if !strings.Contains(out, "message") {
@@ -185,4 +185,40 @@ func captureStdout(t *testing.T, fn func()) string {
 		t.Fatalf("read captured stdout failed: %v", err)
 	}
 	return string(b)
+}
+
+func sampleMonitorResults() []usage.UsageResult {
+	return []usage.UsageResult{
+		{Provider: "codex", Unit: "percent", Used: "88", Limit: "100", Status: "warn", Message: "high usage", Buckets: map[string]string{"5h": "88", "7d": "55"}},
+	}
+}
+
+// TestPrintMonitorScreenInteractiveVsPiped pins the TTY contract: piped
+// output carries no screen-clear escape and no control hints; interactive
+// output keeps both.
+func TestPrintMonitorScreenInteractiveVsPiped(t *testing.T) {
+	t.Setenv("COLUMNS", "120")
+
+	piped := captureStdout(t, func() {
+		printMonitorScreen(sampleMonitorResults(), time.Now(), false, false)
+	})
+	if strings.Contains(piped, "\x1b[H") || strings.Contains(piped, "\x1b[2J") {
+		t.Fatalf("piped output must not clear the screen, got: %q", piped)
+	}
+	if strings.Contains(piped, "Ctrl+C to stop") {
+		t.Fatalf("piped output must not print control hints, got: %q", piped)
+	}
+	if !strings.Contains(piped, "provider") {
+		t.Fatalf("piped output still renders the table, got: %q", piped)
+	}
+
+	interactive := captureStdout(t, func() {
+		printMonitorScreen(sampleMonitorResults(), time.Now(), false, true)
+	})
+	if !strings.Contains(interactive, "\x1b[H\x1b[2J") {
+		t.Fatalf("interactive output should clear the screen, got: %q", interactive)
+	}
+	if !strings.Contains(interactive, "Ctrl+C to stop") {
+		t.Fatalf("interactive output should hint Ctrl+C, got: %q", interactive)
+	}
 }

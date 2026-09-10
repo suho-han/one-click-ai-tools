@@ -14,10 +14,29 @@ import (
 	"github.com/suho-han/one-click-ai-tools/internal/usage"
 )
 
+// monitorIsTTY reports whether stdout is an interactive terminal; swap in
+// tests. Non-TTY runs (pipes, cron, `--once | tee`) get plain output.
+var monitorIsTTY = func() bool {
+	fi, err := os.Stdout.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
+}
+
 var monitorCmd = &cobra.Command{
 	Use:     "monitor",
 	GroupID: "core",
 	Short:   "Always-on usage monitoring screen",
+	Long: `Keep refreshing a live usage table for all enabled providers.
+
+Runs until interrupted on a terminal. Piped or non-interactive stdout
+(e.g. oct monitor --once | tee file) automatically switches to plain
+one-shot text: no screen clearing and no control hints.`,
+	Example: `  oct monitor                          live full-screen view (default 30s refresh)
+  oct monitor --once                   one snapshot and exit
+  oct monitor --compact --interval 10s compact columns, faster refresh
+  oct monitor --once | tee usage.txt   piped runs print plain text`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		interval, _ := cmd.Flags().GetDuration("interval")
 		statePath, _ := cmd.Flags().GetString("state-path")
@@ -30,6 +49,7 @@ var monitorCmd = &cobra.Command{
 		if interval <= 0 {
 			interval = 30 * time.Second
 		}
+		interactive := monitorIsTTY()
 
 		runOnce := func() {
 			results, err := usage.GetUsage(cmd.Context())
@@ -45,7 +65,7 @@ var monitorCmd = &cobra.Command{
 			if top > 0 && top < len(results) {
 				results = results[:top]
 			}
-			printMonitorScreen(results, now, compact)
+			printMonitorScreen(results, now, compact, interactive)
 			if err := usage.SaveSnapshot(statePath, results, now); err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "snapshot write error: %v\n", err)
 			}
@@ -65,7 +85,7 @@ var monitorCmd = &cobra.Command{
 	},
 }
 
-func printMonitorScreen(results []usage.UsageResult, now time.Time, compact bool) {
+func printMonitorScreen(results []usage.UsageResult, now time.Time, compact bool, interactive bool) {
 	width := monitorTerminalWidth()
 	if width <= 100 {
 		compact = true
@@ -82,7 +102,9 @@ func printMonitorScreen(results []usage.UsageResult, now time.Time, compact bool
 		usedColumnLabel = "remaining"
 	}
 
-	fmt.Print("\033[H\033[2J") // clear screen
+	if interactive {
+		fmt.Print("\033[H\033[2J") // clear screen
+	}
 	fmt.Printf("oct monitor  |  %s\n", now.Format("2006-01-02 15:04:05"))
 	fmt.Println(strings.Repeat("-", width))
 	if compact {
@@ -131,7 +153,9 @@ func printMonitorScreen(results []usage.UsageResult, now time.Time, compact bool
 
 	fmt.Println()
 	fmt.Printf("snapshot: %s\n", usage.DefaultSnapshotPath())
-	fmt.Println("Ctrl+C to stop")
+	if interactive {
+		fmt.Println("Ctrl+C to stop")
+	}
 }
 
 var ansiEscapePattern = regexp.MustCompile(`\x1b\[[0-9;]*m`)

@@ -23,6 +23,14 @@ var alertCmd = &cobra.Command{
 	Use:     "alert",
 	GroupID: "manage",
 	Short:   "Usage alert configuration and testing",
+	Long: `Configure threshold-based OS alerts for provider usage and test the
+alert decision with synthetic values.`,
+	Example: `  oct alert config show
+  oct alert config set enabled true
+  oct alert config set threshold_percent 85
+  oct alert config set-provider-threshold 5h 90 --provider codex
+  oct alert snooze set --duration 2h
+  oct alert test --provider codex --window 5h --value 91`,
 }
 
 var alertConfigCmd = &cobra.Command{
