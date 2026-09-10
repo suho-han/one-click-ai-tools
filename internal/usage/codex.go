@@ -51,8 +51,8 @@ func FetchCodexUsage(ctx context.Context) UsageResult {
 		return result
 	}
 
-	// Sort to get the latest file by name (which includes timestamp)
-	sort.Strings(logFiles)
+	// collectCodexLogFiles returns names sorted by timestamp, so the latest
+	// log is the last entry.
 	latestLog := logFiles[len(logFiles)-1]
 
 	file, err := os.Open(latestLog)
