@@ -359,15 +359,7 @@ func usageRemaining(raw string, unit string) (string, bool) {
 	if !strings.EqualFold(unit, "percent") {
 		return "", false
 	}
-	f, err := strconvParse(raw)
-	if err != nil {
-		return "", false
-	}
-	rem := 100 - f
-	if rem < 0 {
-		rem = 0
-	}
-	return fmt.Sprintf("%.1f", rem), true
+	return usage.RemainingFromUsedPercent(raw)
 }
 
 // bucketVal resolves a bucket's display value for oct monitor's fixed-width

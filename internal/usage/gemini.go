@@ -68,7 +68,7 @@ func fetchAntigravityCLIUsage(ctx context.Context, base UsageResult) (UsageResul
 	maxUsed := 0.0
 	debugParts := make([]string, 0, len(rows))
 	for _, row := range rows {
-		used := percentUsedFromRemaining(row.Remaining)
+		used := UsedFromRemainingPercent(row.Remaining)
 		if used > maxUsed {
 			maxUsed = used
 		}
@@ -159,17 +159,6 @@ func antigravityCLIUsageBucketLabel(label string) string {
 	default:
 		return strings.TrimSpace(label)
 	}
-}
-
-func percentUsedFromRemaining(remaining float64) float64 {
-	used := 100 - remaining
-	if used < 0 {
-		return 0
-	}
-	if used > 100 {
-		return 100
-	}
-	return used
 }
 
 func osDebugEnabled() bool {
