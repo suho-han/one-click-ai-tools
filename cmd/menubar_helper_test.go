@@ -192,7 +192,7 @@ func TestIsMenubarStopTarget(t *testing.T) {
 		{
 			name:    "Unrelated command mentioning menubar docs",
 			pid:     106,
-			command: "vim CONTEXT/ko/MENUBAR_HELPER_OPERATIONS.md",
+			command: "vim CONTEXT/menubar_helper_operations.md",
 			want:    false,
 		},
 	}
@@ -204,5 +204,113 @@ func TestIsMenubarStopTarget(t *testing.T) {
 				t.Fatalf("isMenubarStopTarget(%d, %d, %q) = %v, want %v", tt.pid, currentPID, tt.command, got, tt.want)
 			}
 		})
+	}
+}
+
+func makeFakeSwift(t *testing.T, path string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestSwiftExecutableCandidatesPrefersXcodeOverPath pins the fix for hosts
+// whose PATH swift is the standalone CLT (no SwiftUI macro plugins): a full
+// Xcode toolchain — DEVELOPER_DIR, /Applications, ~/Downloads, ~/Applications
+// — must win over PATH.
+func TestSwiftExecutableCandidatesPrefersXcodeOverPath(t *testing.T) {
+	temp := t.TempDir()
+	devDirSwift := filepath.Join(temp, "Developer", "usr", "bin", "swift")
+	makeFakeSwift(t, devDirSwift)
+	downloadsSwift := filepath.Join(temp, "Downloads", "Xcode-beta.app", "Contents", "Developer", "usr", "bin", "swift")
+	makeFakeSwift(t, downloadsSwift)
+
+	candidates := swiftExecutableCandidates(map[string]string{
+		"HOME":          temp,
+		"DEVELOPER_DIR": filepath.Join(temp, "Developer"),
+		"PATH":          "/usr/bin:/bin:/usr/local/bin",
+	})
+
+	if candidates[0] != devDirSwift {
+		t.Fatalf("candidates[0] = %q, want DEVELOPER_DIR swift %q", candidates[0], devDirSwift)
+	}
+	if candidates[1] != downloadsSwift {
+		t.Fatalf("candidates[1] = %q, want discovered Downloads Xcode swift %q", candidates[1], downloadsSwift)
+	}
+	for _, c := range candidates {
+		if c == "/usr/bin/swift" {
+			return // PATH candidates still present as fallback
+		}
+	}
+	t.Fatalf("PATH swift missing from candidates: %v", candidates)
+}
+
+func TestSwiftExecutableCandidatesDiscoverDownloadsXcodeWithoutDeveloperDir(t *testing.T) {
+	temp := t.TempDir()
+	downloadsSwift := filepath.Join(temp, "Downloads", "Xcode-beta.app", "Contents", "Developer", "usr", "bin", "swift")
+	makeFakeSwift(t, downloadsSwift)
+
+	resolved, searched := resolveSwiftExecutablePath(map[string]string{
+		"HOME": temp,
+		"PATH": "/usr/bin:/bin",
+	})
+	if resolved != downloadsSwift {
+		t.Fatalf("resolved = %q, want Downloads Xcode swift %q", resolved, downloadsSwift)
+	}
+	if len(searched) == 0 || searched[0] != downloadsSwift {
+		t.Fatalf("searched[0] = %v, want Xcode swift first", searched)
+	}
+}
+
+// TestCopyExecutableFileReplacesAtomically verifies install over a live
+// helper: the destination is replaced via rename, so a concurrently running
+// process keeps its old inode and the ".new" temp never survives.
+func TestCopyExecutableFileReplacesAtomically(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src")
+	dst := filepath.Join(dir, "dst")
+	if err := os.WriteFile(src, []byte("new-bytes"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dst, []byte("old-bytes"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := copyExecutableFile(src, dst); err != nil {
+		t.Fatalf("copyExecutableFile() error = %v", err)
+	}
+	data, err := os.ReadFile(dst)
+	if err != nil || string(data) != "new-bytes" {
+		t.Fatalf("dst = %q (err=%v), want new-bytes", data, err)
+	}
+	if _, err := os.Stat(dst + ".new"); !os.IsNotExist(err) {
+		t.Fatalf("temp file survived: %v", err)
+	}
+	info, err := os.Stat(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o755 {
+		t.Fatalf("dst perms = %o, want 755", perm)
+	}
+}
+
+func TestXcodeDeveloperDirForSwift(t *testing.T) {
+	tests := []struct {
+		swiftPath string
+		want      string
+	}{
+		{swiftPath: "/Applications/Xcode.app/Contents/Developer/usr/bin/swift", want: "/Applications/Xcode.app/Contents/Developer"},
+		{swiftPath: "/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin/swift", want: "/Applications/Xcode.app/Contents/Developer"},
+		{swiftPath: "/usr/bin/swift", want: ""},
+		{swiftPath: "/opt/homebrew/bin/swift", want: ""},
+	}
+	for _, tt := range tests {
+		if got := xcodeDeveloperDirForSwift(tt.swiftPath); got != tt.want {
+			t.Errorf("xcodeDeveloperDirForSwift(%q) = %q, want %q", tt.swiftPath, got, tt.want)
+		}
 	}
 }
