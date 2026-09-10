@@ -1,18 +1,13 @@
 package usage
 
 import (
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
-
-	"github.com/suho-han/one-click-ai-tools/internal/netclient"
 )
 
 func TestDetectPlanFromJWTToken_OpenAIPlanClaim(t *testing.T) {
@@ -51,41 +46,6 @@ func TestDetectClaudeLocalConfigPlan_UsesHeuristicFlag(t *testing.T) {
 		t.Fatalf("plan = %q, want pro", plan)
 	}
 	if !strings.Contains(source, "opusProMigrationComplete") {
-		t.Fatalf("source = %q", source)
-	}
-}
-
-func TestDetectCopilotBillingPlanSource_Reports404AsNoPublicPlanField(t *testing.T) {
-	origOutput := usageCommandOutput
-	origClient := netclient.DefaultClient
-	defer func() {
-		usageCommandOutput = origOutput
-		netclient.DefaultClient = origClient
-	}()
-	usageCommandOutput = func(ctx context.Context, timeout time.Duration, name string, args ...string) (string, error) {
-		return "test-token", nil
-	}
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		switch r.URL.Path {
-		case "/user":
-			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"login":"suho-han"}`))
-		case "/users/suho-han/settings/billing/premium_request/usage":
-			http.NotFound(w, r)
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer server.Close()
-	netclient.DefaultClient = &netclient.Client{HTTPClient: server.Client(), MaxRetries: 0}
-	origTransport := server.Client().Transport
-	server.Client().Transport = rewriteHostTransport{base: origTransport, target: server.URL}
-	if netclient.DefaultClient.HTTPClient == nil {
-		t.Fatal("missing http client")
-	}
-	netclient.DefaultClient.HTTPClient.Transport = rewriteHostTransport{base: origTransport, target: server.URL}
-	source := detectCopilotBillingPlanSource(t.Context())
-	if !strings.Contains(source, "404") || !strings.Contains(source, "no public plan field") {
 		t.Fatalf("source = %q", source)
 	}
 }

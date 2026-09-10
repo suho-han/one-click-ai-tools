@@ -29,8 +29,6 @@ func FetchCopilotLocalUsage(ctx context.Context) UsageResult {
 		Status:     "ok",
 	}
 
-	result = withPlanDetection(ctx, result, detectCopilotPlan)
-
 	home, _ := os.UserHomeDir()
 	sessionDir := filepath.Join(home, ".copilot", "session-state")
 
@@ -100,8 +98,6 @@ func FetchCopilotUsage(ctx context.Context) UsageResult {
 		Source:     "api",
 		Status:     "error",
 	}
-
-	result = withPlanDetection(ctx, result, detectCopilotPlan)
 
 	token := viper.GetString("github_api_token")
 	if token == "" {
@@ -184,6 +180,10 @@ func FetchCopilotUsage(ctx context.Context) UsageResult {
 		result.Message = netclient.FormatError(resp, nil)
 		return result
 	}
+
+	// The billing API reports usage but never a plan; say so once instead of
+	// probing it twice per refresh for plan detection.
+	result.PlanSource = "github billing api exposes usage only, not plan"
 
 	body, _ := io.ReadAll(resp.Body)
 	var data struct {
