@@ -94,7 +94,7 @@ var menubarBuildHelperCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		return buildMenubarHelper(projectDir)
+		return buildMenubarHelper(cmd.Context(), projectDir, cmd.OutOrStdout(), cmd.ErrOrStderr())
 	},
 }
 

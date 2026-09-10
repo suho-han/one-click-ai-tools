@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -285,7 +286,7 @@ func commandLooksLikeOctProcess(fields []string) bool {
 	return false
 }
 
-func buildMenubarHelper(projectDir string) error {
+func buildMenubarHelper(ctx context.Context, projectDir string, stdout, stderr io.Writer) error {
 	if runtime.GOOS != "darwin" {
 		return fmt.Errorf("menubar helper build is supported only on macOS")
 	}
@@ -299,10 +300,10 @@ func buildMenubarHelper(projectDir string) error {
 	if swiftPath == "" {
 		return fmt.Errorf("swift not found (searched: %s)", strings.Join(searched, ", "))
 	}
-	cmd := exec.Command(swiftPath, "build")
+	cmd := exec.CommandContext(ctx, swiftPath, "build")
 	cmd.Dir = projectDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = stdout
+	cmd.Stderr = stderr
 	// A toolchain swift invoked directly still picks its SDK via
 	// xcode-select (often the CLT SDK, whose SwiftUI lacks the macro
 	// plugins). Point DEVELOPER_DIR at the discovered Xcode so the driver

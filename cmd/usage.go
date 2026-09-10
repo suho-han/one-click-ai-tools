@@ -21,12 +21,19 @@ type usageModel struct {
 	spinner      int
 	orderedTools []update.Tool
 	activeIdx    int
+	// ctx carries the command's cancellation into the TUI fetch; nil falls
+	// back to context.Background().
+	ctx context.Context
 }
 
 func (m usageModel) Init() tea.Cmd {
+	fetchCtx := m.ctx
+	if fetchCtx == nil {
+		fetchCtx = context.Background()
+	}
 	return tea.Batch(
 		func() tea.Msg {
-			res, err := usageFetcher(context.Background())
+			res, err := usageFetcher(fetchCtx)
 			if err != nil {
 				return err
 			}
@@ -162,6 +169,7 @@ Legacy aliases 'gemini' and 'gemini-cli' still map to 'agy' for compatibility.`,
 
 		m := usageModel{
 			orderedTools: selectedTools,
+			ctx:          cmd.Context(),
 		}
 		p := tea.NewProgram(m)
 
@@ -176,7 +184,10 @@ Legacy aliases 'gemini' and 'gemini-cli' still map to 'agy' for compatibility.`,
 			return fmt.Errorf("run usage ui: %w", err)
 		}
 
-		fm := finalModel.(usageModel)
+		fm, ok := finalModel.(usageModel)
+		if !ok {
+			return fmt.Errorf("unexpected usage ui model type %T", finalModel)
+		}
 		if fm.err != nil {
 			return fmt.Errorf("fetch usage: %w", fm.err)
 		}

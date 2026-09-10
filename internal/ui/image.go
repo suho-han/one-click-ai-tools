@@ -25,6 +25,9 @@ var (
 	rendererChoice iconRenderer
 	iconStyleOnce  sync.Once
 	iconStyle      string
+
+	iconCacheMu sync.RWMutex
+	iconCache   = map[string]image.Image{}
 )
 
 func getIconStyle() string {
@@ -162,6 +165,16 @@ func printANSIFromPNG(name string, size int) bool {
 }
 
 func renderIconPNG(name string) (image.Image, error) {
+	// Icons are embedded constants; decode each once and reuse. InlineIcon
+	// rendering runs per tool inside table loops, so re-reading and
+	// re-decoding the PNG each call is measurable startup cost.
+	iconCacheMu.RLock()
+	img, ok := iconCache[name]
+	iconCacheMu.RUnlock()
+	if ok {
+		return img, nil
+	}
+
 	p := getEmbeddedIconPath(name)
 	if p == "" {
 		return nil, fmt.Errorf("empty icon path")
@@ -170,10 +183,14 @@ func renderIconPNG(name string) (image.Image, error) {
 	if err != nil {
 		return nil, err
 	}
-	img, err := png.Decode(bytes.NewReader(data))
+	img, err = png.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil, err
 	}
+
+	iconCacheMu.Lock()
+	iconCache[name] = img
+	iconCacheMu.Unlock()
 	return img, nil
 }
 

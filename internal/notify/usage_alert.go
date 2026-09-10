@@ -1,6 +1,7 @@
 package notify
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -378,15 +379,21 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	return os.Rename(tmpName, path)
 }
 
+// notifyCommandTimeout bounds the OS notification subprocess (osascript can
+// otherwise block indefinitely on a permission dialog).
+var notifyCommandTimeout = 15 * time.Second
+
 func sendOSNotification(title, message string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), notifyCommandTimeout)
+	defer cancel()
 	switch runtime.GOOS {
 	case "darwin":
-		return exec.Command("osascript", "-e", fmt.Sprintf("display notification %q with title %q", message, title)).Run()
+		return exec.CommandContext(ctx, "osascript", "-e", fmt.Sprintf("display notification %q with title %q", message, title)).Run()
 	case "linux":
-		return exec.Command("notify-send", title, message).Run()
+		return exec.CommandContext(ctx, "notify-send", title, message).Run()
 	case "windows":
 		ps := fmt.Sprintf("[System.Reflection.Assembly]::LoadWithPartialName('System.Windows.Forms') | Out-Null; [System.Windows.Forms.MessageBox]::Show(%q,%q)", message, title)
-		return exec.Command("powershell", "-NoProfile", "-Command", ps).Run()
+		return exec.CommandContext(ctx, "powershell", "-NoProfile", "-Command", ps).Run()
 	default:
 		return fmt.Errorf("unsupported OS for notification")
 	}

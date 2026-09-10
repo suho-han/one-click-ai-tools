@@ -122,7 +122,6 @@ var alertTestCmd = &cobra.Command{
 		r := usage.UsageResult{Provider: provider, Unit: "percent", Used: fmt.Sprintf("%.1f", value), Buckets: map[string]string{window: fmt.Sprintf("%.1f", value)}}
 		now := time.Now()
 		if quietNow {
-			viper.Set("usage_alert_quiet_hours", "00:00-23:59")
 			cfg.QuietHours = "00:00-23:59"
 		}
 		if err := notify.MaybeSendUsageAlerts([]usage.UsageResult{r}, cfg, now); err != nil {
