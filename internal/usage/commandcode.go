@@ -4,8 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
+	"github.com/suho-han/one-click-ai-tools/internal/netclient"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -229,32 +228,16 @@ func fetchCommandCodeJSON(ctx context.Context, apiKey, endpoint string, params m
 		}
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "GET", reqURL, nil)
-	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+	// 15s ceiling per call, derived from the caller's ctx; retries follow
+	// the shared netclient policy.
+	callCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+	headers := map[string]string{
+		"Authorization": "Bearer " + apiKey,
+		"Accept":        "application/json",
+		"User-Agent":    "one-click-tools/1.0",
 	}
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "one-click-tools/1.0")
-
-	client := &http.Client{Timeout: 15 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return fmt.Errorf("failed to read response: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncateText(string(body), 160))
-	}
-	if err := json.Unmarshal(body, target); err != nil {
-		return fmt.Errorf("failed to parse response: %w", err)
-	}
-	return nil
+	return netclient.DefaultClient.GetJSON(callCtx, reqURL, headers, target)
 }
 
 func resolveCommandCodeAPIKey() (string, string) {
