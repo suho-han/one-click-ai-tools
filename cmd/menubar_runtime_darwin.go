@@ -3,6 +3,7 @@
 package cmd
 
 import (
+	"context"
 	"os/exec"
 	"time"
 
@@ -68,7 +69,7 @@ func (ui *menubarUI) refreshUsage() {
 	ui.refreshItem.Disable()
 	ui.applySnapshot(buildMenubarLoadingSnapshot(ui.toolNames))
 
-	results, err := menubarFetchUsage()
+	results, err := menubarFetchUsage(context.Background())
 	now := time.Now()
 	if err != nil {
 		ui.applySnapshot(buildMenubarErrorSnapshot(ui.toolNames, now, err))

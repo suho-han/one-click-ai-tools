@@ -1,6 +1,7 @@
 package usage
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,8 +16,11 @@ import (
 	"github.com/suho-han/one-click-ai-tools/internal/netclient"
 )
 
-// execCommand is a variable to allow testing with mocked commands
-var execCommand = exec.Command
+// execCommand is a variable to allow testing with mocked commands.
+// ctx-aware so a hung keychain helper is killed by the fetch deadline.
+var execCommand = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+	return exec.CommandContext(ctx, name, args...)
+}
 var claudeUsageCommandOutput = commandOutput
 
 type claudeOAuthToken struct {
@@ -29,7 +33,7 @@ type claudeOAuthToken struct {
 	RateLimitTier         string   `json:"rateLimitTier"`
 }
 
-func FetchClaudeUsage() UsageResult {
+func FetchClaudeUsage(ctx context.Context) UsageResult {
 	home, _ := os.UserHomeDir()
 	credsFile := filepath.Join(home, ".claude", ".credentials.json")
 
@@ -51,7 +55,7 @@ func FetchClaudeUsage() UsageResult {
 	var keychainSubscription string
 
 	// Try macOS Keychain first for Claude Code-credentials
-	cmd := execCommand("security", "find-generic-password", "-s", "Claude Code-credentials", "-w")
+	cmd := execCommand(ctx, "security", "find-generic-password", "-s", "Claude Code-credentials", "-w")
 	out, err := cmd.Output()
 	if err == nil && len(out) > 0 {
 		var keychainCreds struct {
@@ -128,17 +132,21 @@ func FetchClaudeUsage() UsageResult {
 			result.Used = "0"
 			result.Message = "No Claude OAuth token found (check ~/.claude/.credentials.json or CLAUDE_API_TOKEN)"
 		}
-		if cliResult, ok := fetchClaudeCLIUsage(result, "oauth token unavailable"); ok {
+		if cliResult, ok := fetchClaudeCLIUsage(ctx, result, "oauth token unavailable"); ok {
 			return cliResult
 		}
 		return result
 	}
 
-	plan, source := detectClaudePlan(token)
+	plan, source := detectClaudePlan(ctx, token)
 	result = withPlan(result, plan, source)
 
 	endpoint := "https://api.anthropic.com/api/oauth/usage"
-	req, _ := http.NewRequest("GET", endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+	if err != nil {
+		result.Message = fmt.Sprintf("build usage request failed: %v", err)
+		return result
+	}
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("anthropic-beta", "oauth-2025-04-20")
@@ -164,7 +172,7 @@ func FetchClaudeUsage() UsageResult {
 			return result
 		}
 		if resp.StatusCode == http.StatusUnauthorized {
-			if cliResult, ok := fetchClaudeCLIUsage(result, "OAuth API unauthorized"); ok {
+			if cliResult, ok := fetchClaudeCLIUsage(ctx, result, "OAuth API unauthorized"); ok {
 				return cliResult
 			}
 			result.Status = "error"
@@ -218,7 +226,7 @@ func FetchClaudeUsage() UsageResult {
 		result.Used = fmt.Sprintf("%.1f", data.SevenDay.Utilization)
 		result.Message = "Usage fetched from Anthropic OAuth API (7d bucket)"
 	} else {
-		if cliResult, ok := fetchClaudeCLIUsage(result, "API reported no utilization"); ok {
+		if cliResult, ok := fetchClaudeCLIUsage(ctx, result, "API reported no utilization"); ok {
 			return cliResult
 		}
 		result.Used = "0"
@@ -236,8 +244,8 @@ type claudeCLIUsageWindow struct {
 	ResetAt string
 }
 
-func fetchClaudeCLIUsage(base UsageResult, reason string) (UsageResult, bool) {
-	out, err := claudeUsageCommandOutput(20*time.Second, "claude", "--print", "/usage", "--output-format", "json")
+func fetchClaudeCLIUsage(ctx context.Context, base UsageResult, reason string) (UsageResult, bool) {
+	out, err := claudeUsageCommandOutput(ctx, 20*time.Second, "claude", "--print", "/usage", "--output-format", "json")
 	if err != nil || strings.TrimSpace(out) == "" {
 		return base, false
 	}

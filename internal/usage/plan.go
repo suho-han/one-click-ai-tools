@@ -24,8 +24,8 @@ func withPlan(result UsageResult, plan string, source string) UsageResult {
 	return result
 }
 
-func withPlanDetection(result UsageResult, detector func() (string, string)) UsageResult {
-	plan, source := detector()
+func withPlanDetection(ctx context.Context, result UsageResult, detector func(context.Context) (string, string)) UsageResult {
+	plan, source := detector(ctx)
 	return withPlan(result, plan, source)
 }
 
@@ -45,7 +45,8 @@ func normalizePlanSource(source string) string {
 	return source
 }
 
-func detectCodexPlan() (string, string) {
+func detectCodexPlan(ctx context.Context) (string, string) {
+	_ = ctx // no blocking I/O beyond file reads
 	home, ok := codexHomePath()
 	if !ok {
 		return "unknown", "codex auth unavailable"
@@ -69,8 +70,8 @@ func detectCodexPlan() (string, string) {
 	return "unknown", "codex auth.jwt has no plan claim"
 }
 
-func detectCursorPlan() (string, string) {
-	if output, err := usageCommandOutput(3*time.Second, "cursor-agent", "about"); err == nil {
+func detectCursorPlan(ctx context.Context) (string, string) {
+	if output, err := usageCommandOutput(ctx, 3*time.Second, "cursor-agent", "about"); err == nil {
 		if plan := parseCursorAboutPlan(output); plan != "" {
 			return plan, "cursor-agent about"
 		}
@@ -83,7 +84,7 @@ func detectCursorPlan() (string, string) {
 	return "unknown", "cursor plan not exposed"
 }
 
-func detectClaudePlan(token string) (string, string) {
+func detectClaudePlan(ctx context.Context, token string) (string, string) {
 	if plan := detectPlanFromJWTToken(token); plan != "" {
 		return plan, "claude oauth token claim"
 	}
@@ -93,26 +94,28 @@ func detectClaudePlan(token string) (string, string) {
 	return "unknown", "claude plan not exposed"
 }
 
-func detectCopilotPlan() (string, string) {
-	if source := detectCopilotBillingPlanSource(); source != "" {
+func detectCopilotPlan(ctx context.Context) (string, string) {
+	if source := detectCopilotBillingPlanSource(ctx); source != "" {
 		return "unknown", source
 	}
 	return "unknown", "github copilot plan not exposed by current api integration"
 }
 
-func detectOpenCodePlan() (string, string) {
+func detectOpenCodePlan(ctx context.Context) (string, string) {
+	_ = ctx
 	return "unknown", "local opencode session logs do not expose plan"
 }
 
-func detectAntigravityPlan() (string, string) {
+func detectAntigravityPlan(ctx context.Context) (string, string) {
+	_ = ctx
 	return "unknown", "antigravity cli does not expose tier; see app settings"
 }
 
-func defaultUsageCommandOutput(timeout time.Duration, name string, args ...string) (string, error) {
+func defaultUsageCommandOutput(parent context.Context, timeout time.Duration, name string, args ...string) (string, error) {
 	if timeout <= 0 {
 		timeout = 3 * time.Second
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, name, args...)
 	out, err := cmd.CombinedOutput()
@@ -167,12 +170,15 @@ func detectClaudeLocalConfigPlan() (string, string) {
 	return "", ""
 }
 
-func detectCopilotBillingPlanSource() string {
-	token, source := resolveCopilotAuthTokenForPlan()
+func detectCopilotBillingPlanSource(ctx context.Context) string {
+	token, source := resolveCopilotAuthTokenForPlan(ctx)
 	if strings.TrimSpace(token) == "" {
 		return "github copilot auth token unavailable for plan lookup"
 	}
-	req, _ := http.NewRequest("GET", "https://api.github.com/user", nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://api.github.com/user", nil)
+	if err != nil {
+		return fmt.Sprintf("copilot plan lookup failed via %s: %s", source, err)
+	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("Authorization", "Bearer "+token)
 	resp, err := netclient.DefaultClient.DoWithRetry(req)
@@ -187,7 +193,10 @@ func detectCopilotBillingPlanSource() string {
 	if resp.StatusCode != http.StatusOK || json.Unmarshal(body, &userData) != nil || strings.TrimSpace(userData.Login) == "" {
 		return fmt.Sprintf("copilot plan lookup failed via %s: github /user unavailable", source)
 	}
-	billingReq, _ := http.NewRequest("GET", fmt.Sprintf("https://api.github.com/users/%s/settings/billing/premium_request/usage", userData.Login), nil)
+	billingReq, billingErr2 := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("https://api.github.com/users/%s/settings/billing/premium_request/usage", userData.Login), nil)
+	if billingErr2 != nil {
+		return fmt.Sprintf("copilot billing lookup failed via %s: %s", source, billingErr2)
+	}
 	billingReq.Header.Set("Accept", "application/vnd.github+json")
 	billingReq.Header.Set("Authorization", "Bearer "+token)
 	billingReq.Header.Set("X-GitHub-Api-Version", "2026-03-10")
@@ -205,7 +214,7 @@ func detectCopilotBillingPlanSource() string {
 	return fmt.Sprintf("copilot billing api via %s exposes usage only, not plan", source)
 }
 
-func resolveCopilotAuthTokenForPlan() (string, string) {
+func resolveCopilotAuthTokenForPlan(ctx context.Context) (string, string) {
 	if token := strings.TrimSpace(os.Getenv("COPILOT_GITHUB_TOKEN")); token != "" {
 		return token, "COPILOT_GITHUB_TOKEN"
 	}
@@ -215,7 +224,7 @@ func resolveCopilotAuthTokenForPlan() (string, string) {
 	if token := strings.TrimSpace(os.Getenv("GITHUB_TOKEN")); token != "" {
 		return token, "GITHUB_TOKEN"
 	}
-	if token, err := usageCommandOutput(3*time.Second, "gh", "auth", "token"); err == nil && strings.TrimSpace(token) != "" {
+	if token, err := usageCommandOutput(ctx, 3*time.Second, "gh", "auth", "token"); err == nil && strings.TrimSpace(token) != "" {
 		return strings.TrimSpace(token), "gh auth token"
 	}
 	return "", ""

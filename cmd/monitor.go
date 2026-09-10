@@ -32,7 +32,7 @@ var monitorCmd = &cobra.Command{
 		}
 
 		runOnce := func() {
-			results, err := usage.GetUsage()
+			results, err := usage.GetUsage(cmd.Context())
 			now := time.Now()
 			if err != nil {
 				// Transient fetch failure: report and keep the loop alive.

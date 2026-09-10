@@ -1,13 +1,25 @@
 package netclient
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
+	"time"
 )
 
+// noRetrySleep swaps the backoff for a no-op so tests don't wait real
+// seconds; restored via t.Cleanup.
+func noRetrySleep(t *testing.T) {
+	t.Helper()
+	orig := retrySleep
+	retrySleep = func(context.Context, time.Duration) error { return nil }
+	t.Cleanup(func() { retrySleep = orig })
+}
+
 func TestDoWithRetry(t *testing.T) {
+	noRetrySleep(t)
 	var attempts int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&attempts, 1)
@@ -24,11 +36,6 @@ func TestDoWithRetry(t *testing.T) {
 		MaxRetries: 3,
 	}
 
-	// Override sleep for testing to make it fast
-	// In a real scenario we might want to mock time,
-	// but for simplicity we'll just use a small delay if we could.
-	// Since DoWithRetry uses time.Sleep directly, we'll just wait a bit.
-
 	req, _ := http.NewRequest("GET", server.URL, nil)
 	resp, err := client.DoWithRetry(req)
 
@@ -44,6 +51,7 @@ func TestDoWithRetry(t *testing.T) {
 }
 
 func TestDoWithRetry_Fail(t *testing.T) {
+	noRetrySleep(t)
 	var attempts int32
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&attempts, 1)
@@ -67,6 +75,56 @@ func TestDoWithRetry_Fail(t *testing.T) {
 	}
 	if atomic.LoadInt32(&attempts) != 3 { // 1 original + 2 retries
 		t.Errorf("Expected 3 attempts, got %d", attempts)
+	}
+}
+
+func TestDoWithRetryStopsOnCanceledContext(t *testing.T) {
+	noRetrySleep(t)
+	var attempts int32
+	ctx, cancel := context.WithCancel(context.Background())
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&attempts, 1)
+		cancel() // fail the context after the first attempt
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := &Client{HTTPClient: server.Client(), MaxRetries: 5}
+	req, _ := http.NewRequestWithContext(ctx, "GET", server.URL, nil)
+	resp, err := client.DoWithRetry(req)
+
+	if err == nil {
+		t.Fatalf("Expected context error, got nil (resp=%v)", resp)
+	}
+	if resp != nil {
+		t.Errorf("Expected no response after cancellation, got %v", resp.Status)
+	}
+	if got := atomic.LoadInt32(&attempts); got != 1 {
+		t.Errorf("Expected 1 attempt after cancellation, got %d", got)
+	}
+}
+
+func TestDoWithRetryAbortsWhenBackoffCanceled(t *testing.T) {
+	orig := retrySleep
+	retrySleep = func(ctx context.Context, d time.Duration) error { return context.DeadlineExceeded }
+	t.Cleanup(func() { retrySleep = orig })
+
+	var attempts int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&attempts, 1)
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	client := &Client{HTTPClient: server.Client(), MaxRetries: 5}
+	req, _ := http.NewRequest("GET", server.URL, nil)
+	resp, err := client.DoWithRetry(req)
+
+	if err == nil {
+		t.Fatalf("Expected cancellation error from backoff, got nil (resp=%v)", resp)
+	}
+	if got := atomic.LoadInt32(&attempts); got != 1 {
+		t.Errorf("Expected 1 attempt when backoff is canceled, got %d", got)
 	}
 }
 

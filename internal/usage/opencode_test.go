@@ -97,7 +97,7 @@ func TestFetchOpenCodeUsage_NoAPIKey(t *testing.T) {
 	userHomeDir = func() (string, error) { return tmp, nil }
 	defer func() { userHomeDir = origUserHomeDir }()
 
-	result := FetchOpenCodeUsage()
+	result := FetchOpenCodeUsage(t.Context())
 	if result.Status != "warn" {
 		t.Errorf("expected status 'warn', got '%s'", result.Status)
 	}
@@ -140,7 +140,7 @@ func TestFetchOpenCodeUsage_Success(t *testing.T) {
 	os.Setenv("OPENCODE_API_KEY", "test-key")
 	defer os.Unsetenv("OPENCODE_API_KEY")
 
-	result := FetchOpenCodeUsage()
+	result := FetchOpenCodeUsage(t.Context())
 	if result.Status != "ok" {
 		t.Errorf("expected status 'ok', got '%s'", result.Status)
 	}
@@ -186,7 +186,7 @@ func TestFetchOpenCodeUsage_RollingRateLimited(t *testing.T) {
 	os.Setenv("OPENCODE_API_KEY", "test-key")
 	defer os.Unsetenv("OPENCODE_API_KEY")
 
-	result := FetchOpenCodeUsage()
+	result := FetchOpenCodeUsage(t.Context())
 	if result.Status != "warn" {
 		t.Errorf("expected status 'warn', got '%s'", result.Status)
 	}
@@ -221,7 +221,7 @@ func TestFetchOpenCodeUsage_APIError(t *testing.T) {
 	os.Setenv("OPENCODE_API_KEY", "invalid-key")
 	defer os.Unsetenv("OPENCODE_API_KEY")
 
-	result := FetchOpenCodeUsage()
+	result := FetchOpenCodeUsage(t.Context())
 	if result.Status != "error" {
 		t.Errorf("expected status 'error', got '%s'", result.Status)
 	}
@@ -250,7 +250,7 @@ func TestFetchOpenCodeUsage_EmptyUsage(t *testing.T) {
 	os.Setenv("OPENCODE_API_KEY", "test-key")
 	defer os.Unsetenv("OPENCODE_API_KEY")
 
-	result := FetchOpenCodeUsage()
+	result := FetchOpenCodeUsage(t.Context())
 	if result.Status != "error" {
 		t.Errorf("expected status 'error', got '%s'", result.Status)
 	}

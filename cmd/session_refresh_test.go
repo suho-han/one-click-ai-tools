@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"strings"
 	"testing"
@@ -31,7 +32,7 @@ func TestSessionRefreshJSONModeEmitsStructuredResultsAndUsage(t *testing.T) {
 			Message:    "Local Antigravity session artifacts detected",
 		}}
 	}
-	sessionRefreshGetUsage = func() ([]usage.UsageResult, error) {
+	sessionRefreshGetUsage = func(ctx context.Context) ([]usage.UsageResult, error) {
 		return []usage.UsageResult{{
 			Provider: "antigravity",
 			Status:   "ok",
@@ -85,14 +86,14 @@ func TestSessionRefreshTextModePrintsRefreshedUsage(t *testing.T) {
 	sessionRefreshRun = func(opts sessionrefresh.RefreshOptions) []sessionrefresh.RefreshResult {
 		return []sessionrefresh.RefreshResult{{Provider: "codex", Status: "ok", Confidence: "verified", Mode: "auth-status", Message: "Logged in using ChatGPT"}}
 	}
-	sessionRefreshGetUsage = func() ([]usage.UsageResult, error) {
+	sessionRefreshGetUsage = func(ctx context.Context) ([]usage.UsageResult, error) {
 		return []usage.UsageResult{{Provider: "codex", Period: "current", Used: "1.0", Limit: "100", Unit: "percent", Source: "local", Status: "ok", Message: "Usage extracted from local Codex session logs"}}, nil
 	}
 
 	buf := bytes.NewBuffer(nil)
 	printSessionRefreshResults(buf, sessionRefreshRun(sessionrefresh.RefreshOptions{}))
 	buf.WriteString("\nrefreshed usage\n")
-	usageResults, err := sessionRefreshGetUsage()
+	usageResults, err := sessionRefreshGetUsage(t.Context())
 	usage.RenderTable(buf, mustUsage(t, usageResults, err))
 	out := buf.String()
 	if !strings.Contains(out, "refreshed usage") {

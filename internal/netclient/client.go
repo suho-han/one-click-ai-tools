@@ -1,6 +1,7 @@
 package netclient
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"math"
@@ -21,11 +22,29 @@ var DefaultClient = &Client{
 	MaxRetries: 3,
 }
 
+// retrySleep waits out the backoff but aborts on ctx cancellation so a
+// canceled/deadline-exceeded request does not linger in a sleep.
+var retrySleep = func(ctx context.Context, d time.Duration) error {
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
 func (c *Client) DoWithRetry(req *http.Request) (*http.Response, error) {
 	var resp *http.Response
 	var err error
 
 	for i := 0; i <= c.MaxRetries; i++ {
+		// Honor cancellation/deadline before starting another attempt.
+		if ctxErr := req.Context().Err(); ctxErr != nil {
+			return nil, ctxErr
+		}
+
 		// If it's a retry, we need to reset the request body if it exists
 		if i > 0 && req.Body != nil {
 			if seeker, ok := req.Body.(io.Seeker); ok {
@@ -46,7 +65,9 @@ func (c *Client) DoWithRetry(req *http.Request) (*http.Response, error) {
 
 		// Exponential backoff: 1s, 2s, 4s...
 		backoff := time.Duration(math.Pow(2, float64(i))) * time.Second
-		time.Sleep(backoff)
+		if sleepErr := retrySleep(req.Context(), backoff); sleepErr != nil {
+			return nil, sleepErr
+		}
 	}
 
 	return resp, err

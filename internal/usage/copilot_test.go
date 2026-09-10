@@ -28,7 +28,7 @@ func TestFetchCopilotQuotaUsageMapsAICBudget(t *testing.T) {
 	defer server.Close()
 	t.Setenv("OCT_COPILOT_USER_ENDPOINT", server.URL)
 
-	result, ok := fetchCopilotQuotaUsage(UsageResult{Provider: "copilot"}, "test-token")
+	result, ok := fetchCopilotQuotaUsage(t.Context(), UsageResult{Provider: "copilot"}, "test-token")
 	if !ok {
 		t.Fatal("expected quota usage result")
 	}

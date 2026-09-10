@@ -1,6 +1,7 @@
 package usage
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -62,37 +63,54 @@ func SelectedTools() []update.Tool {
 	return update.GetFilteredTools(enabledTools, orderedTools)
 }
 
-func GetUsage() ([]UsageResult, error) {
+// usageFetchTimeout bounds the whole provider fan-out. It is kept below the
+// Swift menubar's 20s process timeout (OctCLIService) so the menubar receives
+// partial results instead of a killed subprocess. Swappable in tests.
+var usageFetchTimeout = 15 * time.Second
+
+// GetUsage fans provider fetches out concurrently under a single deadline.
+// Fetchers never fail outright: providers still running when the deadline
+// fires get an error UsageResult while finished results are preserved, so
+// callers always receive a usable payload (and `oct usage --json` always
+// emits the full structure).
+// providerFetchers maps tool binary names (and aliases) to their fetcher.
+// Package-level so tests can substitute fetchers.
+var providerFetchers = map[string]func(context.Context) UsageResult{
+	"agy":          FetchAntigravityUsage,
+	"antigravity":  FetchAntigravityUsage,
+	"gemini":       FetchAntigravityUsage,
+	"claude":       FetchClaudeUsage,
+	"commandcode":  FetchCommandCodeUsage,
+	"cursor-agent": FetchCursorUsage,
+	"copilot":      FetchCopilotUsage,
+	"opencode":     FetchOpenCodeUsage,
+	"codex":        FetchCodexUsage,
+}
+
+func GetUsage(ctx context.Context) ([]UsageResult, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	selectedTools := SelectedTools()
 
-	fetchers := map[string]func() UsageResult{
-		"agy":          FetchAntigravityUsage,
-		"antigravity":  FetchAntigravityUsage,
-		"gemini":       FetchAntigravityUsage,
-		"claude":       FetchClaudeUsage,
-		"commandcode":  FetchCommandCodeUsage,
-		"cursor-agent": FetchCursorUsage,
-		"copilot":      FetchCopilotUsage,
-		"opencode":     FetchOpenCodeUsage,
-		"codex":        FetchCodexUsage,
-	}
-
 	results := make([]UsageResult, len(selectedTools))
-	g := new(errgroup.Group)
+	g, gctx := errgroup.WithContext(ctx)
+	gctx, cancel := context.WithTimeout(gctx, usageFetchTimeout)
+	defer cancel()
 
 	for i, t := range selectedTools {
 		i, t := i, t // Capture for goroutine
-		if fetcher, ok := fetchers[strings.ToLower(t.BinaryName)]; ok {
+		if fetcher, ok := providerFetchers[strings.ToLower(t.BinaryName)]; ok {
 			g.Go(func() error {
-				results[i] = fetcher()
+				results[i] = fetchWithDeadline(gctx, t.BinaryName, fetcher)
 				return nil
 			})
 		}
 	}
 
-	if err := g.Wait(); err != nil {
-		return nil, err
-	}
+	// Fetchers report problems via their UsageResult, so g.Wait() carries no
+	// error; the deadline above is what bounds the wait.
+	_ = g.Wait()
 
 	// Filter out empty results if any tools were skipped
 	var filtered []UsageResult
@@ -103,6 +121,27 @@ func GetUsage() ([]UsageResult, error) {
 	}
 
 	return filtered, nil
+}
+
+// fetchWithDeadline guarantees a result even when a fetcher ignores ctx and
+// hangs (e.g. a stuck helper process): the abandoned goroutine eventually
+// exits on its own internal timeouts while the caller gets a timeout entry.
+func fetchWithDeadline(ctx context.Context, provider string, fetcher func(context.Context) UsageResult) UsageResult {
+	type outcome struct{ result UsageResult }
+	done := make(chan outcome, 1)
+	go func() { done <- outcome{fetcher(ctx)} }()
+
+	select {
+	case o := <-done:
+		return o.result
+	case <-ctx.Done():
+		return UsageResult{
+			Provider: provider,
+			Status:   "error",
+			Message:  fmt.Sprintf("fetch timed out: %v", ctx.Err()),
+			Source:   "oct",
+		}
+	}
 }
 
 func PrintTable(results []UsageResult) {

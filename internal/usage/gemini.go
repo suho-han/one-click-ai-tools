@@ -1,6 +1,7 @@
 package usage
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strconv"
@@ -25,16 +26,16 @@ func baseAntigravityUsageResult() UsageResult {
 
 var antigravityUsageCommandOutput = commandOutput
 
-func FetchAntigravityUsage() UsageResult {
-	result := withPlanDetection(baseAntigravityUsageResult(), detectAntigravityPlan)
-	if cliResult, ok := fetchAntigravityCLIUsage(result); ok {
+func FetchAntigravityUsage(ctx context.Context) UsageResult {
+	result := withPlanDetection(ctx, baseAntigravityUsageResult(), detectAntigravityPlan)
+	if cliResult, ok := fetchAntigravityCLIUsage(ctx, result); ok {
 		return cliResult
 	}
 	return result
 }
 
-func FetchGeminiUsage() UsageResult {
-	return FetchAntigravityUsage()
+func FetchGeminiUsage(ctx context.Context) UsageResult {
+	return FetchAntigravityUsage(ctx)
 }
 
 type antigravityCLIUsageRow struct {
@@ -44,8 +45,8 @@ type antigravityCLIUsageRow struct {
 	ResetTime string
 }
 
-func fetchAntigravityCLIUsage(base UsageResult) (UsageResult, bool) {
-	out, err := antigravityUsageCommandOutput(20*time.Second, "agy", "--print", "/usage")
+func fetchAntigravityCLIUsage(ctx context.Context, base UsageResult) (UsageResult, bool) {
+	out, err := antigravityUsageCommandOutput(ctx, 20*time.Second, "agy", "--print", "/usage")
 	if err != nil || strings.TrimSpace(out) == "" {
 		return base, false
 	}

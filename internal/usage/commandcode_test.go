@@ -103,7 +103,7 @@ func TestFetchCommandCodeUsageSuccess(t *testing.T) {
 	t.Setenv("OCT_COMMANDCODE_API_BASE_URL", "")
 	t.Setenv("COMMANDCODE_API_ENV", "")
 
-	result := FetchCommandCodeUsage()
+	result := FetchCommandCodeUsage(t.Context())
 	if !sawAuth {
 		t.Fatal("expected Authorization header")
 	}
@@ -137,7 +137,7 @@ func TestFetchCommandCodeUsageNoAPIKey(t *testing.T) {
 	userHomeDir = func() (string, error) { return tmp, nil }
 	t.Cleanup(func() { userHomeDir = origUserHomeDir })
 
-	result := FetchCommandCodeUsage()
+	result := FetchCommandCodeUsage(t.Context())
 	if result.Status != "warn" {
 		t.Fatalf("status = %q, want warn", result.Status)
 	}

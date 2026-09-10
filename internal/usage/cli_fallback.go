@@ -9,8 +9,11 @@ import (
 	"github.com/suho-han/one-click-ai-tools/internal/execenv"
 )
 
-func commandOutput(timeout time.Duration, name string, args ...string) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+// commandOutput runs a command with a per-command timeout derived from the
+// caller's context, so provider-wide cancellation (e.g. the GetUsage
+// deadline) also kills the subprocess.
+func commandOutput(parent context.Context, timeout time.Duration, name string, args ...string) (string, error) {
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 
 	cmd := execenv.CommandContext(ctx, name, args...)
