@@ -101,10 +101,32 @@ func LookPath(name string) (string, error) {
 			continue
 		}
 		candidate := filepath.Join(dir, name)
-		if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+		if info, err := os.Stat(candidate); err == nil && isExecutableCandidate(info, candidate) {
 			return candidate, nil
 		}
 	}
 
 	return "", exec.ErrNotFound
+}
+
+// isExecutableCandidate gates the bootstrap-dir fallback so a stale
+// non-runnable file does not count as "found": Unix requires an exec bit,
+// Windows (no exec bit) requires an executable extension instead.
+func isExecutableCandidate(info os.FileInfo, path string) bool {
+	if info.IsDir() {
+		return false
+	}
+	if runtime.GOOS == "windows" {
+		return hasWindowsExecutableExt(path)
+	}
+	return info.Mode().Perm()&0o111 != 0
+}
+
+func hasWindowsExecutableExt(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".exe", ".bat", ".cmd", ".com":
+		return true
+	default:
+		return false
+	}
 }
