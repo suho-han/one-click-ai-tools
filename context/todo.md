@@ -12,3 +12,7 @@ This file tracks forward-looking ideas and follow-up improvements.
 ## Maintenance rule
 
 - keep completed history in release notes/PRs; keep this file focused on future work
+
+## Related docs
+
+- [code_review_2026-09-10.md](code_review_2026-09-10.md): detailed improvement backlog snapshot behind some of these items

@@ -18,8 +18,8 @@ Use this document to quickly confirm:
 - the core Swift build/test path for the menubar helper still works
 
 For full validation or remote operations, see:
-- `CONTEXT/en/LOCAL_TEST.md`
-- `CONTEXT/en/MENUBAR_HELPER_OPERATIONS.md`
+- `context/local_test.md`
+- `context/menubar_helper_operations.md`
 - `PROJECT_CONTEXT/remote-macos-validation-status.md`
 
 ## Quick start
@@ -90,27 +90,11 @@ Checklist:
 
 Add these depending on the change scope.
 
-### helper diagnosis / install validation
+### menubar helper validation
 
-```bash
-./oct menubar doctor
-./oct menubar install-helper
-./oct menubar doctor
-```
-
-Confirm:
-- `launch mode: swift-helper`
-- installed helper path resolves to `~/.local/bin/OctMenubarApp` or the repo-local build artifact
-
-### standalone helper resolution
-
-```bash
-cp ./oct /tmp/oct-standalone
-/tmp/oct-standalone menubar doctor
-```
-
-Confirm:
-- a binary outside the repo still finds the installed helper
+For helper diagnosis, install, and standalone-binary resolution checks, follow
+`context/menubar_helper_operations.md` — that document owns the helper
+validation steps and the expected `oct menubar doctor` outputs.
 
 ### usage JSON smoke
 

@@ -1,10 +1,10 @@
-# 사용량 알림 가이드
+# Usage Alerts Guide
 
-`oct usage --notify` 또는 `usage_alert_enabled=true`일 때, 임계치 초과 시 OS 알림을 보냅니다.
+When `oct usage --notify` or `usage_alert_enabled=true` is active, `oct` sends OS alerts on threshold breaches.
 
-## 핵심 설정
+## Core configuration
 
-`~/.oct/config.yaml` 예시:
+Example `~/.oct/config.yaml`:
 
 ```yaml
 usage_alert_enabled: true
@@ -29,7 +29,7 @@ usage_alert_provider_thresholds:
     default: 87
 ```
 
-설정 우선순위:
+Threshold precedence:
 1. `provider + window`
 2. `provider + default`
 3. `global + window`
@@ -65,13 +65,18 @@ oct alert snooze show
 oct alert snooze clear --provider codex --window 5h
 ```
 
-## 동작 규칙
+## Behavior rules
 
-- 우선순위 라벨:
+- Priority labels:
   - `value >= critical_percent` -> `CRITICAL`
   - `threshold <= value < critical_percent` -> `HIGH`
-- 쿨다운 중 중복 알림 억제
-- 더 높은 구간으로 상승 시 쿨다운 중이라도 알림 가능
-- quiet hours에는 `CRITICAL`만 통과
-- snooze 중에도 `CRITICAL`은 override
-- 상태 파일: `~/.oct/state/usage-alert-state.json`
+- Duplicate alerts are suppressed during cooldown windows
+- Escalation can still alert during cooldown if threshold level increases
+- During quiet hours, only `CRITICAL` passes
+- `CRITICAL` overrides snooze
+- State file: `~/.oct/state/usage-alert-state.json`
+
+## Related docs
+
+- [monitoring.md](monitoring.md): continuous live view without alerting
+- [usage.md](usage.md): `oct usage --notify` trigger and provider details

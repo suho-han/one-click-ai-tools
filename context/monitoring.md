@@ -38,3 +38,8 @@ Windows (PowerShell):
 ```powershell
 oct monitor --interval 10s
 ```
+
+## Related docs
+
+- [usage.md](usage.md): one-shot usage collection command reference
+- [usage_alerts.md](usage_alerts.md): threshold-based OS alerts instead of passive viewing
