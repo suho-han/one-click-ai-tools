@@ -35,7 +35,7 @@ final class UsageViewModel: ObservableObject {
         let configuration = configurationStore.snapshot
         Task.detached(priority: .userInitiated) { [service] in
             do {
-                let refreshed = try service.fetchUsageSnapshot(configuration: configuration, now: now)
+                let refreshed = try await service.fetchUsageSnapshot(configuration: configuration, now: now)
                 await MainActor.run {
                     self.snapshot = refreshed
                     self.isRefreshing = false

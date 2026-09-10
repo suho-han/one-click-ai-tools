@@ -63,14 +63,14 @@ final class ConfigurationStore: ObservableObject {
     }
 
     func saveDraft() async {
-        guard let configDraft, configDraft.hasEnabledTool else {
+        guard let pendingDraft = draft, pendingDraft.hasEnabledTool else {
             feedback = .warning("Select at least one provider.")
             return
         }
         isSaving = true
         defer { isSaving = false }
         do {
-            try await service.saveConfiguration(configDraft.updatePayload())
+            try await service.saveConfiguration(pendingDraft.updatePayload())
             // Adopt the freshly saved state so the draft baseline matches.
             let fresh = try await service.fetchConfigurationSnapshot()
             snapshot = fresh

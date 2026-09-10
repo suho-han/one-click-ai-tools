@@ -36,11 +36,11 @@ struct OctCLIService {
     func fetchUsageSnapshot(
         configuration: ConfigurationSnapshot?,
         now: Date = Date()
-    ) throws -> UsageSnapshot {
+    ) async throws -> UsageSnapshot {
         let titleMode = configuration?.menubarTitleMode ?? .oct
         let usageDisplayMode = configuration?.usageDisplayMode ?? .remaining
         let refreshInterval = configuration?.refreshInterval ?? refreshInterval
-        let output = try runAndCapture(arguments: ["usage", "--json"])
+        let output = try await runAndCapture(arguments: ["usage", "--json"])
         let data = Data(output.utf8)
         let response = try JSONDecoder().decode(UsageResponse.self, from: data)
         return UsageSnapshot.from(
@@ -226,10 +226,11 @@ struct OctCLIService {
         process.standardOutput = stdout
         process.standardError = stderr
 
-        let lock = NSLock()
-        var stdoutData = Data()
-        var stderrData = Data()
-        var didTimeOut = false
+        // Reference-typed, lock-guarded buffers: readabilityHandler closures
+        // append concurrently, and Swift 6 forbids mutating captured vars.
+        let stdoutBuffer = LockedBuffer()
+        let stderrBuffer = LockedBuffer()
+        let timedOut = AtomicFlag()
 
         // Drain both pipes as data arrives; each handler removes itself at
         // EOF. The group completes only when both pipes are exhausted.
@@ -242,9 +243,7 @@ struct OctCLIService {
                 handle.readabilityHandler = nil
                 pipesEOF.leave()
             } else {
-                lock.lock()
-                stdoutData.append(chunk)
-                lock.unlock()
+                stdoutBuffer.append(chunk)
             }
         }
         stderr.fileHandleForReading.readabilityHandler = { handle in
@@ -253,9 +252,7 @@ struct OctCLIService {
                 handle.readabilityHandler = nil
                 pipesEOF.leave()
             } else {
-                lock.lock()
-                stderrData.append(chunk)
-                lock.unlock()
+                stderrBuffer.append(chunk)
             }
         }
 
@@ -268,9 +265,7 @@ struct OctCLIService {
         }
 
         let timeoutWorkItem = DispatchWorkItem {
-            lock.lock()
-            didTimeOut = true
-            lock.unlock()
+            timedOut.set()
             if process.isRunning {
                 process.terminate()
             }
@@ -289,18 +284,12 @@ struct OctCLIService {
         }
         process.waitUntilExit()
 
-        lock.lock()
-        let timedOut = didTimeOut
-        let outData = stdoutData
-        let errData = stderrData
-        lock.unlock()
-
-        if timedOut {
+        if timedOut.isSet {
             throw OctCLIServiceError.timeout(path: executableURL.path, timeout: processTimeout)
         }
 
-        let stdoutText = String(data: outData, encoding: .utf8) ?? ""
-        let stderrText = String(data: errData, encoding: .utf8) ?? ""
+        let stdoutText = String(data: stdoutBuffer.snapshot(), encoding: .utf8) ?? ""
+        let stderrText = String(data: stderrBuffer.snapshot(), encoding: .utf8) ?? ""
 
         guard process.terminationStatus == 0 else {
             throw OctCLIServiceError.nonZeroExit(
@@ -315,6 +304,43 @@ struct OctCLIService {
     private func shellQuote(_ value: String) -> String {
         if value.isEmpty { return "''" }
         return "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+}
+
+/// Lock-guarded accumulator shared between pipe-reading callbacks and the
+/// awaiting caller. @unchecked Sendable: all access goes through NSLock.
+private final class LockedBuffer: @unchecked Sendable {
+    private let lock = NSLock()
+    private var data = Data()
+
+    func append(_ chunk: Data) {
+        lock.lock()
+        data.append(chunk)
+        lock.unlock()
+    }
+
+    func snapshot() -> Data {
+        lock.lock()
+        defer { lock.unlock() }
+        return data
+    }
+}
+
+/// Lock-guarded boolean flag set from the timeout watchdog.
+private final class AtomicFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+
+    func set() {
+        lock.lock()
+        value = true
+        lock.unlock()
+    }
+
+    var isSet: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
     }
 }
 
