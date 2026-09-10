@@ -2,12 +2,14 @@ package sessionrefresh
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/suho-han/one-click-ai-tools/internal/execenv"
 	"github.com/suho-han/one-click-ai-tools/internal/update"
@@ -16,6 +18,9 @@ import (
 type RefreshOptions struct {
 	Providers []string
 	DryRun    bool
+	// Context bounds every subprocess probe; nil falls back to
+	// context.Background() with the per-probe timeout still applied.
+	Context context.Context
 }
 
 type RefreshResult struct {
@@ -41,8 +46,29 @@ var refreshers = map[string]refresher{
 
 var (
 	refreshLookPath = execenv.LookPath
-	refreshCommand  = execenv.Command
 )
+
+// probeCommandTimeout bounds each CLI probe so a hung binary (for example one
+// waiting on a first-run prompt) cannot stall the refresh or the scheduled
+// task that runs it.
+var probeCommandTimeout = 5 * time.Second
+
+// probeCommandOutput runs a probe command with a per-command timeout derived
+// from the refresh context, mirroring internal/usage's commandOutput.
+func probeCommandOutput(ctx context.Context, timeout time.Duration, name string, args ...string) ([]byte, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	runCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	cmd := execenv.CommandContext(runCtx, name, args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil && runCtx.Err() == context.DeadlineExceeded {
+		return out, fmt.Errorf("timed out after %s", timeout)
+	}
+	return out, err
+}
 
 func Refresh(opts RefreshOptions) []RefreshResult {
 	providers := opts.Providers
@@ -101,8 +127,7 @@ func probeClaudeSession(opts RefreshOptions, tool update.Tool) RefreshResult {
 	if _, err := refreshLookPath("claude"); err != nil {
 		return RefreshResult{Provider: tool.BinaryName, Supported: false, Mode: "auth-status", Status: "unsupported", Message: "Claude CLI binary not installed (expected 'claude')"}
 	}
-	cmd := refreshCommand("claude", "auth", "status", "--json")
-	out, err := cmd.CombinedOutput()
+	out, err := probeCommandOutput(opts.Context, probeCommandTimeout, "claude", "auth", "status", "--json")
 
 	var data struct {
 		LoggedIn   bool   `json:"loggedIn"`
@@ -140,8 +165,7 @@ func probeOpenCodeSession(opts RefreshOptions, tool update.Tool) RefreshResult {
 	if _, err := refreshLookPath("opencode"); err != nil {
 		return RefreshResult{Provider: tool.BinaryName, Supported: false, Mode: "providers-list", Status: "unsupported", Message: "OpenCode CLI binary not installed (expected 'opencode')"}
 	}
-	cmd := refreshCommand("opencode", "providers", "list")
-	out, err := cmd.CombinedOutput()
+	out, err := probeCommandOutput(opts.Context, probeCommandTimeout, "opencode", "providers", "list")
 	if err != nil {
 		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "providers-list", Status: "error", Confidence: confidenceVerified, Message: trimCommandOutput(out, err)}
 	}
@@ -166,8 +190,7 @@ func probeCopilotSession(opts RefreshOptions, tool update.Tool) RefreshResult {
 		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "partial-auth", Status: "skipped", Confidence: confidencePartial, Message: "GitHub auth detected via token environment, but Copilot exposes no dedicated token-free status probe"}
 	}
 	if _, err := refreshLookPath("gh"); err == nil {
-		cmd := refreshCommand("gh", "auth", "status")
-		out, err := cmd.CombinedOutput()
+		out, err := probeCommandOutput(opts.Context, probeCommandTimeout, "gh", "auth", "status")
 		if err == nil && strings.Contains(strings.ToLower(string(out)), "logged in to") {
 			return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "partial-auth", Status: "skipped", Confidence: confidencePartial, Message: "GitHub auth detected, but Copilot exposes no dedicated token-free status probe"}
 		}
@@ -185,8 +208,7 @@ func probeCodexSession(opts RefreshOptions, tool update.Tool) RefreshResult {
 	if _, err := refreshLookPath("codex"); err != nil {
 		return RefreshResult{Provider: tool.BinaryName, Supported: false, Mode: "auth-status", Status: "unsupported", Message: "codex binary not installed"}
 	}
-	cmd := refreshCommand("codex", "login", "status")
-	out, err := cmd.CombinedOutput()
+	out, err := probeCommandOutput(opts.Context, probeCommandTimeout, "codex", "login", "status")
 	if err != nil {
 		return RefreshResult{Provider: tool.BinaryName, Supported: true, Mode: "auth-status", Status: "error", Confidence: confidenceVerified, Message: trimCommandOutput(out, err)}
 	}

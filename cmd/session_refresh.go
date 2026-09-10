@@ -58,6 +58,7 @@ then re-runs local usage collection so the report reflects the latest detectable
 		results := sessionRefreshRun(sessionrefresh.RefreshOptions{
 			Providers: selectedRefreshProviders(providers),
 			DryRun:    dryRun,
+			Context:   cmd.Context(),
 		})
 
 		output := sessionRefreshOutput{RefreshResults: results}
