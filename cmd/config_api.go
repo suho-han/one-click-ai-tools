@@ -45,7 +45,7 @@ type configUpdatePayload struct {
 func parseConfigUpdatePayload(raw string) (configUpdatePayload, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return configUpdatePayload{}, fmt.Errorf("missing --json payload")
+		return configUpdatePayload{}, fmt.Errorf("missing --payload payload")
 	}
 	var payload configUpdatePayload
 	if err := json.Unmarshal([]byte(raw), &payload); err != nil {

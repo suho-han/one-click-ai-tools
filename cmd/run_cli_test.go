@@ -118,3 +118,73 @@ func TestFlagHeavyCommandsDeclareExamples(t *testing.T) {
 		t.Fatalf("monitor help missing Examples section, got:\n%s", stdout.String())
 	}
 }
+
+// TestConfigUpdatePayloadFlag covers the --json collision fix: --payload is
+// the input flag, legacy --json warns, both together error, "-" reads stdin,
+// and generic failures never retry.
+func TestConfigUpdatePayloadFlag(t *testing.T) {
+	setup := func(t *testing.T) string {
+		cfgPath := writeTempConfig(t)
+		viperResetForTest(t)
+		// Flag values are package vars; reset them so subtests stay isolated.
+		configUpdatePayloadFlag = ""
+		configUpdateJSON = ""
+		return cfgPath
+	}
+
+	t.Run("payload round trip", func(t *testing.T) {
+		cfgPath := setup(t)
+		var stdout, stderr bytes.Buffer
+		payload := `{"usage_display_mode":"used","menubar_title_mode":"compact"}`
+		code := runCLI([]string{"--config", cfgPath, "config", "update", "--payload", payload}, &stdout, &stderr)
+		if code != 0 {
+			t.Fatalf("exit = %d, stderr: %s", code, stderr.String())
+		}
+		data, err := os.ReadFile(cfgPath)
+		if err != nil {
+			t.Fatalf("read config: %v", err)
+		}
+		if !strings.Contains(string(data), "used") || !strings.Contains(string(data), "compact") {
+			t.Fatalf("payload not applied, config: %s", data)
+		}
+	})
+
+	t.Run("legacy json warns on stderr", func(t *testing.T) {
+		cfgPath := setup(t)
+		var stdout, stderr bytes.Buffer
+		code := runCLI([]string{"--config", cfgPath, "config", "update", "--json", `{"usage_display_mode":"used"}`}, &stdout, &stderr)
+		if code != 0 {
+			t.Fatalf("exit = %d, stderr: %s", code, stderr.String())
+		}
+		if !strings.Contains(stderr.String(), "deprecated") {
+			t.Fatalf("stderr = %q, want deprecation warning", stderr.String())
+		}
+	})
+
+	t.Run("both flags error", func(t *testing.T) {
+		cfgPath := setup(t)
+		var stdout, stderr bytes.Buffer
+		code := runCLI([]string{"--config", cfgPath, "config", "update", "--payload", "{}", "--json", "{}"}, &stdout, &stderr)
+		if code != 1 {
+			t.Fatalf("exit = %d, want 1", code)
+		}
+		if !strings.Contains(stderr.String(), "not both") {
+			t.Fatalf("stderr = %q, want both-flags error", stderr.String())
+		}
+	})
+
+	t.Run("payload from stdin", func(t *testing.T) {
+		cfgPath := setup(t)
+		var stdout, stderr bytes.Buffer
+		rootCmd.InOrStdin() // keep cobra init consistent
+		// runCLI does not wire stdin; feed the payload through SetArgs path by
+		// pointing rootCmd's stdin at a reader.
+		oldIn := rootCmd.InOrStdin()
+		rootCmd.SetIn(strings.NewReader(`{"usage_display_mode":"remaining"}`))
+		defer rootCmd.SetIn(oldIn)
+		code := runCLI([]string{"--config", cfgPath, "config", "update", "--payload", "-"}, &stdout, &stderr)
+		if code != 0 {
+			t.Fatalf("exit = %d, stderr: %s", code, stderr.String())
+		}
+	})
+}

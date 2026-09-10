@@ -2,21 +2,47 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 
 	"github.com/spf13/cobra"
 )
 
 var (
-	configListJSON   bool
-	configUpdateJSON string
+	configListJSON          bool
+	configUpdateJSON        string
+	configUpdatePayloadFlag string
 )
 
 var configUpdateCmd = &cobra.Command{
 	Use:   "update",
 	Short: "Update configuration from a machine-readable payload",
+	Long: `Apply a JSON configuration payload (same key names as config list --json).
+
+Prefer --payload <json>; --json <payload> is the deprecated legacy
+spelling kept for older callers. Use --payload - to read the payload
+from stdin.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		payload, err := parseConfigUpdatePayload(configUpdateJSON)
+		if configUpdatePayloadFlag != "" && configUpdateJSON != "" {
+			return errors.New("use one of --payload or --json, not both")
+		}
+
+		raw := configUpdatePayloadFlag
+		if raw == "-" {
+			data, err := io.ReadAll(cmd.InOrStdin())
+			if err != nil {
+				return fmt.Errorf("failed to read payload from stdin: %w", err)
+			}
+			raw = string(data)
+		} else if raw == "" {
+			raw = configUpdateJSON
+			if raw != "" {
+				fmt.Fprintln(cmd.ErrOrStderr(), "[oct] config update --json <payload> is deprecated; use --payload <json|-> instead")
+			}
+		}
+
+		payload, err := parseConfigUpdatePayload(raw)
 		if err != nil {
 			return err
 		}
@@ -46,6 +72,7 @@ func init() {
 		}
 	}
 
-	configUpdateCmd.Flags().StringVar(&configUpdateJSON, "json", "", "configuration update JSON payload")
+	configUpdateCmd.Flags().StringVar(&configUpdatePayloadFlag, "payload", "", "configuration update JSON payload ('-' reads stdin)")
+	configUpdateCmd.Flags().StringVar(&configUpdateJSON, "json", "", "deprecated: use --payload")
 	configCmd.AddCommand(configUpdateCmd)
 }
