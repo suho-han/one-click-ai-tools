@@ -113,22 +113,26 @@ download() {
         return
     fi
     if command -v wget >/dev/null 2>&1; then
-        wget -q -O "$dest" "$url"
+        wget -q --timeout=20 --tries=3 -O "$dest" "$url"
         return
     fi
     fail "curl or wget is required"
 }
 
+# sha256_file prints the hex digest of $1. The hash command's exit status is
+# checked directly (POSIX sh has no pipefail), so a failing hash surfaces as
+# an error instead of an empty digest that reads as a bogus "checksum
+# mismatch".
 sha256_file() {
+    hash=''
     if command -v sha256sum >/dev/null 2>&1; then
-        sha256sum "$1" | awk '{print $1}'
-        return
+        hash=$(sha256sum "$1") || return 1
+    elif command -v shasum >/dev/null 2>&1; then
+        hash=$(shasum -a 256 "$1") || return 1
+    else
+        return 1
     fi
-    if command -v shasum >/dev/null 2>&1; then
-        shasum -a 256 "$1" | awk '{print $1}'
-        return
-    fi
-    return 1
+    printf '%s\n' "$hash" | awk '{print $1}'
 }
 
 normalize_version() {
@@ -185,7 +189,7 @@ if [ "$SKIP_CHECKSUM" != "1" ]; then
     download "$checksum_url" "$checksums_path"
     expected=$(awk -v file="$asset" '$2 == file {print $1; exit}' "$checksums_path")
     if [ -n "$expected" ]; then
-        actual=$(sha256_file "$archive_path") || fail "sha256sum or shasum is required for checksum verification"
+        actual=$(sha256_file "$archive_path") || fail "failed to compute sha256 for ${asset} (is sha256sum or shasum available?)"
         [ "$actual" = "$expected" ] || fail "checksum mismatch for ${asset}"
     elif [ "$REQUIRE_CHECKSUM" = "1" ]; then
         fail "checksum entry not found for ${asset}"
