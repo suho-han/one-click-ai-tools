@@ -21,9 +21,14 @@ func (l *Linux) Enable(task Task, interval string, hour int) error {
 
 	binPath := resolveBinaryPath()
 
-	home, _ := homeDirPath()
+	home, err := homeDirPath()
+	if err != nil {
+		return fmt.Errorf("cannot determine home directory: %w", err)
+	}
 	logPath := linuxLogPath(home, cfg.LogFile)
-	os.MkdirAll(path.Dir(logPath), 0o755)
+	if err := os.MkdirAll(path.Dir(logPath), 0o755); err != nil {
+		return fmt.Errorf("create log dir: %w", err)
+	}
 
 	cronExpr := cronExpression(interval, hour)
 	cronEntry := fmt.Sprintf("%s %s %s >> %s 2>&1 %s", cronExpr, shellQuote(binPath), shellQuote(cfg.Command), shellQuote(logPath), cronMarker(task))
