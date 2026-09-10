@@ -98,7 +98,7 @@ func FetchCommandCodeUsage(ctx context.Context) UsageResult {
 	if err != nil {
 		result.Status = "error"
 		result.Message = fmt.Sprintf("API error: %v", err)
-		if os.Getenv("OCT_USAGE_DEBUG") == "1" {
+		if osDebugEnabled() {
 			result.SourceDetail = "auth_source=" + authSource
 		}
 		return result
@@ -147,7 +147,7 @@ func FetchCommandCodeUsage(ctx context.Context) UsageResult {
 	if usageData.Summary != nil && usageData.Summary.TotalCount > 0 {
 		result.Message += fmt.Sprintf("; %d requests this cycle", usageData.Summary.TotalCount)
 	}
-	if os.Getenv("OCT_USAGE_DEBUG") != "1" {
+	if !osDebugEnabled() {
 		result.SourceDetail = ""
 	}
 

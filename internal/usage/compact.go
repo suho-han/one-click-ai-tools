@@ -33,23 +33,10 @@ func CompactTitle(results []UsageResult, mode string) string {
 }
 
 func compactProviderLabel(provider string) string {
-	p := strings.ToLower(strings.TrimSpace(provider))
-	switch {
-	case strings.Contains(p, "claude"):
-		return "C"
-	case strings.Contains(p, "commandcode"), strings.Contains(p, "command code"):
-		return "D"
-	case strings.Contains(p, "codex"), strings.Contains(p, "openai"):
-		return "X"
-	case strings.Contains(p, "antigravity"), strings.Contains(p, "gemini"), p == "agy":
-		return "G"
-	case strings.Contains(p, "cursor"):
-		return "R"
-	case strings.Contains(p, "copilot"), strings.Contains(p, "github"):
-		return "P"
-	case strings.Contains(p, "opencode"):
-		return "O"
+	if entry, ok := matchProvider(provider); ok && entry.CompactLabel != "" {
+		return entry.CompactLabel
 	}
+	p := strings.ToLower(strings.TrimSpace(provider))
 	if p == "" {
 		return "?"
 	}

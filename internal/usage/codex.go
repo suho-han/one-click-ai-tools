@@ -110,7 +110,7 @@ func FetchCodexUsage(ctx context.Context) UsageResult {
 	if lastWeeklyPercent != "" {
 		result.Buckets["7d"] = lastWeeklyPercent
 	}
-	if os.Getenv("OCT_USAGE_DEBUG") == "1" {
+	if osDebugEnabled() {
 		result.SourceDetail = joinSourceDetails(
 			codexBucketSourceDetail(map[string]string{"7d": lastWeeklyPercent}),
 			codexLocalModelSourceDetail(logFiles, 50),
@@ -228,7 +228,7 @@ func fetchCodexBackendUsage(ctx context.Context, base UsageResult) (UsageResult,
 		result.Message = "Usage fetched from Codex backend API (no rate-limit window reported)"
 	}
 
-	if os.Getenv("OCT_USAGE_DEBUG") == "1" {
+	if osDebugEnabled() {
 		result.SourceDetail = joinSourceDetails(
 			codexBucketSourceDetail(result.Buckets),
 			codexLocalModelSourceDetailFromHome(50),
@@ -334,7 +334,7 @@ func codexLocalModelSourceDetailFromHome(maxFiles int) string {
 }
 
 func codexLocalModelSourceDetail(logFiles []string, maxFiles int) string {
-	if os.Getenv("OCT_USAGE_DEBUG") != "1" || len(logFiles) == 0 || maxFiles <= 0 {
+	if !osDebugEnabled() || len(logFiles) == 0 || maxFiles <= 0 {
 		return ""
 	}
 
