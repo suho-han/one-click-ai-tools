@@ -32,7 +32,6 @@ var (
 	commandOutput         = defaultCommandOutput
 	errExecutableNotFound = exec.ErrNotFound
 )
-
 var noChangePatterns = map[Manager][]string{
 	Npm:                {"up to date"},
 	Pnpm:               {"already up to date"},
@@ -47,7 +46,7 @@ var noChangePatterns = map[Manager][]string{
 	Pip:                {"requirement already satisfied"},
 }
 
-func DetectManager(t Tool) Manager {
+func DetectManager(ctx context.Context, t Tool) Manager {
 	if m, ok := managerFromPackagePrefix(t.Package); ok {
 		return m
 	}
@@ -75,28 +74,28 @@ func DetectManager(t Tool) Manager {
 		return CursorAgent
 	}
 
-	if m, ok := detectManagerFromBinaryPath(t); ok {
+	if m, ok := detectManagerFromBinaryPath(ctx, t); ok {
 		return m
 	}
 
-	if matchesInstalledPackage(Brew, t) {
+	if matchesInstalledPackage(ctx, Brew, t) {
 		return Brew
 	}
-	if matchesInstalledPackage(Pnpm, t) {
+	if matchesInstalledPackage(ctx, Pnpm, t) {
 		return Pnpm
 	}
-	if matchesInstalledPackage(Yarn, t) {
+	if matchesInstalledPackage(ctx, Yarn, t) {
 		return Yarn
 	}
-	if matchesInstalledPackage(Npm, t) {
+	if matchesInstalledPackage(ctx, Npm, t) {
 		return Npm
 	}
 
 	return Unknown
 }
 
-func ResolveManagerForInstall(t Tool) Manager {
-	if detected := DetectManager(t); detected != Unknown {
+func ResolveManagerForInstall(ctx context.Context, t Tool) Manager {
+	if detected := DetectManager(ctx, t); detected != Unknown {
 		return detected
 	}
 	if preferred, ok := defaultManagerForTool(t); ok {
@@ -140,24 +139,24 @@ func (m Manager) InstallCommandCtx(ctx context.Context, t Tool) *exec.Cmd {
 	}
 }
 
-func (m Manager) GetInstalledVersion(t Tool) string {
+func (m Manager) GetInstalledVersion(ctx context.Context, t Tool) string {
 	switch m {
 	case ClaudeNative, OpenCodeNative, CopilotNative, CursorAgent, AntigravityUpdater, AntigravityInstaller:
-		return versionFromBinary(t)
+		return versionFromBinary(ctx, t)
 	case Brew:
-		out, _ := commandWithEnv("brew", "list", "--versions", t.BrewTarget()).Output()
+		out, _ := commandContextWithEnv(ctx, "brew", "list", "--versions", t.BrewTarget()).Output()
 		parts := strings.Fields(strings.TrimSpace(string(out)))
 		if len(parts) >= 2 {
 			return parts[1]
 		}
-		out, _ = commandWithEnv("brew", "list", "--versions", "--cask", t.BrewTarget()).Output()
+		out, _ = commandContextWithEnv(ctx, "brew", "list", "--versions", "--cask", t.BrewTarget()).Output()
 		parts = strings.Fields(strings.TrimSpace(string(out)))
 		if len(parts) >= 2 {
 			return parts[1]
 		}
-		return versionFromBinary(t)
+		return versionFromBinary(ctx, t)
 	case Pnpm:
-		out, _ := commandWithEnv("pnpm", "list", "-g", t.Package, "--depth=0").Output()
+		out, _ := commandContextWithEnv(ctx, "pnpm", "list", "-g", t.Package, "--depth=0").Output()
 		for _, line := range strings.Split(string(out), "\n") {
 			if strings.Contains(line, t.Package) {
 				parts := strings.Fields(line)
@@ -168,10 +167,10 @@ func (m Manager) GetInstalledVersion(t Tool) string {
 		}
 		return ""
 	case Yarn:
-		out, _ := commandWithEnv("yarn", "global", "list", "--pattern", t.Package).Output()
+		out, _ := commandContextWithEnv(ctx, "yarn", "global", "list", "--pattern", t.Package).Output()
 		return parseVersionFromAtSuffix(string(out), t.Package)
 	case Cargo:
-		out, _ := commandWithEnv("cargo", "install", "--list").Output()
+		out, _ := commandContextWithEnv(ctx, "cargo", "install", "--list").Output()
 		for _, line := range strings.Split(string(out), "\n") {
 			if strings.HasPrefix(strings.TrimSpace(line), packageWithoutManagerPrefix(t.Package)+" ") {
 				fields := strings.Fields(strings.TrimSuffix(strings.TrimSpace(line), ":"))
@@ -182,10 +181,10 @@ func (m Manager) GetInstalledVersion(t Tool) string {
 		}
 		return ""
 	case GoInstall:
-		out, _ := commandWithEnv(t.BinaryName, "--version").Output()
+		out, _ := commandContextWithEnv(ctx, t.BinaryName, "--version").Output()
 		return strings.TrimSpace(string(out))
 	case Pip:
-		out, _ := commandWithEnv("python3", "-m", "pip", "show", packageWithoutManagerPrefix(t.Package)).Output()
+		out, _ := commandContextWithEnv(ctx, "python3", "-m", "pip", "show", packageWithoutManagerPrefix(t.Package)).Output()
 		for _, line := range strings.Split(string(out), "\n") {
 			if strings.HasPrefix(strings.ToLower(line), "version:") {
 				return strings.TrimSpace(strings.TrimPrefix(line, "Version:"))
@@ -193,22 +192,24 @@ func (m Manager) GetInstalledVersion(t Tool) string {
 		}
 		return ""
 	default:
-		out, _ := commandWithEnv("npm", "list", "-g", t.Package, "--depth=0").Output()
+		out, _ := commandContextWithEnv(ctx, "npm", "list", "-g", t.Package, "--depth=0").Output()
 		return parseVersionFromAtSuffix(string(out), t.Package)
 	}
 }
 
-func defaultCommandOutput(name string, args ...string) ([]byte, error) {
-	return commandWithEnv(name, args...).CombinedOutput()
+// defaultCommandOutput runs a probe with the caller's context so a hung
+// manager command is killed by the overall install ceiling.
+func defaultCommandOutput(ctx context.Context, name string, args ...string) ([]byte, error) {
+	return commandContextWithEnv(ctx, name, args...).CombinedOutput()
 }
 
-func detectManagerFromBinaryPath(t Tool) (Manager, bool) {
+func detectManagerFromBinaryPath(ctx context.Context, t Tool) (Manager, bool) {
 	for _, binary := range preferredBinaries(t) {
 		path, err := binaryLookup(binary)
 		if err != nil || strings.TrimSpace(path) == "" {
 			continue
 		}
-		candidates := classifyManagersFromBinaryPath(path)
+		candidates := classifyManagersFromBinaryPath(ctx, path)
 		candidates = appendManagerIfMissing(candidates, detectNodePackageManagerFromInstalledBinary(path))
 		if len(candidates) == 0 {
 			continue
@@ -216,7 +217,7 @@ func detectManagerFromBinaryPath(t Tool) (Manager, bool) {
 		if len(candidates) == 1 {
 			return candidates[0], true
 		}
-		if manager, ok := resolveAmbiguousPathManagers(t, candidates); ok {
+		if manager, ok := resolveAmbiguousPathManagers(ctx, t, candidates); ok {
 			return manager, true
 		}
 		return candidates[0], true
@@ -224,15 +225,15 @@ func detectManagerFromBinaryPath(t Tool) (Manager, bool) {
 	return Unknown, false
 }
 
-func classifyManagerFromBinaryPath(path string) (Manager, bool) {
-	managers := classifyManagersFromBinaryPath(path)
+func classifyManagerFromBinaryPath(ctx context.Context, path string) (Manager, bool) {
+	managers := classifyManagersFromBinaryPath(ctx, path)
 	if len(managers) == 0 {
 		return Unknown, false
 	}
 	return managers[0], true
 }
 
-func classifyManagersFromBinaryPath(path string) []Manager {
+func classifyManagersFromBinaryPath(ctx context.Context, path string) []Manager {
 	path = filepath.Clean(strings.TrimSpace(path))
 	if path == "" || path == "." {
 		return nil
@@ -243,13 +244,13 @@ func classifyManagersFromBinaryPath(path string) []Manager {
 		prefixes []string
 		contains []string
 	}{
-		{manager: Brew, prefixes: commandPrefixes("brew", "--prefix", "bin"), contains: []string{filepath.Clean("/Cellar/")}},
-		{manager: Pnpm, prefixes: commandPrefixes("pnpm", "bin", ""), contains: nil},
-		{manager: Yarn, prefixes: commandPrefixes("yarn", "global", "bin"), contains: nil},
-		{manager: Npm, prefixes: npmGlobalBinaryPrefixes(), contains: nil},
+		{manager: Brew, prefixes: commandPrefixes(ctx, "brew", "--prefix", "bin"), contains: []string{filepath.Clean("/Cellar/")}},
+		{manager: Pnpm, prefixes: commandPrefixes(ctx, "pnpm", "bin", ""), contains: nil},
+		{manager: Yarn, prefixes: commandPrefixes(ctx, "yarn", "global", "bin"), contains: nil},
+		{manager: Npm, prefixes: npmGlobalBinaryPrefixes(ctx), contains: nil},
 		{manager: Cargo, prefixes: cargoBinaryPrefixes(), contains: nil},
-		{manager: GoInstall, prefixes: goInstallBinaryPrefixes(), contains: nil},
-		{manager: Pip, prefixes: pipBinaryPrefixes(), contains: nil},
+		{manager: GoInstall, prefixes: goInstallBinaryPrefixes(ctx), contains: nil},
+		{manager: Pip, prefixes: pipBinaryPrefixes(ctx), contains: nil},
 	}
 
 	var matches []Manager
@@ -280,9 +281,9 @@ func appendManagerIfMissing(managers []Manager, manager Manager) []Manager {
 	return append(managers, manager)
 }
 
-func resolveAmbiguousPathManagers(t Tool, candidates []Manager) (Manager, bool) {
+func resolveAmbiguousPathManagers(ctx context.Context, t Tool, candidates []Manager) (Manager, bool) {
 	for _, manager := range candidates {
-		if matchesInstalledPackage(manager, t) {
+		if matchesInstalledPackage(ctx, manager, t) {
 			return manager, true
 		}
 	}
@@ -298,11 +299,11 @@ func resolveAmbiguousPathManagers(t Tool, candidates []Manager) (Manager, bool) 
 	return Unknown, false
 }
 
-func matchesInstalledPackage(m Manager, t Tool) bool {
+func matchesInstalledPackage(ctx context.Context, m Manager, t Tool) bool {
 	if m != Brew && strings.TrimSpace(t.Package) == "" {
 		return false
 	}
-	out, err := packageListCommand(m, t)
+	out, err := packageListCommand(ctx, m, t)
 	if err != nil {
 		return false
 	}
@@ -312,16 +313,16 @@ func matchesInstalledPackage(m Manager, t Tool) bool {
 	return strings.Contains(string(out), t.Package)
 }
 
-func packageListCommand(m Manager, t Tool) ([]byte, error) {
+func packageListCommand(ctx context.Context, m Manager, t Tool) ([]byte, error) {
 	switch m {
 	case Brew:
-		return commandOutput("brew", "list", t.BrewTarget())
+		return commandOutput(ctx, "brew", "list", t.BrewTarget())
 	case Pnpm:
-		return commandOutput("pnpm", "list", "-g", t.Package)
+		return commandOutput(ctx, "pnpm", "list", "-g", t.Package)
 	case Yarn:
-		return commandOutput("yarn", "global", "list", t.Package)
+		return commandOutput(ctx, "yarn", "global", "list", t.Package)
 	case Npm:
-		return commandOutput("npm", "list", "-g", t.Package)
+		return commandOutput(ctx, "npm", "list", "-g", t.Package)
 	default:
 		return nil, errExecutableNotFound
 	}
@@ -346,7 +347,7 @@ func defaultManagerForTool(t Tool) (Manager, bool) {
 	return Unknown, false
 }
 
-func commandPrefixes(name string, firstArg string, mode string) []string {
+func commandPrefixes(ctx context.Context, name string, firstArg string, mode string) []string {
 	var args []string
 	switch {
 	case name == "brew" && firstArg == "--prefix":
@@ -358,7 +359,7 @@ func commandPrefixes(name string, firstArg string, mode string) []string {
 	default:
 		args = []string{firstArg}
 	}
-	out, err := commandOutput(name, args...)
+	out, err := commandOutput(ctx, name, args...)
 	if err != nil {
 		return nil
 	}
@@ -373,8 +374,8 @@ func commandPrefixes(name string, firstArg string, mode string) []string {
 	return []string{prefix, filepath.Join(prefix, "bin")}
 }
 
-func npmGlobalBinaryPrefixes() []string {
-	out, err := commandOutput("npm", "prefix", "-g")
+func npmGlobalBinaryPrefixes(ctx context.Context) []string {
+	out, err := commandOutput(ctx, "npm", "prefix", "-g")
 	if err != nil {
 		return nil
 	}
@@ -399,9 +400,9 @@ func detectNodePackageManagerFromInstalledBinary(path string) Manager {
 	return Unknown
 }
 
-func versionFromBinary(t Tool) string {
+func versionFromBinary(ctx context.Context, t Tool) string {
 	for _, binary := range preferredBinaries(t) {
-		out, err := commandWithEnv(binary, "--version").Output()
+		out, err := commandContextWithEnv(ctx, binary, "--version").Output()
 		if err == nil {
 			return firstNonEmptyLine(string(out))
 		}
@@ -429,8 +430,8 @@ func cargoBinaryPrefixes() []string {
 	return nil
 }
 
-func goInstallBinaryPrefixes() []string {
-	out, err := commandOutput("go", "env", "GOPATH")
+func goInstallBinaryPrefixes(ctx context.Context) []string {
+	out, err := commandOutput(ctx, "go", "env", "GOPATH")
 	if err != nil {
 		return nil
 	}
@@ -441,8 +442,8 @@ func goInstallBinaryPrefixes() []string {
 	return []string{filepath.Join(filepath.Clean(prefix), "bin")}
 }
 
-func pipBinaryPrefixes() []string {
-	out, err := commandOutput("python3", "-m", "site", "--user-base")
+func pipBinaryPrefixes(ctx context.Context) []string {
+	out, err := commandOutput(ctx, "python3", "-m", "site", "--user-base")
 	if err != nil {
 		return nil
 	}

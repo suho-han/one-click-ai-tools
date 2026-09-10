@@ -1,6 +1,7 @@
 package usage
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,35 +25,40 @@ func cursorAPIUsageURL() string {
 	return cursorDefaultAPIURL
 }
 
-func FetchCursorUsage() UsageResult {
+func FetchCursorUsage(ctx context.Context) UsageResult {
 	// 1. User-supplied custom endpoint takes priority
 	if endpoint := strings.TrimSpace(os.Getenv("OCT_CURSOR_USAGE_URL")); endpoint != "" {
-		return withPlanDetection(fetchCursorCustomEndpoint(endpoint), detectCursorPlan)
+		return withPlanDetection(ctx, fetchCursorCustomEndpoint(ctx, endpoint), detectCursorPlan)
 	}
 
 	// 2. Local auth token → known Cursor API
 	if token := readCursorAuthToken(); token != "" {
-		result, err := fetchCursorAPIUsage(token)
+		result, err := fetchCursorAPIUsage(ctx, token)
 		if err == nil {
-			return withPlanDetection(result, detectCursorPlan)
+			return withPlanDetection(ctx, result, detectCursorPlan)
 		}
 		local := FetchCursorLocalUsage()
 		local.Status = "warn"
 		local.Message = cursorReasonMessage("local_auth_api_failed", fmt.Sprintf("%s; API call failed: %v", local.Message, err))
 		local.Source = "local-auth"
-		return withPlanDetection(local, detectCursorPlan)
+		return withPlanDetection(ctx, local, detectCursorPlan)
 	}
 
 	// 3. Workspace storage count fallback
 	local := FetchCursorLocalUsage()
 	local.Status = "warn"
 	local.Message = cursorReasonMessage("local_auth_missing", "No Cursor auth token found; "+local.Message)
-	return withPlanDetection(local, detectCursorPlan)
+	return withPlanDetection(ctx, local, detectCursorPlan)
 }
 
-func fetchCursorCustomEndpoint(endpoint string) UsageResult {
+func fetchCursorCustomEndpoint(ctx context.Context, endpoint string) UsageResult {
 	local := FetchCursorLocalUsage()
-	req, _ := http.NewRequest("GET", endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+	if err != nil {
+		local.Status = "warn"
+		local.Message = cursorReasonMessage("remote_request_failed", fmt.Sprintf("%s; %v", local.Message, err))
+		return local
+	}
 	if token := strings.TrimSpace(os.Getenv("CURSOR_API_KEY")); token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
@@ -121,8 +127,8 @@ func cursorAuthPaths(home string) []string {
 	}
 }
 
-func fetchCursorAPIUsage(token string) (UsageResult, error) {
-	req, err := http.NewRequest("GET", cursorAPIUsageURL(), nil)
+func fetchCursorAPIUsage(ctx context.Context, token string) (UsageResult, error) {
+	req, err := http.NewRequestWithContext(ctx, "GET", cursorAPIUsageURL(), nil)
 	if err != nil {
 		return UsageResult{}, err
 	}

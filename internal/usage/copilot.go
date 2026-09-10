@@ -2,6 +2,7 @@ package usage
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,7 +16,7 @@ import (
 	"github.com/suho-han/one-click-ai-tools/internal/netclient"
 )
 
-func FetchCopilotLocalUsage() UsageResult {
+func FetchCopilotLocalUsage(ctx context.Context) UsageResult {
 	result := UsageResult{
 		Provider:   "copilot",
 		Plan:       "unknown",
@@ -28,7 +29,7 @@ func FetchCopilotLocalUsage() UsageResult {
 		Status:     "ok",
 	}
 
-	result = withPlanDetection(result, detectCopilotPlan)
+	result = withPlanDetection(ctx, result, detectCopilotPlan)
 
 	home, _ := os.UserHomeDir()
 	sessionDir := filepath.Join(home, ".copilot", "session-state")
@@ -87,7 +88,7 @@ func FetchCopilotLocalUsage() UsageResult {
 	return result
 }
 
-func FetchCopilotUsage() UsageResult {
+func FetchCopilotUsage(ctx context.Context) UsageResult {
 	result := UsageResult{
 		Provider:   "copilot",
 		Plan:       "unknown",
@@ -100,7 +101,7 @@ func FetchCopilotUsage() UsageResult {
 		Status:     "error",
 	}
 
-	result = withPlanDetection(result, detectCopilotPlan)
+	result = withPlanDetection(ctx, result, detectCopilotPlan)
 
 	token := viper.GetString("github_api_token")
 	if token == "" {
@@ -110,16 +111,16 @@ func FetchCopilotUsage() UsageResult {
 		token = os.Getenv("GITHUB_TOKEN")
 	}
 	if token == "" {
-		ghToken, err := commandOutput(3*time.Second, "gh", "auth", "token")
+		ghToken, err := commandOutput(ctx, 3*time.Second, "gh", "auth", "token")
 		if err == nil && ghToken != "" {
 			token = ghToken
 			result.Source = "gh-cli"
 		} else {
-			return FetchCopilotLocalUsage()
+			return FetchCopilotLocalUsage(ctx)
 		}
 	}
 
-	if quotaResult, ok := fetchCopilotQuotaUsage(result, token); ok {
+	if quotaResult, ok := fetchCopilotQuotaUsage(ctx, result, token); ok {
 		return quotaResult
 	}
 
@@ -128,7 +129,11 @@ func FetchCopilotUsage() UsageResult {
 		user = os.Getenv("GITHUB_USER")
 	}
 	if user == "" {
-		reqUser, _ := http.NewRequest("GET", "https://api.github.com/user", nil)
+		reqUser, err := http.NewRequestWithContext(ctx, "GET", "https://api.github.com/user", nil)
+		if err != nil {
+			result.Message = fmt.Sprintf("build user request failed: %v", err)
+			return result
+		}
 		reqUser.Header.Set("Accept", "application/vnd.github+json")
 		reqUser.Header.Set("Authorization", "Bearer "+token)
 
@@ -159,7 +164,11 @@ func FetchCopilotUsage() UsageResult {
 	}
 
 	endpoint := fmt.Sprintf("https://api.github.com/users/%s/settings/billing/premium_request/usage", user)
-	req, _ := http.NewRequest("GET", endpoint, nil)
+	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
+	if err != nil {
+		result.Message = fmt.Sprintf("build billing request failed: %v", err)
+		return result
+	}
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("X-GitHub-Api-Version", "2026-03-10")
@@ -236,8 +245,8 @@ type copilotQuotaSnapshot struct {
 	QuotaResetAt        int64    `json:"quota_reset_at"`
 }
 
-func fetchCopilotQuotaUsage(base UsageResult, token string) (UsageResult, bool) {
-	req, err := http.NewRequest("GET", copilotUserEndpoint(), nil)
+func fetchCopilotQuotaUsage(ctx context.Context, base UsageResult, token string) (UsageResult, bool) {
+	req, err := http.NewRequestWithContext(ctx, "GET", copilotUserEndpoint(), nil)
 	if err != nil {
 		return base, false
 	}
