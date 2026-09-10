@@ -6,6 +6,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/suho-han/one-click-ai-tools/internal/update"
 )
@@ -73,6 +74,37 @@ func TestProbeCodexSessionUsesBootstrappedPath(t *testing.T) {
 	}
 	if result.Message != "Logged in" {
 		t.Fatalf("unexpected codex probe message: %q", result.Message)
+	}
+}
+
+func TestProbeCodexSessionTimesOutHungCLI(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script fixture is unix-only")
+	}
+
+	home := t.TempDir()
+	binDir := filepath.Join(home, ".local", "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	codexPath := filepath.Join(binDir, "codex")
+	if err := os.WriteFile(codexPath, []byte("#!/bin/sh\nsleep 30\n"), 0o755); err != nil {
+		t.Fatalf("write codex fixture failed: %v", err)
+	}
+
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", "/usr/bin:/bin")
+
+	originalTimeout := probeCommandTimeout
+	probeCommandTimeout = 200 * time.Millisecond
+	defer func() { probeCommandTimeout = originalTimeout }()
+
+	result := probeCodexSession(RefreshOptions{}, update.Tool{BinaryName: "codex"})
+	if result.Status != "error" {
+		t.Fatalf("expected error result for hung codex CLI, got %#v", result)
+	}
+	if !strings.Contains(result.Message, "timed out after") {
+		t.Fatalf("expected timeout message, got %q", result.Message)
 	}
 }
 
