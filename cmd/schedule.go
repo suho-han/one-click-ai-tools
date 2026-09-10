@@ -14,6 +14,13 @@ var scheduleCmd = &cobra.Command{
 	Use:     "schedule",
 	GroupID: "manage",
 	Short:   "Manage scheduled maintenance tasks",
+	Long: `Show, enable, or disable scheduled maintenance tasks (agent-update,
+session-refresh) via the platform scheduler (launchd/cron/SchTasks).`,
+	Example: `  oct schedule --task agent-update                         show status
+  oct schedule enable --task agent-update --interval daily --hour 9
+  oct schedule enable --task session-refresh --interval 6h
+  oct schedule disable --task agent-update
+  oct schedule config --interval 12h --hour 8              saved session-refresh config`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := schedule.GetScheduler()
 		if err != nil {
