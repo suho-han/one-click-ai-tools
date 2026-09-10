@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"bufio"
+	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -98,5 +100,68 @@ func TestConfigModel_KJDoesNotReorder(t *testing.T) {
 	mm = updated.(configModel)
 	if mm.items[0].tool.BinaryName != first || mm.items[1].tool.BinaryName != second {
 		t.Fatalf("expected J to not reorder items")
+	}
+}
+
+func TestConfigPromptsShareOneReader(t *testing.T) {
+	orig := configPromptReader
+	defer func() { configPromptReader = orig }()
+	configPromptReader = bufio.NewReader(strings.NewReader("y\ntok-123\nocto-user\nu\n"))
+
+	yes, err := promptYesNo("update token?", false)
+	if err != nil {
+		t.Fatalf("promptYesNo: %v", err)
+	}
+	if !yes {
+		t.Fatal("expected yes")
+	}
+	token, err := promptToken("> ")
+	if err != nil {
+		t.Fatalf("promptToken: %v", err)
+	}
+	if token != "tok-123" {
+		t.Fatalf("expected tok-123, got %q", token)
+	}
+	user, err := promptToken("> ")
+	if err != nil {
+		t.Fatalf("promptToken: %v", err)
+	}
+	if user != "octo-user" {
+		t.Fatalf("expected octo-user, got %q", user)
+	}
+	mode, err := promptUsageMode("remaining")
+	if err != nil {
+		t.Fatalf("promptUsageMode: %v", err)
+	}
+	if mode != "used" {
+		t.Fatalf("expected used mode, got %q", mode)
+	}
+}
+
+func TestConfigPromptsTreatEOFAsDefaults(t *testing.T) {
+	orig := configPromptReader
+	defer func() { configPromptReader = orig }()
+	configPromptReader = bufio.NewReader(strings.NewReader(""))
+
+	yes, err := promptYesNo("update token?", true)
+	if err != nil {
+		t.Fatalf("promptYesNo: %v", err)
+	}
+	if !yes {
+		t.Fatal("expected default yes on EOF")
+	}
+	token, err := promptToken("> ")
+	if err != nil {
+		t.Fatalf("promptToken: %v", err)
+	}
+	if token != "" {
+		t.Fatalf("expected empty token on EOF, got %q", token)
+	}
+	mode, err := promptUsageMode("remaining")
+	if err != nil {
+		t.Fatalf("promptUsageMode: %v", err)
+	}
+	if mode != "remaining" {
+		t.Fatalf("expected default mode on EOF, got %q", mode)
 	}
 }
