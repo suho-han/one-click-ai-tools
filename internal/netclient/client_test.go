@@ -213,3 +213,10 @@ func TestFormatError(t *testing.T) {
 		})
 	}
 }
+
+func TestTruncateBodyRuneSafe(t *testing.T) {
+	got := truncateBody("가나다", 4)
+	if got != "가..." {
+		t.Fatalf("unexpected truncate result: %q", got)
+	}
+}

@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -77,7 +76,12 @@ func fetchCursorCustomEndpoint(ctx context.Context, endpoint string) UsageResult
 		return local
 	}
 
-	body, _ := io.ReadAll(resp.Body)
+	body, err := readAllCapped(resp.Body)
+	if err != nil {
+		local.Status = "warn"
+		local.Message = cursorReasonMessage("remote_read_failed", fmt.Sprintf("%s; %v", local.Message, err))
+		return local
+	}
 	parsed, err := parseCursorUsageResponse(body)
 	if err != nil {
 		local.Status = "warn"
@@ -144,7 +148,10 @@ func fetchCursorAPIUsage(ctx context.Context, token string) (UsageResult, error)
 		return UsageResult{}, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
 
-	body, _ := io.ReadAll(resp.Body)
+	body, err := readAllCapped(resp.Body)
+	if err != nil {
+		return UsageResult{}, fmt.Errorf("read response failed: %w", err)
+	}
 	return parseCursorAPIResponse(body)
 }
 

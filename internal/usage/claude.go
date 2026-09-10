@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"os/exec"
@@ -184,7 +183,11 @@ func FetchClaudeUsage(ctx context.Context) UsageResult {
 		return result
 	}
 
-	body, _ := io.ReadAll(resp.Body)
+	body, err := readAllCapped(resp.Body)
+	if err != nil {
+		result.Message = fmt.Sprintf("Failed to read API response: %v", err)
+		return result
+	}
 	var data struct {
 		FiveHour struct {
 			Utilization float64 `json:"utilization"`
