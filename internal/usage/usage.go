@@ -340,7 +340,7 @@ func tableSourceLabel(source string) string {
 func formatBucketDisplay(r UsageResult, rawValue, mode string) string {
 	value := rawValue
 	if mode == DisplayModeRemaining && strings.EqualFold(r.Unit, "percent") {
-		if rem, ok := remainingFromUsed(rawValue); ok {
+		if rem, ok := RemainingFromUsedPercent(rawValue); ok {
 			value = rem
 		}
 	}
@@ -353,18 +353,6 @@ func formatBucketDisplay(r UsageResult, rawValue, mode string) string {
 		return value
 	}
 	return value
-}
-
-func remainingFromUsed(used string) (string, bool) {
-	v, err := strconv.ParseFloat(strings.TrimSpace(used), 64)
-	if err != nil {
-		return "", false
-	}
-	remaining := 100 - v
-	if remaining < 0 {
-		remaining = 0
-	}
-	return fmt.Sprintf("%.1f", remaining), true
 }
 
 func tablePlanLabel(plan string) string {
@@ -402,7 +390,7 @@ func usageSummaryDisplay(r UsageResult, mode string) string {
 		return "—"
 	}
 	if mode == DisplayModeRemaining && strings.EqualFold(r.Unit, "percent") {
-		if rem, ok := remainingFromUsed(used); ok {
+		if rem, ok := RemainingFromUsedPercent(used); ok {
 			used = rem
 		}
 	}
@@ -429,7 +417,7 @@ func usageSummaryDisplay(r UsageResult, mode string) string {
 
 func quotaModeLabel(quota string, mode string) string {
 	if mode == DisplayModeRemaining {
-		if rem, ok := remainingFromUsed(quota); ok {
+		if rem, ok := RemainingFromUsedPercent(quota); ok {
 			return rem + "% left"
 		}
 	}
