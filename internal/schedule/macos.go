@@ -1,6 +1,7 @@
 package schedule
 
 import (
+	"bytes"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -109,16 +110,19 @@ func (m *MacOS) Enable(task Task, interval string, hour int) error {
 	}
 
 	plistPath := launchAgentPath(home, m.LabelPrefix, task)
-	os.MkdirAll(filepath.Join(home, ".oct", "logs"), 0o755)
-	os.MkdirAll(filepath.Dir(plistPath), 0o755)
+	if err := os.MkdirAll(filepath.Join(home, ".oct", "logs"), 0o755); err != nil {
+		return fmt.Errorf("create log dir: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(plistPath), 0o755); err != nil {
+		return fmt.Errorf("create LaunchAgents dir: %w", err)
+	}
 
-	f, err := os.Create(plistPath)
-	if err != nil {
+	var buf bytes.Buffer
+	if err := renderLaunchAgentPlist(&buf, data); err != nil {
 		return err
 	}
-	defer f.Close()
-
-	if err := renderLaunchAgentPlist(f, data); err != nil {
+	// Atomic write: launchctl must never load a half-written plist.
+	if err := writeFileAtomic(plistPath, buf.Bytes(), 0o644); err != nil {
 		return err
 	}
 
@@ -175,4 +179,30 @@ func launchAgentLabel(prefix string, task Task) string {
 
 func launchAgentPath(home, prefix string, task Task) string {
 	return filepath.Join(home, "Library", "LaunchAgents", launchAgentLabel(prefix, task)+".plist")
+}
+
+// writeFileAtomic writes via a temp file + rename so launchctl can never
+// observe a truncated plist after a crash mid-write.
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpName, perm); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
 }
