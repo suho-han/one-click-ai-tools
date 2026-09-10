@@ -1,12 +1,14 @@
 package schedule
 
 import (
+	"encoding/xml"
 	"fmt"
-	"html/template"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
+	"text/template"
 )
 
 type launchAgentTemplateData struct {
@@ -28,11 +30,11 @@ const plistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>{{.Label}}</string>
+    <string>{{xml .Label}}</string>
     <key>ProgramArguments</key>
     <array>
-        <string>{{.BinaryPath}}</string>
-        <string>{{.Command}}</string>
+        <string>{{xml .BinaryPath}}</string>
+        <string>{{xml .Command}}</string>
     </array>
     {{if gt .StartIntervalSeconds 0}}
     <key>StartInterval</key>
@@ -53,11 +55,31 @@ const plistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
     {{end}}
     {{end}}
     <key>StandardOutPath</key>
-    <string>{{.LogPath}}</string>
+    <string>{{xml .LogPath}}</string>
     <key>StandardErrorPath</key>
-    <string>{{.LogPath}}</string>
+    <string>{{xml .LogPath}}</string>
 </dict>
 </plist>`
+
+// xmlEscape escapes text destined for XML string elements so paths containing
+// & < > ' " cannot break the plist.
+func xmlEscape(s string) string {
+	var b strings.Builder
+	if err := xml.EscapeText(&b, []byte(s)); err != nil {
+		return ""
+	}
+	return b.String()
+}
+
+func renderLaunchAgentPlist(w io.Writer, data launchAgentTemplateData) error {
+	tmpl, err := template.New("plist").Funcs(template.FuncMap{
+		"xml": xmlEscape,
+	}).Parse(plistTemplate)
+	if err != nil {
+		return err
+	}
+	return tmpl.Execute(w, data)
+}
 
 func (m *MacOS) Enable(task Task, interval string, hour int) error {
 	interval, err := validateScheduleTiming(interval, hour)
@@ -128,14 +150,6 @@ func (m *MacOS) Status(task Task) (string, error) {
 		return "enabled", nil
 	}
 	return "disabled", nil
-}
-
-func renderLaunchAgentPlist(w io.Writer, data launchAgentTemplateData) error {
-	tmpl, err := template.New("plist").Parse(plistTemplate)
-	if err != nil {
-		return err
-	}
-	return tmpl.Execute(w, data)
 }
 
 func startIntervalSeconds(interval string) int {
