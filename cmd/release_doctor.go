@@ -19,6 +19,7 @@ type releaseDoctorReport struct {
 	WorkingTreeCount int    `json:"working_tree_count"`
 	Branch           string `json:"branch,omitempty"`
 	Remote           string `json:"remote,omitempty"`
+	GitError         string `json:"git_error,omitempty"`
 	LatestError      string `json:"latest_error,omitempty"`
 }
 
@@ -40,20 +41,33 @@ var releaseDoctorCmd = &cobra.Command{
 }
 
 var (
-	releaseDoctorCommand       = execenv.Command
-	releaseDoctorLatestRelease = fetchLatestReleaseTag
+	releaseDoctorCommandContext = execenv.CommandContext
+	releaseDoctorLatestRelease  = fetchLatestReleaseTag
 )
 
 func collectReleaseDoctorReport(ctx context.Context) releaseDoctorReport {
-	workingTree := strings.TrimSpace(runDoctorCommand("git", "status", "--short"))
-	report := releaseDoctorReport{LocalVersion: rootCmd.Version, WorkingTree: workingTree}
+	report := releaseDoctorReport{LocalVersion: rootCmd.Version}
+
+	tree, err := runDoctorCommand(ctx, "git", "status", "--short")
+	if err != nil {
+		report.GitError = fmt.Sprintf("git status failed: %v", err)
+	}
+	report.WorkingTree = tree
 	if report.WorkingTree == "" {
 		report.WorkingTree = "clean"
 	} else {
 		report.WorkingTreeCount = len(strings.Split(report.WorkingTree, "\n"))
 	}
-	report.Branch = strings.TrimSpace(runDoctorCommand("git", "branch", "--show-current"))
-	report.Remote = strings.TrimSpace(runDoctorCommand("git", "remote", "get-url", "origin"))
+	branch, err := runDoctorCommand(ctx, "git", "branch", "--show-current")
+	if err != nil && report.GitError == "" {
+		report.GitError = fmt.Sprintf("git branch failed: %v", err)
+	}
+	report.Branch = branch
+	remote, err := runDoctorCommand(ctx, "git", "remote", "get-url", "origin")
+	if err != nil && report.GitError == "" {
+		report.GitError = fmt.Sprintf("git remote failed: %v", err)
+	}
+	report.Remote = remote
 
 	latest, err := releaseDoctorLatestRelease(ctx, selfUpdateRepo)
 	if err != nil {
@@ -75,6 +89,9 @@ func printReleaseDoctorReport(w io.Writer, report releaseDoctorReport) {
 		latest = "-"
 	}
 	fmt.Fprintf(w, "release doctor: local=%s latest=%s branch=%s tree=%s\n", nonEmptyOrDash(report.LocalVersion), latest, nonEmptyOrDash(report.Branch), treeState)
+	if report.GitError != "" {
+		fmt.Fprintf(w, "git: %s\n", report.GitError)
+	}
 	if report.LatestError != "" {
 		fmt.Fprintf(w, "github release lookup: %s\n", report.LatestError)
 	} else if report.UpdateAvailable {
@@ -98,12 +115,18 @@ func nonEmptyOrDash(value string) string {
 	return value
 }
 
-func runDoctorCommand(name string, args ...string) string {
-	out, err := releaseDoctorCommand(name, args...).CombinedOutput()
+// runDoctorCommand runs a git probe, returning trimmed output plus an error
+// so a failed probe is never misread as a clean result.
+func runDoctorCommand(ctx context.Context, name string, args ...string) (string, error) {
+	out, err := releaseDoctorCommandContext(ctx, name, args...).CombinedOutput()
+	text := strings.TrimSpace(string(out))
 	if err != nil {
-		return ""
+		if text != "" {
+			return text, fmt.Errorf("%v: %s", err, text)
+		}
+		return text, err
 	}
-	return strings.TrimSpace(string(out))
+	return text, nil
 }
 
 func init() {
