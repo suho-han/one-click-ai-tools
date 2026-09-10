@@ -347,14 +347,14 @@ func commandCodeMonthlyUsagePercent(planID string, monthlyRemaining, purchasedRe
 		if totalPool <= 0 {
 			return 0, false
 		}
-		return clampPercent(((totalPool - totalRemaining) / totalPool) * 100), true
+		return ClampPercent(((totalPool - totalRemaining) / totalPool) * 100), true
 	}
 	if summary != nil && summary.TotalCost > 0 {
 		totalPool := summary.TotalCost + totalRemaining
 		if totalPool <= 0 {
 			return 0, false
 		}
-		return clampPercent((summary.TotalCost / totalPool) * 100), true
+		return ClampPercent((summary.TotalCost / totalPool) * 100), true
 	}
 	if totalRemaining > 0 {
 		return 0, true
@@ -439,14 +439,4 @@ func maxFloat(a, b float64) float64 {
 		return a
 	}
 	return b
-}
-
-func clampPercent(v float64) float64 {
-	if v < 0 {
-		return 0
-	}
-	if v > 100 {
-		return 100
-	}
-	return v
 }

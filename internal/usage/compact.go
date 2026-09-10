@@ -3,7 +3,6 @@ package usage
 import (
 	"fmt"
 	"io"
-	"strconv"
 	"strings"
 )
 
@@ -51,7 +50,7 @@ func compactValueForMode(r UsageResult, mode string) string {
 	// usage` table and the Swift menubar show a real number for the exact
 	// same data.
 	if quota := strings.TrimSpace(r.Buckets["quota"]); quota != "" {
-		if label, ok := compactPercentLabel(quota, mode); ok {
+		if label, ok := PercentLabelForMode(quota, mode); ok {
 			return label
 		}
 	}
@@ -59,11 +58,11 @@ func compactValueForMode(r UsageResult, mode string) string {
 		return "?"
 	}
 	if raw, ok := compactUsageMetric(r); ok {
-		if label, ok := compactPercentLabel(raw, mode); ok {
+		if label, ok := PercentLabelForMode(raw, mode); ok {
 			return label
 		}
 	}
-	if label, ok := compactPercentLabel(r.Used, mode); ok {
+	if label, ok := PercentLabelForMode(r.Used, mode); ok {
 		return label
 	}
 	return "?"
@@ -90,26 +89,4 @@ func compactUsageMetric(r UsageResult) (string, bool) {
 		}
 	}
 	return "", false
-}
-
-// compactPercentLabel formats a raw (always "used") bucket/used percentage as
-// a bare "NN%" for the given mode. It is the only place that inverts used ->
-// remaining for the compact title; callers must pass the raw stored value,
-// never an already-formatted display string, or the inversion doubles up.
-func compactPercentLabel(used string, mode string) (string, bool) {
-	v, err := strconv.ParseFloat(strings.TrimSuffix(strings.TrimSpace(used), "%"), 64)
-	if err != nil {
-		return "", false
-	}
-	value := v
-	if mode == DisplayModeRemaining {
-		value = 100 - v
-	}
-	if value < 0 {
-		value = 0
-	}
-	if value > 100 {
-		value = 100
-	}
-	return fmt.Sprintf("%.0f%%", value), true
 }
