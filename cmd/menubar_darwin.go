@@ -3,6 +3,8 @@
 package cmd
 
 import (
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -24,19 +26,32 @@ type menubarProviderGroup struct {
 
 func runMenubar() error {
 	if !menubarLegacy {
-		if launched, err := launchSwiftMenubarHelper(false); launched || err != nil {
+		launched, err := launchSwiftMenubarHelper(false)
+		if launched || err != nil {
 			return err
 		}
+		warnLegacyMenubarFallback(os.Stderr)
 	}
 	systray.Run(onMenubarReady, func() {})
 	return nil
 }
 
+// warnLegacyMenubarFallback makes the otherwise-silent demotion visible:
+// without a Swift helper, users could not tell why their menubar looked
+// different from the documented one.
+func warnLegacyMenubarFallback(w io.Writer) {
+	fmt.Fprintln(w, "oct: Swift menubar helper not found; falling back to the legacy menubar. Build it with 'oct menubar build-helper' or install it with 'oct menubar install-helper' (see 'oct menubar doctor').")
+}
+
 func startMenubarDetached() error {
 	if !menubarLegacy {
-		if launched, err := launchSwiftMenubarHelper(true); launched || err != nil {
+		launched, err := launchSwiftMenubarHelper(true)
+		if launched || err != nil {
 			return err
 		}
+		// Warn now: the re-executed child's stderr goes to /dev/null, so
+		// this is the only chance the user sees the reason.
+		warnLegacyMenubarFallback(os.Stderr)
 	}
 
 	execPath, err := os.Executable()
