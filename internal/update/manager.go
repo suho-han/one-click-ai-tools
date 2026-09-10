@@ -316,13 +316,13 @@ func matchesInstalledPackage(ctx context.Context, m Manager, t Tool) bool {
 func packageListCommand(ctx context.Context, m Manager, t Tool) ([]byte, error) {
 	switch m {
 	case Brew:
-		return commandOutput(ctx, "brew", "list", t.BrewTarget())
+		return memoizedCommandOutput(ctx, "brew", "list", t.BrewTarget())
 	case Pnpm:
-		return commandOutput(ctx, "pnpm", "list", "-g", t.Package)
+		return memoizedCommandOutput(ctx, "pnpm", "list", "-g", t.Package)
 	case Yarn:
-		return commandOutput(ctx, "yarn", "global", "list", t.Package)
+		return memoizedCommandOutput(ctx, "yarn", "global", "list", t.Package)
 	case Npm:
-		return commandOutput(ctx, "npm", "list", "-g", t.Package)
+		return memoizedCommandOutput(ctx, "npm", "list", "-g", t.Package)
 	default:
 		return nil, errExecutableNotFound
 	}
@@ -359,7 +359,7 @@ func commandPrefixes(ctx context.Context, name string, firstArg string, mode str
 	default:
 		args = []string{firstArg}
 	}
-	out, err := commandOutput(ctx, name, args...)
+	out, err := memoizedCommandOutput(ctx, name, args...)
 	if err != nil {
 		return nil
 	}
@@ -375,7 +375,7 @@ func commandPrefixes(ctx context.Context, name string, firstArg string, mode str
 }
 
 func npmGlobalBinaryPrefixes(ctx context.Context) []string {
-	out, err := commandOutput(ctx, "npm", "prefix", "-g")
+	out, err := memoizedCommandOutput(ctx, "npm", "prefix", "-g")
 	if err != nil {
 		return nil
 	}
@@ -431,7 +431,7 @@ func cargoBinaryPrefixes() []string {
 }
 
 func goInstallBinaryPrefixes(ctx context.Context) []string {
-	out, err := commandOutput(ctx, "go", "env", "GOPATH")
+	out, err := memoizedCommandOutput(ctx, "go", "env", "GOPATH")
 	if err != nil {
 		return nil
 	}
@@ -443,7 +443,7 @@ func goInstallBinaryPrefixes(ctx context.Context) []string {
 }
 
 func pipBinaryPrefixes(ctx context.Context) []string {
-	out, err := commandOutput(ctx, "python3", "-m", "site", "--user-base")
+	out, err := memoizedCommandOutput(ctx, "python3", "-m", "site", "--user-base")
 	if err != nil {
 		return nil
 	}
