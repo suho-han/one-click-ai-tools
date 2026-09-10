@@ -64,6 +64,12 @@ func MaybeSendUsageAlerts(results []usage.UsageResult, cfg UsageAlertConfig, now
 	}
 	localNow := now.In(loc)
 
+	// Serialize the read-modify-write below across processes: monitor, the
+	// menubar's usage --notify, and the scheduled task can run concurrently
+	// and would otherwise clobber each other's LastSent bookkeeping.
+	if unlock, err := lockStateFile(cfg.StatePath); err == nil {
+		defer unlock()
+	}
 	st, _ := loadState(cfg.StatePath)
 	if st.LastSent == nil {
 		st.LastSent = map[string]time.Time{}
@@ -343,7 +349,33 @@ func saveState(path string, st alertState) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, b, 0644)
+	return writeFileAtomic(path, b, 0644)
+}
+
+// writeFileAtomic writes via a temp file + rename so a crash mid-write never
+// leaves a truncated state file behind for the next reader.
+func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpName, perm); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, path)
 }
 
 func sendOSNotification(title, message string) error {
