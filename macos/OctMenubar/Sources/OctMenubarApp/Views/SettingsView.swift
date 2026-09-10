@@ -4,13 +4,7 @@ struct SettingsView: View {
     @AppStorage(MenubarPreferences.useProviderAccentColorsKey) private var useProviderAccentColors = true
     @State private var selectedTab: SettingsTab = .general
     @State private var lastActionFeedback: SettingsFeedback?
-    @State private var loadedConfig: ConfigurationSnapshot?
-    @State private var configDraft: ConfigurationDraft?
-    @State private var configFeedback: SettingsFeedback?
-    @State private var isConfigLoading = false
-    @State private var isConfigSaving = false
-
-    private let service = OctCLIService()
+    @ObservedObject var configurationStore: ConfigurationStore
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -19,7 +13,12 @@ struct SettingsView: View {
         }
         .padding(16)
         .frame(minWidth: 640, idealWidth: 640, maxWidth: 640, minHeight: 480, alignment: .topLeading)
-        .onAppear(perform: loadConfiguration)
+        .onAppear {
+            // Reload-on-open policy: picks up external (CLI) config changes.
+            // The draft itself lives in the shared store, so closing and
+            // reopening the window never discards unsaved edits.
+            Task { await configurationStore.loadDraft() }
+        }
     }
 
     private var settingsHeader: some View {
@@ -42,14 +41,14 @@ struct SettingsView: View {
                     SettingsGeneralTab(useProviderAccentColors: $useProviderAccentColors)
                 case .configuration:
                     SettingsConfigurationTab(
-                        configDraft: $configDraft,
-                        isLoading: isConfigLoading,
-                        isSaving: isConfigSaving,
-                        isRevertAvailable: loadedConfig != nil,
-                        feedback: configFeedback,
+                        configDraft: $configurationStore.draft,
+                        isLoading: configurationStore.isLoading,
+                        isSaving: configurationStore.isSaving,
+                        isRevertAvailable: configurationStore.isRevertAvailable,
+                        feedback: configurationStore.feedback,
                         onDraftChange: markConfigurationChanged,
-                        onLoad: loadConfiguration,
-                        onSave: saveConfiguration,
+                        onLoad: { Task { await configurationStore.loadDraft() } },
+                        onSave: { Task { await configurationStore.saveDraft() } },
                         onRevert: revertConfiguration
                     )
                 case .tools:
@@ -62,66 +61,33 @@ struct SettingsView: View {
     }
 
     private func runAction(_ action: OctMenubarAction) {
-        do {
-            try service.run(action: action)
-            lastActionFeedback = .success("Launched \(action.settingsTitle) in Terminal.")
-        } catch {
-            lastActionFeedback = .error(error.localizedDescription)
+        // Terminal launches run off the main thread; the window stays
+        // responsive and only the feedback line updates.
+        Task {
+            do {
+                try await OctCLIService().run(action: action)
+                lastActionFeedback = .success("Launched \(action.settingsTitle) in Terminal.")
+            } catch {
+                lastActionFeedback = .error(error.localizedDescription)
+            }
         }
-    }
-
-    private func loadConfiguration() {
-        isConfigLoading = true
-        configFeedback = nil
-        do {
-            let snapshot = try service.fetchConfigurationSnapshot()
-            loadedConfig = snapshot
-            configDraft = ConfigurationDraft(snapshot: snapshot)
-            configFeedback = .success("Loaded configuration.")
-        } catch {
-            configFeedback = .error(error.localizedDescription)
-        }
-        isConfigLoading = false
-    }
-
-    private func saveConfiguration() {
-        guard let configDraft, configDraft.hasEnabledTool else {
-            configFeedback = .warning("Select at least one provider.")
-            return
-        }
-
-        isConfigSaving = true
-        do {
-            try service.saveConfiguration(configDraft.updatePayload())
-            let snapshot = try service.fetchConfigurationSnapshot()
-            loadedConfig = snapshot
-            self.configDraft = ConfigurationDraft(snapshot: snapshot)
-            configFeedback = .success("Saved.")
-        } catch {
-            configFeedback = .error(error.localizedDescription)
-        }
-        isConfigSaving = false
     }
 
     private func revertConfiguration() {
-        guard let loadedConfig else {
-            return
-        }
-        configDraft?.revert(to: loadedConfig)
-        configFeedback = .informational("Reverted to the last loaded configuration.")
+        configurationStore.revertDraft()
     }
 
     private func markConfigurationChanged() {
-        guard let configDraft, let loadedConfig else {
+        guard let configDraft = configurationStore.draft, let loadedConfig = configurationStore.snapshot else {
             return
         }
 
         if configDraft == ConfigurationDraft(snapshot: loadedConfig) {
-            configFeedback = nil
+            configurationStore.feedback = nil
         } else if configDraft.hasEnabledTool {
-            configFeedback = .informational("Unsaved changes.")
+            configurationStore.feedback = .informational("Unsaved changes.")
         } else {
-            configFeedback = .warning("Select at least one provider.")
+            configurationStore.feedback = .warning("Select at least one provider.")
         }
     }
 }

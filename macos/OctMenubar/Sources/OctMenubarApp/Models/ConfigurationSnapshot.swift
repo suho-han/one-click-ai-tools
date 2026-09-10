@@ -77,6 +77,7 @@ struct ConfigurationSnapshot: Codable, Equatable {
     let configFile: String
     let usageDisplayMode: UsageDisplayMode
     let menubarTitleMode: MenubarTitleMode
+    let menubarRefreshInterval: String
     let sessionRefreshEnabled: Bool
     let sessionRefreshInterval: String
     let sessionRefreshHour: Int
@@ -86,6 +87,7 @@ struct ConfigurationSnapshot: Codable, Equatable {
         case configFile = "config_file"
         case usageDisplayMode = "usage_display_mode"
         case menubarTitleMode = "menubar_title_mode"
+        case menubarRefreshInterval = "menubar_refresh_interval"
         case sessionRefreshEnabled = "session_refresh_enabled"
         case sessionRefreshInterval = "session_refresh_interval"
         case sessionRefreshHour = "session_refresh_hour"
@@ -96,6 +98,7 @@ struct ConfigurationSnapshot: Codable, Equatable {
         configFile: String,
         usageDisplayMode: UsageDisplayMode,
         menubarTitleMode: MenubarTitleMode,
+        menubarRefreshInterval: String = "1m",
         sessionRefreshEnabled: Bool,
         sessionRefreshInterval: String,
         sessionRefreshHour: Int,
@@ -104,6 +107,7 @@ struct ConfigurationSnapshot: Codable, Equatable {
         self.configFile = configFile
         self.usageDisplayMode = usageDisplayMode
         self.menubarTitleMode = menubarTitleMode
+        self.menubarRefreshInterval = menubarRefreshInterval
         self.sessionRefreshEnabled = sessionRefreshEnabled
         self.sessionRefreshInterval = sessionRefreshInterval
         self.sessionRefreshHour = sessionRefreshHour
@@ -116,11 +120,63 @@ struct ConfigurationSnapshot: Codable, Equatable {
             configFile: try container.decode(String.self, forKey: .configFile),
             usageDisplayMode: try container.decode(UsageDisplayMode.self, forKey: .usageDisplayMode),
             menubarTitleMode: try container.decodeIfPresent(MenubarTitleMode.self, forKey: .menubarTitleMode) ?? .oct,
+            menubarRefreshInterval: try container.decodeIfPresent(String.self, forKey: .menubarRefreshInterval) ?? "1m",
             sessionRefreshEnabled: try container.decode(Bool.self, forKey: .sessionRefreshEnabled),
             sessionRefreshInterval: try container.decode(String.self, forKey: .sessionRefreshInterval),
             sessionRefreshHour: try container.decode(Int.self, forKey: .sessionRefreshHour),
             tools: try container.decode([ConfigTool].self, forKey: .tools)
         )
+    }
+
+    /// Refresh cadence in seconds, mirroring the legacy Go menubar: a Go
+    /// duration string ("90s", "1m30s", "1h"); 0/negative/invalid fall back
+    /// to 60 seconds.
+    var refreshInterval: TimeInterval {
+        Self.parseGoDuration(menubarRefreshInterval) ?? 60
+    }
+
+    /// Parses Go duration syntax ("500ms", "90s", "1m30s", "2h"). Returns nil
+    /// for unparseable or non-positive input.
+    static func parseGoDuration(_ raw: String) -> TimeInterval? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        var total: TimeInterval = 0
+        var index = trimmed.startIndex
+
+        func unitSeconds(_ unit: String) -> TimeInterval? {
+            switch unit {
+            case "ns": return 0.000000001
+            case "us", "µs": return 0.000001
+            case "ms": return 0.001
+            case "s": return 1
+            case "m": return 60
+            case "h": return 3600
+            default: return nil
+            }
+        }
+
+        while index < trimmed.endIndex {
+            let numberStart = index
+            var sawDigit = false
+            var sawDot = false
+            while index < trimmed.endIndex {
+                let ch = trimmed[index]
+                if ch.isNumber { sawDigit = true; index = trimmed.index(after: index) }
+                else if ch == "." && !sawDot { sawDot = true; index = trimmed.index(after: index) }
+                else { break }
+            }
+            guard sawDigit, let value = Double(trimmed[numberStart..<index]) else { return nil }
+
+            let unitStart = index
+            while index < trimmed.endIndex, !trimmed[index].isNumber, trimmed[index] != "." {
+                index = trimmed.index(after: index)
+            }
+            let unit = String(trimmed[unitStart..<index])
+            guard let seconds = unitSeconds(unit) else { return nil }
+            total += value * seconds
+        }
+        return total > 0 ? total : nil
     }
 }
 

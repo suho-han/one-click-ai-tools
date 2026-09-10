@@ -6,7 +6,8 @@ import SwiftUI
 final class StatusBarController: NSObject, NSApplicationDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let popover = NSPopover()
-    private let viewModel = UsageViewModel(service: OctCLIService())
+    private let configurationStore = ConfigurationStore()
+    private lazy var viewModel = UsageViewModel(service: OctCLIService(), configurationStore: configurationStore)
     private var cancellables: Set<AnyCancellable> = []
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -59,6 +60,8 @@ final class StatusBarController: NSObject, NSApplicationDelegate {
             popover.performClose(sender)
             return
         }
+        // Reload-on-open policy: pick up external (CLI) config changes.
+        Task { await self.configurationStore.reload() }
         popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         NSApp.activate(ignoringOtherApps: true)
     }
