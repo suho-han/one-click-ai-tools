@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/spf13/viper"
 )
@@ -307,4 +308,16 @@ func captureStdout(t *testing.T, fn func()) string {
 	}
 	_ = r.Close()
 	return strings.TrimSpace(buf.String())
+}
+
+func TestTruncateTextRuneSafe(t *testing.T) {
+	// Korean characters are 3 bytes each; a naive byte cut would split one
+	// and emit invalid UTF-8.
+	got := truncateText("가나다라마", 10)
+	if got != "가나..." {
+		t.Fatalf("unexpected truncate result: %q", got)
+	}
+	if !utf8.ValidString(strings.TrimSuffix(got, "...")) {
+		t.Fatalf("truncated text is not valid UTF-8: %q", got)
+	}
 }

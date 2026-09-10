@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
+
+	"github.com/suho-han/one-click-ai-tools/internal/netclient"
 )
 
 // userHomeDir is a variable for testing (allows mocking in tests)
@@ -163,8 +163,6 @@ func FetchOpenCodeUsage(ctx context.Context) UsageResult {
 
 // fetchOpenCodeGoUsage calls the OpenCode Go usage API and parses the response.
 func fetchOpenCodeGoUsage(ctx context.Context, endpoint, apiKey string) (*openCodeGoUsageResponse, error) {
-	client := &http.Client{Timeout: 15 * time.Second}
-
 	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
@@ -174,13 +172,13 @@ func fetchOpenCodeGoUsage(ctx context.Context, endpoint, apiKey string) (*openCo
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "one-click-tools/1.0")
 
-	resp, err := client.Do(req)
+	resp, err := netclient.DefaultClient.DoWithRetry(req)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := readAllCapped(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
