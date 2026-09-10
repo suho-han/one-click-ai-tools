@@ -26,8 +26,8 @@ func TestReleaseDoctorJSONUsesGitHubReleaseFields(t *testing.T) {
 }
 
 func TestCollectReleaseDoctorReportChecksGitHubLatestRelease(t *testing.T) {
-	origCommand := releaseDoctorCommand
-	releaseDoctorCommand = fakeReleaseDoctorCommand
+	origCommand := releaseDoctorCommandContext
+	releaseDoctorCommandContext = fakeReleaseDoctorCommand
 	origLatest := releaseDoctorLatestRelease
 	releaseDoctorLatestRelease = func(ctx context.Context, repo string) (string, error) {
 		if repo != selfUpdateRepo {
@@ -36,7 +36,7 @@ func TestCollectReleaseDoctorReportChecksGitHubLatestRelease(t *testing.T) {
 		return "v1.2.3", nil
 	}
 	t.Cleanup(func() {
-		releaseDoctorCommand = origCommand
+		releaseDoctorCommandContext = origCommand
 		releaseDoctorLatestRelease = origLatest
 	})
 
@@ -47,9 +47,33 @@ func TestCollectReleaseDoctorReportChecksGitHubLatestRelease(t *testing.T) {
 	if !report.UpdateAvailable {
 		t.Fatal("expected update_available for newer latest release")
 	}
+	if report.GitError != "" {
+		t.Fatalf("unexpected git error: %q", report.GitError)
+	}
 }
 
-func fakeReleaseDoctorCommand(name string, args ...string) *exec.Cmd {
+func TestCollectReleaseDoctorReportSurfacesGitFailure(t *testing.T) {
+	origCommand := releaseDoctorCommandContext
+	releaseDoctorCommandContext = func(ctx context.Context, name string, args ...string) *exec.Cmd {
+		cmd := exec.Command("false")
+		return cmd
+	}
+	origLatest := releaseDoctorLatestRelease
+	releaseDoctorLatestRelease = func(ctx context.Context, repo string) (string, error) {
+		return "v1.2.3", nil
+	}
+	t.Cleanup(func() {
+		releaseDoctorCommandContext = origCommand
+		releaseDoctorLatestRelease = origLatest
+	})
+
+	report := collectReleaseDoctorReport(context.Background())
+	if report.GitError == "" {
+		t.Fatal("expected git_error for failing git probes")
+	}
+}
+
+func fakeReleaseDoctorCommand(ctx context.Context, name string, args ...string) *exec.Cmd {
 	cmdArgs := []string{"-test.run=TestReleaseDoctorCommandHelper", "--", name}
 	cmdArgs = append(cmdArgs, args...)
 	cmd := exec.Command(os.Args[0], cmdArgs...)

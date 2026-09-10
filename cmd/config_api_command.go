@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -58,19 +57,7 @@ from stdin.`,
 }
 
 func init() {
-	oldRun := configListCmd.Run
 	configListCmd.Flags().BoolVar(&configListJSON, "json", false, "print configuration as JSON")
-	configListCmd.Run = func(cmd *cobra.Command, args []string) {
-		if !configListJSON {
-			oldRun(cmd, args)
-			return
-		}
-		encoder := json.NewEncoder(cmd.OutOrStdout())
-		encoder.SetIndent("", "  ")
-		if err := encoder.Encode(buildConfigSnapshot(configPathForDisplay())); err != nil {
-			fmt.Fprintf(cmd.ErrOrStderr(), "failed to encode config json: %v\n", err)
-		}
-	}
 
 	configUpdateCmd.Flags().StringVar(&configUpdatePayloadFlag, "payload", "", "configuration update JSON payload ('-' reads stdin)")
 	configUpdateCmd.Flags().StringVar(&configUpdateJSON, "json", "", "deprecated: use --payload")
