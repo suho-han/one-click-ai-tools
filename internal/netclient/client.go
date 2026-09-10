@@ -2,6 +2,7 @@ package netclient
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -75,13 +76,12 @@ func (c *Client) DoWithRetry(req *http.Request) (*http.Response, error) {
 
 func (c *Client) shouldRetry(resp *http.Response, err error) bool {
 	if err != nil {
-		if netErr, ok := err.(net.Error); ok && netErr.Temporary() {
-			return true
-		}
-		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-			return true
-		}
-		return false
+		// Retry timeouts only. net.Error.Temporary() is deprecated and
+		// unreliable; every other transport error surfaces to the caller
+		// (netclient's own 30s client timeout is a Timeout error, so the
+		// slow-network case still retries).
+		var netErr net.Error
+		return errors.As(err, &netErr) && netErr.Timeout()
 	}
 
 	if resp != nil {
