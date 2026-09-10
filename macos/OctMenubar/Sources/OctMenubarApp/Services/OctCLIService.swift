@@ -30,10 +30,16 @@ struct OctCLIService {
         }
     }
 
-    func fetchUsageSnapshot(now: Date = Date()) throws -> UsageSnapshot {
-        let configuration = try? fetchConfigurationSnapshot()
+    /// Builds a snapshot from usage output plus a (possibly cached)
+    /// configuration. The configuration is injected by the caller — the
+    /// shared ConfigurationStore — instead of re-reading it on every refresh.
+    func fetchUsageSnapshot(
+        configuration: ConfigurationSnapshot?,
+        now: Date = Date()
+    ) throws -> UsageSnapshot {
         let titleMode = configuration?.menubarTitleMode ?? .oct
         let usageDisplayMode = configuration?.usageDisplayMode ?? .remaining
+        let refreshInterval = configuration?.refreshInterval ?? refreshInterval
         let output = try runAndCapture(arguments: ["usage", "--json"])
         let data = Data(output.utf8)
         let response = try JSONDecoder().decode(UsageResponse.self, from: data)
@@ -46,30 +52,49 @@ struct OctCLIService {
         )
     }
 
-    func fetchConfigurationSnapshot() throws -> ConfigurationSnapshot {
-        let output = try runAndCapture(arguments: ["config", "list", "--json"])
+    func fetchConfigurationSnapshot() async throws -> ConfigurationSnapshot {
+        let output = try await runAndCapture(arguments: ["config", "list", "--json"])
         let data = Data(output.utf8)
         return try JSONDecoder().decode(ConfigurationSnapshot.self, from: data)
     }
 
-    func saveConfiguration(_ payload: ConfigurationUpdatePayload) throws {
+    /// Saves via the modern --payload flag. When the installed oct binary is
+    /// older and rejects the flag, retries once with the legacy --json
+    /// spelling — only for that positively-identified flag-parse failure;
+    /// every other error surfaces unchanged (a generic retry could repeat an
+    /// already-applied change or mask the real problem).
+    func saveConfiguration(_ payload: ConfigurationUpdatePayload) async throws {
         let data = try JSONEncoder().encode(payload)
         guard let json = String(data: data, encoding: .utf8) else {
             throw OctCLIServiceError.encodingFailed
         }
-        _ = try runProcess(executableURL: executableURL, arguments: ["config", "update", "--json", json])
+        do {
+            _ = try await runProcess(executableURL: executableURL, arguments: ["config", "update", "--payload", json])
+        } catch let error as OctCLIServiceError {
+            if case .nonZeroExit(_, let stderr) = error, Self.isUnknownFlagError(stderr) {
+                _ = try await runProcess(executableURL: executableURL, arguments: ["config", "update", "--json", json])
+                return
+            }
+            throw error
+        }
     }
 
-    func run(action: OctMenubarAction) throws {
+    static func isUnknownFlagError(_ stderr: String) -> Bool {
+        let lowered = stderr.lowercased()
+        return lowered.contains("unknown flag: --payload")
+            || lowered.contains("flag provided but not defined: -payload")
+    }
+
+    func run(action: OctMenubarAction) async throws {
         switch action {
         case .openUsage:
-            try runInTerminal(arguments: ["usage"])
+            try await runInTerminal(arguments: ["usage"])
         case .openMonitor:
-            try runInTerminal(arguments: ["monitor", "--once"])
+            try await runInTerminal(arguments: ["monitor", "--once"])
         case .runSessionRefresh:
-            try runInTerminal(arguments: ["session-refresh"])
+            try await runInTerminal(arguments: ["session-refresh"])
         case .runAlertCheck:
-            try runInTerminal(arguments: ["usage", "--notify"])
+            try await runInTerminal(arguments: ["usage", "--notify"])
         }
     }
 
@@ -142,12 +167,12 @@ struct OctCLIService {
         return candidates
     }
 
-    private func runAndCapture(arguments: [String]) throws -> String {
-        let result = try runProcess(executableURL: executableURL, arguments: arguments)
+    private func runAndCapture(arguments: [String]) async throws -> String {
+        let result = try await runProcess(executableURL: executableURL, arguments: arguments)
         return result.stdout
     }
 
-    private func runInTerminal(arguments: [String]) throws {
+    private func runInTerminal(arguments: [String]) async throws {
         let launcherURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("oct-menubar-\(UUID().uuidString)")
             .appendingPathExtension("command")
@@ -164,7 +189,7 @@ struct OctCLIService {
         try script.write(to: launcherURL, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: launcherURL.path)
 
-        _ = try runProcess(
+        _ = try await runProcess(
             executableURL: URL(fileURLWithPath: "/usr/bin/open"),
             arguments: ["-a", "Terminal", launcherURL.path],
             requireManagedExecutable: false
@@ -175,11 +200,18 @@ struct OctCLIService {
         ([shellQuote(executableURL.path)] + arguments.map(shellQuote)).joined(separator: " ")
     }
 
+    /// Runs a process off the caller's thread and collects its output without
+    /// deadlock: pipes are drained continuously from the moment the process
+    /// starts (so output beyond the pipe buffer capacity cannot block the
+    /// child on write), and the call resolves only after the process has
+    /// terminated AND both pipes reached EOF, so trailing output is never
+    /// lost. A watchdog terminates the process at `processTimeout`; the
+    /// continuation resumes exactly once.
     private func runProcess(
         executableURL: URL,
         arguments: [String],
         requireManagedExecutable: Bool = true
-    ) throws -> ProcessOutput {
+    ) async throws -> ProcessOutput {
         let fileManager = FileManager.default
         if requireManagedExecutable && !fileManager.isExecutableFile(atPath: executableURL.path) {
             throw OctCLIServiceError.missingExecutable(path: executableURL.path, searchedPaths: searchedPaths)
@@ -194,25 +226,81 @@ struct OctCLIService {
         process.standardOutput = stdout
         process.standardError = stderr
 
+        let lock = NSLock()
+        var stdoutData = Data()
+        var stderrData = Data()
+        var didTimeOut = false
+
+        // Drain both pipes as data arrives; each handler removes itself at
+        // EOF. The group completes only when both pipes are exhausted.
+        let pipesEOF = DispatchGroup()
+        pipesEOF.enter()
+        pipesEOF.enter()
+        stdout.fileHandleForReading.readabilityHandler = { handle in
+            let chunk = handle.availableData
+            if chunk.isEmpty {
+                handle.readabilityHandler = nil
+                pipesEOF.leave()
+            } else {
+                lock.lock()
+                stdoutData.append(chunk)
+                lock.unlock()
+            }
+        }
+        stderr.fileHandleForReading.readabilityHandler = { handle in
+            let chunk = handle.availableData
+            if chunk.isEmpty {
+                handle.readabilityHandler = nil
+                pipesEOF.leave()
+            } else {
+                lock.lock()
+                stderrData.append(chunk)
+                lock.unlock()
+            }
+        }
+
         do {
             try process.run()
         } catch {
+            stdout.fileHandleForReading.readabilityHandler = nil
+            stderr.fileHandleForReading.readabilityHandler = nil
             throw OctCLIServiceError.launchFailed(path: executableURL.path, underlying: error)
         }
 
-        let deadline = Date().addingTimeInterval(processTimeout)
-        while process.isRunning {
-            if Date() >= deadline {
+        let timeoutWorkItem = DispatchWorkItem {
+            lock.lock()
+            didTimeOut = true
+            lock.unlock()
+            if process.isRunning {
                 process.terminate()
-                throw OctCLIServiceError.timeout(path: executableURL.path, timeout: processTimeout)
             }
-            Thread.sleep(forTimeInterval: 0.05)
+        }
+        DispatchQueue.global().asyncAfter(
+            deadline: .now() + processTimeout,
+            execute: timeoutWorkItem
+        )
+        defer { timeoutWorkItem.cancel() }
+
+        // Wait for both pipes to reach EOF (guaranteed after termination).
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            pipesEOF.notify(queue: .global()) {
+                continuation.resume()
+            }
+        }
+        process.waitUntilExit()
+
+        lock.lock()
+        let timedOut = didTimeOut
+        let outData = stdoutData
+        let errData = stderrData
+        lock.unlock()
+
+        if timedOut {
+            throw OctCLIServiceError.timeout(path: executableURL.path, timeout: processTimeout)
         }
 
-        let stdoutData = stdout.fileHandleForReading.readDataToEndOfFile()
-        let stderrData = stderr.fileHandleForReading.readDataToEndOfFile()
-        let stdoutText = String(data: stdoutData, encoding: .utf8) ?? ""
-        let stderrText = String(data: stderrData, encoding: .utf8) ?? ""
+        let stdoutText = String(data: outData, encoding: .utf8) ?? ""
+        let stderrText = String(data: errData, encoding: .utf8) ?? ""
 
         guard process.terminationStatus == 0 else {
             throw OctCLIServiceError.nonZeroExit(
