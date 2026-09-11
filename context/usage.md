@@ -50,23 +50,34 @@ Notes:
 - Claude Code falls back to parsing `claude --print /usage` for 5h/weekly quota when the OAuth API reports no utilization.
 - Antigravity parses quota from `agy --print /usage` without reading tokens or keychain data directly.
 - Command Code reads 5h/7d/monthly buckets from the billing API using `COMMAND_CODE_API_KEY` or `~/.commandcode/auth.json`.
+- Kimi Code reads weekly + 5-hour request windows from `api.kimi.com/coding/v1/usages` (`KIMI_CODE_API_KEY` or `~/.kimi-code/credentials/kimi-code.json`).
+- Qwen Code has no public usage API; oct counts today's local token-usage records (`~/.qwen/**/usage/token-usage-*.jsonl`) against `qwen_daily_limit` (default 100, this machine only).
+- MiniMax plan quota (5h + weekly) comes from `POST /v1/coding_plan/remains` (`MINIMAX_CODING_API_KEY` or `MINIMAX_API_KEY`; `MINIMAX_REGION=cn` switches to the mainland host).
+- Standalone providers (`zai`, `deepseek`, `openrouter`, `grok`) have no CLI behind them and are fetched only when listed in `agent_order` or `enabled_tools`.
 - Legacy config values `gemini` and `gemini-cli` are still accepted, but they normalize internally to `agy`.
 
 ### Key environment variables
 
-- Common endpoint overrides:
+- Common endpoint overrides (all verified against the code):
   - `OCT_CODEX_USAGE_ENDPOINT`
-  - `OCT_CLAUDE_USAGE_ENDPOINT`
-  - `OCT_COPILOT_USAGE_ENDPOINT`
+  - `OCT_COMMANDCODE_API_BASE_URL`
+  - `OCT_OPENCODE_USAGE_ENDPOINT`
+  - `OCT_KIMI_USAGE_ENDPOINT`
+  - `OCT_ZAI_USAGE_ENDPOINT`
+  - `OCT_DEEPSEEK_BALANCE_ENDPOINT`
+  - `OCT_OPENROUTER_USAGE_ENDPOINT`
+  - `OCT_MINIMAX_USAGE_ENDPOINT`
+  - `OCT_GROK_USAGE_ENDPOINT`, `OCT_GROK_SETTINGS_ENDPOINT`
 - Cursor:
   - `OCT_CURSOR_USAGE_URL` (custom remote endpoint)
   - `CURSOR_API_KEY` (Bearer token used with `OCT_CURSOR_USAGE_URL`)
   - `OCT_CURSOR_API_USAGE_URL` (override for `https://api2.cursor.sh/auth/usage`)
-- Copilot filters:
-  - `OCT_COPILOT_USAGE_YEAR`, `OCT_COPILOT_USAGE_MONTH`, `OCT_COPILOT_USAGE_DAY`
-  - `OCT_COPILOT_USAGE_MODEL`, `OCT_COPILOT_USAGE_PRODUCT`
+- Copilot:
+  - `OCT_COPILOT_USER_ENDPOINT` (override for the quota API endpoint)
 - Debug:
   - `OCT_USAGE_DEBUG=1` (shows richer provider source details)
+
+Note: earlier revisions of this file listed `OCT_CLAUDE_USAGE_ENDPOINT`, `OCT_COPILOT_USAGE_ENDPOINT`, and `OCT_COPILOT_USAGE_*` filter variables; none of them exist in the code (Claude's endpoint is hardcoded, Copilot's override is `OCT_COPILOT_USER_ENDPOINT`).
 
 ### Cursor usage fetch priority
 
