@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -12,6 +13,14 @@ import (
 
 var menubarDaemon bool
 var menubarLegacy bool
+
+// warnLegacyMenubarFallback makes the otherwise-silent demotion to the legacy
+// Go menubar visible: without a Swift helper, users could not tell why their
+// menubar looked different from the documented one. It lives outside the
+// darwin-tagged files so the cross-platform test matrix can pin its wording.
+func warnLegacyMenubarFallback(w io.Writer) {
+	fmt.Fprintln(w, "oct: Swift menubar helper not found; falling back to the legacy menubar. Build it with 'oct menubar build-helper' or install it with 'oct menubar install-helper' (see 'oct menubar doctor').")
+}
 
 var (
 	runMenubarCommand           = runMenubar

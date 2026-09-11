@@ -4,8 +4,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -35,13 +33,6 @@ func runMenubar() error {
 	}
 	systray.Run(onMenubarReady, func() {})
 	return nil
-}
-
-// warnLegacyMenubarFallback makes the otherwise-silent demotion visible:
-// without a Swift helper, users could not tell why their menubar looked
-// different from the documented one.
-func warnLegacyMenubarFallback(w io.Writer) {
-	fmt.Fprintln(w, "oct: Swift menubar helper not found; falling back to the legacy menubar. Build it with 'oct menubar build-helper' or install it with 'oct menubar install-helper' (see 'oct menubar doctor').")
 }
 
 func startMenubarDetached() error {

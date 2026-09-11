@@ -185,6 +185,17 @@ func swiftExecutableCandidates(env map[string]string) []string {
 	return candidates
 }
 
+// xcodeAppSearchRoots lists the directories scanned for Xcode.app bundles.
+// Package-level seam: tests override it so candidate order is isolated from
+// whatever Xcode installs the host happens to have.
+var xcodeAppSearchRoots = func(env map[string]string) []string {
+	roots := []string{"/Applications"}
+	if home := strings.TrimSpace(env["HOME"]); home != "" {
+		roots = append(roots, filepath.Join(home, "Applications"), filepath.Join(home, "Downloads"))
+	}
+	return roots
+}
+
 // xcodeToolchainSwiftCandidates finds swift front-ends inside installed
 // Xcode.app bundles: standard Applications locations plus the user's
 // Downloads folder, where beta releases commonly sit. Two layouts are probed
@@ -194,10 +205,7 @@ func xcodeToolchainSwiftCandidates(env map[string]string) []string {
 	if runtime.GOOS != "darwin" {
 		return nil
 	}
-	roots := []string{"/Applications"}
-	if home := strings.TrimSpace(env["HOME"]); home != "" {
-		roots = append(roots, filepath.Join(home, "Applications"), filepath.Join(home, "Downloads"))
-	}
+	roots := xcodeAppSearchRoots(env)
 
 	var candidates []string
 	for _, root := range roots {
