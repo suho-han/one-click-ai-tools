@@ -92,6 +92,27 @@ var providers = []Provider{
 		CompactLabel:    "X",
 		Fetch:           FetchCodexUsage,
 	},
+	{
+		Name:            "kimi",
+		MatchSubstrings: []string{"kimi", "moonshot"},
+		ColorCode:       "92",
+		CompactLabel:    "K",
+		Fetch:           FetchKimiUsage,
+	},
+	{
+		Name:            "qwen",
+		MatchSubstrings: []string{"qwen"},
+		ColorCode:       "94",
+		CompactLabel:    "Q",
+		Fetch:           FetchQwenUsage,
+	},
+	{
+		Name:            "minimax",
+		MatchSubstrings: []string{"minimax"},
+		ColorCode:       "93",
+		CompactLabel:    "M",
+		Fetch:           FetchMinimaxUsage,
+	},
 }
 
 // providerFetchers maps binary names and aliases to fetchers. Package-level

@@ -118,6 +118,9 @@ func initConfig() {
 	viper.SetDefault("session_refresh_hour", 9)
 	viper.SetDefault("menubar_refresh_interval", "1m")
 	viper.SetDefault("menubar_title_mode", "oct")
+	// Qwen Code has no public usage API; the provider counts today's local
+	// token-usage records against this daily request cap.
+	viper.SetDefault("qwen_daily_limit", 100)
 	// Avoid accidental overrides from generic env vars like ENABLED_TOOLS.
 	// Require explicit OCT_* variables (e.g., OCT_ENABLED_TOOLS) for env-based overrides.
 	viper.SetEnvPrefix("OCT")
