@@ -33,7 +33,6 @@ func MigrateLegacyConfig() error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
 
 	var enabledTools []string
 	scanner := bufio.NewScanner(file)
@@ -52,8 +51,14 @@ func MigrateLegacyConfig() error {
 	}
 	// A partial read (I/O error) must not migrate an empty enabled_tools and
 	// archive the original away as .bak.
-	if err := scanner.Err(); err != nil {
-		return fmt.Errorf("reading legacy config %s: %w", legacyPath, err)
+	scanErr := scanner.Err()
+	// Close explicitly instead of defer: Windows refuses to rename a file
+	// that is still open, and the .bak rename below would fail there.
+	if err := file.Close(); err != nil && scanErr == nil {
+		scanErr = err
+	}
+	if scanErr != nil {
+		return fmt.Errorf("reading legacy config %s: %w", legacyPath, scanErr)
 	}
 
 	viper.Set("enabled_tools", enabledTools)
