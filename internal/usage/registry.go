@@ -100,6 +100,15 @@ var providers = []Provider{
 		Fetch:           FetchKimiUsage,
 	},
 	{
+		Name:            "zai",
+		Aliases:         []string{"zhipu"},
+		MatchSubstrings: []string{"zai", "glm", "zhipu", "bigmodel"},
+		ColorCode:       "91",
+		CompactLabel:    "Z",
+		Standalone:      true,
+		Fetch:           FetchZaiUsage,
+	},
+	{
 		Name:            "qwen",
 		MatchSubstrings: []string{"qwen"},
 		ColorCode:       "94",
@@ -107,11 +116,35 @@ var providers = []Provider{
 		Fetch:           FetchQwenUsage,
 	},
 	{
+		Name:            "deepseek",
+		MatchSubstrings: []string{"deepseek"},
+		ColorCode:       "95",
+		CompactLabel:    "S",
+		Standalone:      true,
+		Fetch:           FetchDeepseekUsage,
+	},
+	{
+		Name:            "openrouter",
+		MatchSubstrings: []string{"openrouter"},
+		ColorCode:       "94",
+		CompactLabel:    "N",
+		Standalone:      true,
+		Fetch:           FetchOpenRouterUsage,
+	},
+	{
 		Name:            "minimax",
 		MatchSubstrings: []string{"minimax"},
 		ColorCode:       "93",
 		CompactLabel:    "M",
 		Fetch:           FetchMinimaxUsage,
+	},
+	{
+		Name:            "grok",
+		MatchSubstrings: []string{"grok", "xai", "supergrok"},
+		ColorCode:       "95",
+		CompactLabel:    "V",
+		Standalone:      true,
+		Fetch:           FetchGrokUsage,
 	},
 }
 
