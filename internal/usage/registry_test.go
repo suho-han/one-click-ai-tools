@@ -28,7 +28,7 @@ func TestRegistryCoversEveryFetcherKey(t *testing.T) {
 			t.Fatalf("fetcher key %q not backed by the registry", key)
 		}
 	}
-	for _, key := range []string{"agy", "antigravity", "gemini", "claude", "commandcode", "cursor-agent", "copilot", "opencode", "codex", "kimi", "qwen", "minimax"} {
+	for _, key := range []string{"agy", "antigravity", "gemini", "claude", "commandcode", "cursor-agent", "copilot", "opencode", "codex", "kimi", "zai", "zhipu", "qwen", "deepseek", "openrouter", "minimax", "grok"} {
 		if _, ok := providerFetchers[key]; !ok {
 			t.Fatalf("fetcher key %q missing", key)
 		}
@@ -36,7 +36,7 @@ func TestRegistryCoversEveryFetcherKey(t *testing.T) {
 }
 
 func TestDefaultProviderOrderMatchesRegistry(t *testing.T) {
-	want := []string{"agy", "claude", "commandcode", "cursor-agent", "copilot", "opencode", "codex", "kimi", "qwen", "minimax"}
+	want := []string{"agy", "claude", "commandcode", "cursor-agent", "copilot", "opencode", "codex", "kimi", "zai", "qwen", "deepseek", "openrouter", "minimax", "grok"}
 	got := defaultProviderOrder()
 	if len(got) != len(want) {
 		t.Fatalf("defaultProviderOrder() = %v, want %v", got, want)
