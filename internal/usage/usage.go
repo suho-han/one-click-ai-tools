@@ -83,19 +83,41 @@ func GetUsage(ctx context.Context) ([]UsageResult, error) {
 	}
 	selectedTools := SelectedTools()
 
-	results := make([]UsageResult, len(selectedTools))
+	type fetchJob struct {
+		label string
+		fetch func(context.Context) UsageResult
+	}
+	jobs := make([]fetchJob, 0, len(selectedTools)+1)
+	for _, t := range selectedTools {
+		if fetcher, ok := providerFetchers[strings.ToLower(t.BinaryName)]; ok {
+			jobs = append(jobs, fetchJob{label: t.BinaryName, fetch: fetcher})
+		}
+	}
+
+	// Standalone providers have no update.Tool entry, so the loop above never
+	// sees them. Fetch each one only when the user explicitly listed it (by
+	// name or alias) in agent_order or enabled_tools; otherwise an
+	// unconfigured service would add a permanent "not configured" row to the
+	// default table.
+	requested := requestedProviderNames()
+	for _, p := range providers {
+		if !p.Standalone || !providerRequested(p, requested) {
+			continue
+		}
+		jobs = append(jobs, fetchJob{label: p.Name, fetch: p.Fetch})
+	}
+
+	results := make([]UsageResult, len(jobs))
 	g, gctx := errgroup.WithContext(ctx)
 	gctx, cancel := context.WithTimeout(gctx, usageFetchTimeout)
 	defer cancel()
 
-	for i, t := range selectedTools {
-		i, t := i, t // Capture for goroutine
-		if fetcher, ok := providerFetchers[strings.ToLower(t.BinaryName)]; ok {
-			g.Go(func() error {
-				results[i] = fetchWithDeadline(gctx, t.BinaryName, fetcher)
-				return nil
-			})
-		}
+	for i, job := range jobs {
+		i, job := i, job // Capture for goroutine
+		g.Go(func() error {
+			results[i] = fetchWithDeadline(gctx, job.label, job.fetch)
+			return nil
+		})
 	}
 
 	// Fetchers report problems via their UsageResult, so g.Wait() carries no
@@ -111,6 +133,36 @@ func GetUsage(ctx context.Context) ([]UsageResult, error) {
 	}
 
 	return filtered, nil
+}
+
+// requestedProviderNames lowercases and splits the raw agent_order and
+// enabled_tools config values (comma-separated entries allowed, matching
+// splitToolNames in internal/update) into a lookup set.
+func requestedProviderNames() map[string]bool {
+	raw := append(viper.GetStringSlice("agent_order"), viper.GetStringSlice("enabled_tools")...)
+	requested := make(map[string]bool, len(raw))
+	for _, entry := range raw {
+		for _, part := range strings.Split(strings.ToLower(entry), ",") {
+			if part = strings.TrimSpace(part); part != "" {
+				requested[part] = true
+			}
+		}
+	}
+	return requested
+}
+
+// providerRequested reports whether a standalone provider was listed by name
+// or one of its aliases.
+func providerRequested(p Provider, requested map[string]bool) bool {
+	if requested[strings.ToLower(p.Name)] {
+		return true
+	}
+	for _, alias := range p.Aliases {
+		if requested[strings.ToLower(alias)] {
+			return true
+		}
+	}
+	return false
 }
 
 // fetchWithDeadline guarantees a result even when a fetcher ignores ctx and
