@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -163,5 +164,144 @@ func TestConfigPromptsTreatEOFAsDefaults(t *testing.T) {
 	}
 	if mode != "remaining" {
 		t.Fatalf("expected default mode on EOF, got %q", mode)
+	}
+}
+
+func TestConfigLayoutForHeight(t *testing.T) {
+	tests := []struct {
+		height         int
+		wantRowHeight  int
+		wantVisibleMin int
+	}{
+		{height: 24, wantRowHeight: 3, wantVisibleMin: 5},
+		{height: 20, wantRowHeight: 3, wantVisibleMin: 4},
+		{height: 14, wantRowHeight: 3, wantVisibleMin: 2},
+		{height: 13, wantRowHeight: 3, wantVisibleMin: 1},
+		{height: 12, wantRowHeight: 1, wantVisibleMin: 4},
+		{height: 8, wantRowHeight: 1, wantVisibleMin: 1},
+	}
+	for _, tt := range tests {
+		rowHeight, visible := layoutForHeight(tt.height)
+		if rowHeight != tt.wantRowHeight {
+			t.Errorf("layoutForHeight(%d) rowHeight = %d, want %d", tt.height, rowHeight, tt.wantRowHeight)
+		}
+		if visible < tt.wantVisibleMin {
+			t.Errorf("layoutForHeight(%d) visible = %d, want >= %d", tt.height, visible, tt.wantVisibleMin)
+		}
+	}
+}
+
+// TestConfigModel_WindowFitsTerminalHeight pins the user-facing contract: the
+// rendered view never exceeds the terminal height, so the alt screen never
+// clips the top of the tool list.
+func TestConfigModel_WindowFitsTerminalHeight(t *testing.T) {
+	for _, height := range []int{24, 20, 14, 13, 12, 10, 8} {
+		m := newConfigModel(nil, nil)
+		m.applyWindowSize(height)
+		view := m.View()
+		if lines := strings.Count(view, "\n"); lines > height {
+			t.Errorf("height %d: view has %d lines, want <= %d", height, lines, height)
+		}
+	}
+}
+
+func TestConfigModel_WindowShowsScrollIndicator(t *testing.T) {
+	m := newConfigModel(nil, nil)
+	if got := len(m.items); got < 6 {
+		t.Fatalf("expected a realistic item list, got %d items", got)
+	}
+	m.applyWindowSize(20) // 4 items visible at 3 rows each
+
+	view := m.View()
+	if !strings.Contains(view, m.items[0].tool.Name) {
+		t.Error("first item should be visible in the initial window")
+	}
+	if strings.Contains(view, m.items[4].tool.Name) {
+		t.Error("item outside the window should not be rendered")
+	}
+	if !strings.Contains(view, fmt.Sprintf("↓ %d more", len(m.items)-4)) {
+		t.Errorf("expected a scroll-down indicator for %d hidden items", len(m.items)-4)
+	}
+	if strings.Contains(view, "↑ ") {
+		t.Error("no scroll-up indicator expected at the top of the list")
+	}
+}
+
+func TestConfigModel_WindowFollowsCursorDown(t *testing.T) {
+	m := newConfigModel(nil, nil)
+	m.applyWindowSize(20)
+
+	for i := 0; i < 4; i++ {
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+		m = updated.(configModel)
+	}
+
+	if m.index() != 4 || m.offset != 1 {
+		t.Fatalf("cursor/offset = %d/%d, want 4/1", m.index(), m.offset)
+	}
+	view := m.View()
+	if strings.Contains(view, m.items[0].tool.Name) {
+		t.Error("scrolled-past item should be hidden")
+	}
+	if !strings.Contains(view, m.items[4].tool.Name) {
+		t.Error("cursor item should be visible after scrolling")
+	}
+	if !strings.Contains(view, "↑ 1 more") {
+		t.Error("expected scroll-up indicator after scrolling down")
+	}
+}
+
+func TestConfigModel_WindowFollowsCursorWrapAround(t *testing.T) {
+	m := newConfigModel(nil, nil)
+	m.applyWindowSize(20)
+	last := len(m.items) - 1
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m = updated.(configModel)
+
+	if m.index() != last {
+		t.Fatalf("cursor = %d, want wrap to %d", m.index(), last)
+	}
+	view := m.View()
+	if !strings.Contains(view, m.items[last].tool.Name) {
+		t.Error("confirm row should be visible after wrap-around")
+	}
+	if !strings.Contains(view, fmt.Sprintf("↑ %d more", m.offset)) {
+		t.Errorf("expected scroll-up indicator for %d hidden items, view:\n%s", m.offset, view)
+	}
+}
+
+func TestConfigModel_ConfirmReachableInWindow(t *testing.T) {
+	m := newConfigModel(nil, nil)
+	m.applyWindowSize(12) // compact mode, few rows
+	last := len(m.items) - 1
+
+	for m.index() != last {
+		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+		m = updated.(configModel)
+	}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	mm := updated.(configModel)
+	if !mm.done {
+		t.Fatal("confirm row should quit even when windowed")
+	}
+}
+
+func TestConfigModel_NoWindowSizeRendersAll(t *testing.T) {
+	m := newConfigModel(nil, nil)
+	view := m.View()
+	for _, it := range m.items {
+		// The toggle row renders as "Choose all"/"Choose none", never its
+		// internal name.
+		name := it.tool.Name
+		if it.isToggleControl {
+			name = "Choose all"
+		}
+		if !strings.Contains(view, name) {
+			t.Fatalf("item %q missing without a known window size", name)
+		}
+	}
+	if strings.Contains(view, "more\n") {
+		t.Error("no scroll indicators expected without a known window size")
 	}
 }
