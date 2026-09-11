@@ -33,6 +33,84 @@ type configModel struct {
 	items     []toolItem
 	cancelled bool
 	done      bool
+	// Terminal-fit windowing: bubbletea paints the whole View() into the
+	// alt screen, and the alt screen has no scrollback -- an oversized view
+	// loses its top. The model therefore renders a sliding window of items
+	// sized from tea.WindowSizeMsg. viewHeight == 0 (no size known yet, e.g.
+	// unit tests) renders everything.
+	viewHeight  int
+	offset      int // first visible item index
+	visibleRows int // visible item count at the current rowHeight
+	rowHeight   int // 3 (icon + name + icon) or 1 (name only, tiny terminals)
+}
+
+// viewChrome is the number of lines around the item list: 1 header + 1 blank
+// + 4 help lines. Scroll indicators are carved out of the item budget below.
+const viewChrome = 6
+
+// layoutForHeight resolves (rowHeight, visibleRows) for a terminal height.
+func layoutForHeight(height int) (int, int) {
+	itemBudget := height - viewChrome - 2 // reserve up to 2 scroll-indicator rows
+	if itemBudget < 5 {
+		// Too small for a 3-line item: degrade to one line per item.
+		visible := itemBudget
+		if visible < 1 {
+			visible = 1
+		}
+		return 1, visible
+	}
+	visible := itemBudget / 3
+	if visible < 1 {
+		visible = 1
+	}
+	return 3, visible
+}
+
+// applyWindowSize records the terminal height and keeps the cursor inside
+// the visible window.
+func (m *configModel) applyWindowSize(height int) {
+	if height <= 0 {
+		return
+	}
+	m.viewHeight = height
+	m.rowHeight, m.visibleRows = layoutForHeight(height)
+	m.clampOffset()
+}
+
+// clampOffset shifts offset so the cursor row stays within the window.
+func (m *configModel) clampOffset() {
+	if m.visibleRows <= 0 || m.viewHeight == 0 {
+		return
+	}
+	if last := len(m.items) - 1; last < 0 {
+		m.offset = 0
+		return
+	}
+	i := m.index()
+	if i < m.offset {
+		m.offset = i
+	}
+	if i >= m.offset+m.visibleRows {
+		m.offset = i - m.visibleRows + 1
+	}
+	if max := len(m.items) - m.visibleRows; m.offset > max {
+		m.offset = max
+	}
+	if m.offset < 0 {
+		m.offset = 0
+	}
+}
+
+// visibleItems returns the item index range to render.
+func (m configModel) visibleItems() (from, to int) {
+	if m.viewHeight == 0 {
+		return 0, len(m.items)
+	}
+	to = m.offset + m.visibleRows
+	if to > len(m.items) {
+		to = len(m.items)
+	}
+	return m.offset, to
 }
 
 func newConfigModel(enabledTools []string, agentOrder []string) configModel {
@@ -95,6 +173,8 @@ func (m configModel) Init() tea.Cmd { return nil }
 
 func (m configModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.applyWindowSize(msg.Height)
 	case tea.KeyMsg:
 		if msg.Type == tea.KeyEnter {
 			i := m.index()
@@ -155,6 +235,7 @@ func (m *configModel) move(delta int) {
 		n = 0
 	}
 	m.items[n].cursor = true
+	m.clampOffset()
 }
 
 func (m configModel) index() int {
@@ -169,7 +250,12 @@ func (m configModel) index() int {
 func (m configModel) View() string {
 	var b strings.Builder
 	b.WriteString("? Select tools to enable for agent-update:\n")
-	for _, it := range m.items {
+
+	from, to := m.visibleItems()
+	if more := from; more > 0 {
+		b.WriteString(fmt.Sprintf("  ↑ %d more\n", more))
+	}
+	for _, it := range m.items[from:to] {
 		mark := "[ ]"
 		if it.check {
 			mark = "[x]"
@@ -184,7 +270,11 @@ func (m configModel) View() string {
 		// To align icon top/bottom with the center row, they should have 5 spaces.
 		indent := "     "
 
-		b.WriteString(fmt.Sprintf("%s%s\n", indent, it.icon3[0]))
+		// Compact mode (very short terminals) drops the 3-line Braille icon
+		// and renders the name row only.
+		if m.rowHeight == 3 {
+			b.WriteString(fmt.Sprintf("%s%s\n", indent, it.icon3[0]))
+		}
 		nameText := it.tool.Name
 		if it.isToggleControl {
 			allChecked := true
@@ -209,7 +299,12 @@ func (m configModel) View() string {
 			name = it.tool.ColorizeWithBackgroundBlackText(nameText)
 		}
 		b.WriteString(fmt.Sprintf("%s%s %s %s\n", cursor, mark, it.icon3[1], name))
-		b.WriteString(fmt.Sprintf("%s%s\n", indent, it.icon3[2]))
+		if m.rowHeight == 3 {
+			b.WriteString(fmt.Sprintf("%s%s\n", indent, it.icon3[2]))
+		}
+	}
+	if more := len(m.items) - to; more > 0 {
+		b.WriteString(fmt.Sprintf("  ↓ %d more\n", more))
 	}
 	b.WriteString("\n[Use ↑/↓ to move]\n")
 	b.WriteString("[Use Enter to toggle current item]\n")
