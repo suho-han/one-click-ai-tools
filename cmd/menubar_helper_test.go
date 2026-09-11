@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -81,6 +82,7 @@ func TestResolveMenubarHelperLaunchRunsSwiftPackageWhenHelperBinaryIsMissing(t *
 	if err := os.WriteFile(swift, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	isolateXcodeSearch(t)
 
 	launch, searched := resolveMenubarHelperLaunch(
 		map[string]string{"PATH": filepath.Dir(swift), "HOME": temp},
@@ -217,16 +219,31 @@ func makeFakeSwift(t *testing.T, path string) {
 	}
 }
 
+// isolateXcodeSearch pins the Xcode scan to the given roots so candidate
+// order does not depend on whatever Xcode the host has in /Applications —
+// CI's macOS runners ship a real Xcode there, which otherwise shadows the
+// fixtures these tests build.
+func isolateXcodeSearch(t *testing.T, roots ...string) {
+	t.Helper()
+	orig := xcodeAppSearchRoots
+	xcodeAppSearchRoots = func(env map[string]string) []string { return roots }
+	t.Cleanup(func() { xcodeAppSearchRoots = orig })
+}
+
 // TestSwiftExecutableCandidatesPrefersXcodeOverPath pins the fix for hosts
 // whose PATH swift is the standalone CLT (no SwiftUI macro plugins): a full
 // Xcode toolchain — DEVELOPER_DIR, /Applications, ~/Downloads, ~/Applications
 // — must win over PATH.
 func TestSwiftExecutableCandidatesPrefersXcodeOverPath(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("Xcode toolchain discovery only runs on darwin")
+	}
 	temp := t.TempDir()
 	devDirSwift := filepath.Join(temp, "Developer", "usr", "bin", "swift")
 	makeFakeSwift(t, devDirSwift)
 	downloadsSwift := filepath.Join(temp, "Downloads", "Xcode-beta.app", "Contents", "Developer", "usr", "bin", "swift")
 	makeFakeSwift(t, downloadsSwift)
+	isolateXcodeSearch(t, filepath.Join(temp, "Downloads"), filepath.Join(temp, "Applications"))
 
 	candidates := swiftExecutableCandidates(map[string]string{
 		"HOME":          temp,
@@ -249,9 +266,13 @@ func TestSwiftExecutableCandidatesPrefersXcodeOverPath(t *testing.T) {
 }
 
 func TestSwiftExecutableCandidatesDiscoverDownloadsXcodeWithoutDeveloperDir(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("Xcode toolchain discovery only runs on darwin")
+	}
 	temp := t.TempDir()
 	downloadsSwift := filepath.Join(temp, "Downloads", "Xcode-beta.app", "Contents", "Developer", "usr", "bin", "swift")
 	makeFakeSwift(t, downloadsSwift)
+	isolateXcodeSearch(t, filepath.Join(temp, "Downloads"))
 
 	resolved, searched := resolveSwiftExecutablePath(map[string]string{
 		"HOME": temp,
@@ -289,6 +310,11 @@ func TestCopyExecutableFileReplacesAtomically(t *testing.T) {
 	if _, err := os.Stat(dst + ".new"); !os.IsNotExist(err) {
 		t.Fatalf("temp file survived: %v", err)
 	}
+	if runtime.GOOS == "windows" {
+		// Windows has no POSIX permission bits; Chmod only toggles the
+		// read-only attribute there, so the 0755 assertion cannot hold.
+		return
+	}
 	info, err := os.Stat(dst)
 	if err != nil {
 		t.Fatal(err)
@@ -299,6 +325,9 @@ func TestCopyExecutableFileReplacesAtomically(t *testing.T) {
 }
 
 func TestXcodeDeveloperDirForSwift(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("path parsing assumes darwin separators")
+	}
 	tests := []struct {
 		swiftPath string
 		want      string
