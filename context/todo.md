@@ -4,7 +4,9 @@ This file tracks forward-looking ideas and follow-up improvements.
 
 ## Candidate priorities
 
-- broaden package manager support (`cargo`, `go install`, `pip`, etc.)
+Phased plan lives in [roadmap_2026-09-12.md](roadmap_2026-09-12.md); this file
+keeps the flat backlog.
+
 - strengthen real-environment E2E automation for Linux/Windows scheduling
 - improve Cursor/OpenCode usage visibility (plan/reset timing)
 - extend monitor snapshot consumers (tray/widget UI)

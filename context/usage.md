@@ -7,8 +7,8 @@ This page covers core commands and operational configuration for `one-click-tool
 Updates `oct` itself.
 
 ```bash
-oct update
-oct update --beta
+oct update           # update to the latest GitHub Release
+oct update --check   # check for a newer release without installing
 ```
 
 ## 2) `oct agent-update`
@@ -23,6 +23,9 @@ Supported agents:
 - GitHub Copilot (`@github/copilot`)
 - Cursor (`cursor-agent`)
 - OpenCode (`opencode-ai`)
+- Kimi Code (`@moonshot-ai/kimi-code`, binary: `kimi`)
+- Qwen Code (`@qwen-code/qwen-code`, binary: `qwen`)
+- MiniMax (`mmx-cli`, binary: `mmx`)
 
 Default behavior:
 - macOS: `brew update/upgrade`, npm-based updates, then fallback paths when needed

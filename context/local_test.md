@@ -28,16 +28,6 @@ GOTOOLCHAIN=auto go test ./...
 GOTOOLCHAIN=auto go test -cover ./...
 ```
 
-## npm wrapper check
-
-```bash
-go build -o oct main.go
-npm link
-oct help
-oct usage
-npm unlink -g one-click-tools
-```
-
 ## API mock / endpoint testing
 
 Each provider accepts a full-URL endpoint override (`oct usage` fans out to
