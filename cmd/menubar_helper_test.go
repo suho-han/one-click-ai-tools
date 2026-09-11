@@ -81,6 +81,7 @@ func TestResolveMenubarHelperLaunchRunsSwiftPackageWhenHelperBinaryIsMissing(t *
 	if err := os.WriteFile(swift, []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	isolateXcodeSearch(t)
 
 	launch, searched := resolveMenubarHelperLaunch(
 		map[string]string{"PATH": filepath.Dir(swift), "HOME": temp},
@@ -217,6 +218,17 @@ func makeFakeSwift(t *testing.T, path string) {
 	}
 }
 
+// isolateXcodeSearch pins the Xcode scan to the given roots so candidate
+// order does not depend on whatever Xcode the host has in /Applications —
+// CI's macOS runners ship a real Xcode there, which otherwise shadows the
+// fixtures these tests build.
+func isolateXcodeSearch(t *testing.T, roots ...string) {
+	t.Helper()
+	orig := xcodeAppSearchRoots
+	xcodeAppSearchRoots = func(env map[string]string) []string { return roots }
+	t.Cleanup(func() { xcodeAppSearchRoots = orig })
+}
+
 // TestSwiftExecutableCandidatesPrefersXcodeOverPath pins the fix for hosts
 // whose PATH swift is the standalone CLT (no SwiftUI macro plugins): a full
 // Xcode toolchain — DEVELOPER_DIR, /Applications, ~/Downloads, ~/Applications
@@ -227,6 +239,7 @@ func TestSwiftExecutableCandidatesPrefersXcodeOverPath(t *testing.T) {
 	makeFakeSwift(t, devDirSwift)
 	downloadsSwift := filepath.Join(temp, "Downloads", "Xcode-beta.app", "Contents", "Developer", "usr", "bin", "swift")
 	makeFakeSwift(t, downloadsSwift)
+	isolateXcodeSearch(t, filepath.Join(temp, "Downloads"), filepath.Join(temp, "Applications"))
 
 	candidates := swiftExecutableCandidates(map[string]string{
 		"HOME":          temp,
@@ -252,6 +265,7 @@ func TestSwiftExecutableCandidatesDiscoverDownloadsXcodeWithoutDeveloperDir(t *t
 	temp := t.TempDir()
 	downloadsSwift := filepath.Join(temp, "Downloads", "Xcode-beta.app", "Contents", "Developer", "usr", "bin", "swift")
 	makeFakeSwift(t, downloadsSwift)
+	isolateXcodeSearch(t, filepath.Join(temp, "Downloads"))
 
 	resolved, searched := resolveSwiftExecutablePath(map[string]string{
 		"HOME": temp,
