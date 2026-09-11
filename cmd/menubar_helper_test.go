@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -234,6 +235,9 @@ func isolateXcodeSearch(t *testing.T, roots ...string) {
 // Xcode toolchain — DEVELOPER_DIR, /Applications, ~/Downloads, ~/Applications
 // — must win over PATH.
 func TestSwiftExecutableCandidatesPrefersXcodeOverPath(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("Xcode toolchain discovery only runs on darwin")
+	}
 	temp := t.TempDir()
 	devDirSwift := filepath.Join(temp, "Developer", "usr", "bin", "swift")
 	makeFakeSwift(t, devDirSwift)
@@ -262,6 +266,9 @@ func TestSwiftExecutableCandidatesPrefersXcodeOverPath(t *testing.T) {
 }
 
 func TestSwiftExecutableCandidatesDiscoverDownloadsXcodeWithoutDeveloperDir(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("Xcode toolchain discovery only runs on darwin")
+	}
 	temp := t.TempDir()
 	downloadsSwift := filepath.Join(temp, "Downloads", "Xcode-beta.app", "Contents", "Developer", "usr", "bin", "swift")
 	makeFakeSwift(t, downloadsSwift)
@@ -303,6 +310,11 @@ func TestCopyExecutableFileReplacesAtomically(t *testing.T) {
 	if _, err := os.Stat(dst + ".new"); !os.IsNotExist(err) {
 		t.Fatalf("temp file survived: %v", err)
 	}
+	if runtime.GOOS == "windows" {
+		// Windows has no POSIX permission bits; Chmod only toggles the
+		// read-only attribute there, so the 0755 assertion cannot hold.
+		return
+	}
 	info, err := os.Stat(dst)
 	if err != nil {
 		t.Fatal(err)
@@ -313,6 +325,9 @@ func TestCopyExecutableFileReplacesAtomically(t *testing.T) {
 }
 
 func TestXcodeDeveloperDirForSwift(t *testing.T) {
+	if runtime.GOOS != "darwin" {
+		t.Skip("path parsing assumes darwin separators")
+	}
 	tests := []struct {
 		swiftPath string
 		want      string
