@@ -4,23 +4,36 @@
 
 [한국어](README.md)
 
-**one-click-ai-tools (oct)** is a high-performance CLI for installing, updating, and inspecting popular AI developer tools from one command.
+> **One binary that organizes your AI coding CLIs — update them all, watch every quota plan, schedule the maintenance.**
 
-## 🚀 Quick Start
+oct is a single Go binary that pulls scattered AI coding tool management into one place.
 
-### Installation
+- **Update them all** — one command updates 10 AI coding CLIs (Claude Code, Codex, Copilot, Cursor, …) by auto-detecting each tool's install manager (brew/npm/official installers)
+- **Watch every quota plan** — live queries 14 providers' subscription quotas straight from their usage APIs, in one table / JSON / macOS menubar
+- **Schedule the maintenance** — register updates and session probes with launchd / cron / SchTasks, with threshold-based OS alerts
 
-#### GitHub Releases installer
+## Why oct
+
+Usage tools can't update; updaters can't show usage. oct's core bet is combining both in one binary.
+
+- **Single Go binary** — no Node/Python runtime, macOS / Linux / Windows
+- **Live quota** — reads each provider's usage API directly instead of parsing local logs, so you get remaining percentages and state
+- **Reuses existing credentials** — uses the OAuth tokens / API keys your CLIs already saved; no separate sign-in
+- **Manager auto-detection** — finds the manager each tool was installed with and runs the right update command (regression-tested)
+
+## Quick Start
+
+### Installation (GitHub Releases)
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | sh
 ```
 
-The installer downloads the matching GitHub Release binary, verifies it when the release checksum entry is present, installs `oct` to `~/.local/bin` by default, and opens `oct config` immediately when a terminal is available.
+The installer downloads the matching release binary, verifies it when the release checksum entry is present, and installs `oct` to `~/.local/bin` by default. When run from a terminal it opens `oct config` immediately after installing.
 
 ```bash
 # Install a specific version
-curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | OCT_VERSION=v0.1.1 sh
+curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | OCT_VERSION=v0.1.5 sh
 
 # Install somewhere else
 curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | OCT_INSTALL_DIR=/usr/local/bin sh
@@ -29,102 +42,76 @@ curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/sc
 curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | OCT_INSTALL_RUN_CONFIG=0 sh
 ```
 
-### Core flows
+### First five minutes
 
 ```bash
-# Update all AI agents
-oct agent-update
-
-# Show update plan without executing installs
-oct agent-update --dry-run --explain
-
-# Probe local auth/session state without sending prompts
-oct session-refresh --dry-run
-
-# Check usage/quota
-oct usage
-
-# Check release preflight
-oct release-doctor
-
-# Compare raw vs bootstrapped PATH resolution
-oct doctor shell
-```
-
-## 🍎 Menubar helper (macOS)
-
-The Swift menubar helper can be built and installed separately.
-
-```bash
-# Inspect helper resolution / launch mode
-oct menubar doctor
-
-# Build the Swift helper
-oct menubar build-helper
-
-# Install to ~/.local/bin/OctMenubarApp
-oct menubar install-helper
-```
-
-## ✅ Common Commands
-
-### Update agents
-
-```bash
-oct agent-update
-```
-
-### Token-free session refresh
-
-```bash
-oct session-refresh --dry-run
-oct schedule config --enabled --interval daily --hour 9
-```
-
-### Check usage
-
-```bash
-oct usage
-```
-
-### Interactive `oct config`
-
-```bash
+# 1. Pick your tools/providers (interactive)
 oct config
+
+# 2. Update every installed AI CLI — inspect the plan first
+oct agent-update --dry-run --explain
+oct agent-update
+
+# 3. See all quota plans at once
+oct usage            # human-readable table
+oct usage --json     # for scripts/pipes
 ```
 
-- `↑/↓`: move cursor
-- `Enter`: toggle current row
-- `Enter` on `Choose all / Choose none`: toggle all rows
-- `Enter` on final `Confirm` row: save and exit
-- `Ctrl+C` / `Ctrl+Q` / `q`: cancel
+## Command map
 
-Environment-variable overrides require the `OCT_` prefix.
-- Example: `OCT_ENABLED_TOOLS=codex,agy`
-- Non-prefixed vars like `ENABLED_TOOLS` are ignored.
-- Legacy config values `gemini` and `gemini-cli` are still accepted and normalized to `agy`.
+| Step | Command | What it does |
+| --- | --- | --- |
+| Setup | `oct config` | pick tools/providers, alert thresholds (interactive) |
+| Update | `oct agent-update` | update every installed AI CLI (`--dry-run --explain` to preview) |
+| Watch | `oct usage` | one-shot quota snapshot (`--json`, `--compact`, `--notify`) |
+| Watch | `oct monitor` | always-on refreshing screen (`--interval`, `--once`, sort/filter) |
+| Watch | `oct menubar` | persistent macOS menu bar display |
+| Alert | `oct alert` | OS notifications on thresholds (quiet hours, snooze) |
+| Schedule | `oct schedule` | register agent-update / session-refresh with the OS scheduler |
+| Schedule | `oct session-refresh` | probe session/auth state without sending prompts (`--dry-run`) |
+| Diagnostics | `oct doctor` | shell PATH / bootstrap diagnostics |
+| Diagnostics | `oct update` | update oct itself |
+| Development | `oct release-doctor` | one compact release preflight report |
 
-### Always-on monitoring
+`oct --help` groups commands by frequency of use (Core / Configuration & Scheduling / Update & Maintenance).
+
+### 1) Update them all — `oct agent-update`
 
 ```bash
-oct monitor --interval 10s
-oct monitor --once
+oct agent-update                      # update everything
+oct agent-update --dry-run --explain  # print each tool's detected manager and plan, execute nothing
+```
+
+oct detects the install manager per tool. Supported: `brew`, `npm`, `pnpm`, `yarn`, `cargo`, `go-install`, `pip`, plus the Cursor/Antigravity official installers — see the [Manager Support Matrix](#manager-support-matrix) below.
+
+### 2) Watch every quota plan — `oct usage` / `oct monitor` / `oct menubar` / `oct alert`
+
+```bash
+oct usage                        # one-shot snapshot
+oct usage --compact              # compact summary (C-45% X-25%)
+oct usage --json                 # JSON output
+oct usage --notify               # send alerts per threshold/cooldown rules
+
+oct monitor --interval 10s       # always-on view, 10s refresh
 oct monitor --once --sort-by used --desc --top 5 --compact
-```
 
-### Usage alert configuration
-
-```bash
 oct alert config show
 oct alert config set enabled true
-oct alert config set cooldown_minutes 120
 oct alert config set threshold_percent 85
-oct alert config set critical_percent 98
 oct alert config set quiet_hours 00:00-08:00
-oct alert config set timezone Asia/Seoul
+oct alert snooze set --duration 2h
 ```
 
-## 🛠 Supported Agents
+### 3) Schedule the maintenance — `oct schedule` / `oct session-refresh`
+
+```bash
+oct schedule enable --task agent-update --interval daily --hour 9   # daily 9am full update
+oct schedule enable --task session-refresh --interval 6h            # session probe every 6h
+oct schedule --task agent-update                                    # show registration status
+oct session-refresh --dry-run                                       # manual probe, zero tokens
+```
+
+## Supported AI Agents (update targets)
 
 - **Claude Code** (`@anthropic-ai/claude-code`)
 - **Command Code** (`command-code`, binary: `commandcode` / `cmd`)
@@ -146,7 +133,18 @@ These are plan/account services with no installable CLI; `oct usage` reports the
 - **OpenRouter** — `OPENROUTER_API_KEY`
 - **Grok (xAI SuperGrok)** — `grok login` credential or `GROK_OAUTH_TOKEN`
 
-## 🧭 Manager Support Matrix
+## Menubar helper (macOS)
+
+The Swift menubar helper can be built and installed separately.
+
+```bash
+oct menubar                # run the menu bar app
+oct menubar doctor         # inspect helper resolution / launch mode
+oct menubar build-helper   # build the Swift helper
+oct menubar install-helper # install to ~/.local/bin/OctMenubarApp
+```
+
+## Manager Support Matrix
 
 | Manager | Detection strategy | Install path | Built-in use |
 | --- | --- | --- | --- |
@@ -164,10 +162,8 @@ The built-in support matrix is regression-tested in `internal/update/manager_tes
 
 ## Requirements
 
-- **Runtime users**
-  - **macOS**: Homebrew for agent update support
-- **Developers (build/test from source)**
-  - **Go >= 1.25**
+- **Users**: Homebrew for agent-update support on macOS (Linux/Windows get the CLI features only)
+- **Developers (build/test from source)**: **Go >= 1.25**
 
 ## Release
 
