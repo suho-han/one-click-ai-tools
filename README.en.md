@@ -133,6 +133,18 @@ oct alert config set timezone Asia/Seoul
 - **GitHub Copilot** (`@github/copilot`)
 - **Cursor CLI** (official `agent` install flow via `cursor.com/install`)
 - **OpenCode** (`opencode-ai`)
+- **Kimi Code** (`@moonshot-ai/kimi-code`, binary: `kimi`)
+- **Qwen Code** (`@qwen-code/qwen-code`, binary: `qwen`)
+- **MiniMax** (`mmx-cli`, binary: `mmx`)
+
+### Standalone usage providers (usage-only, no CLI managed)
+
+These are plan/account services with no installable CLI; `oct usage` reports them only when listed in `agent_order` or `enabled_tools` (e.g. `oct config set enabled_tools zai`).
+
+- **Z.ai (GLM Coding Plan)** — `ZAI_API_KEY` / `ZHIPU_API_KEY`, or an OpenCode `zai-coding-plan` login
+- **DeepSeek** — `DEEPSEEK_API_KEY`
+- **OpenRouter** — `OPENROUTER_API_KEY`
+- **Grok (xAI SuperGrok)** — `grok login` credential or `GROK_OAUTH_TOKEN`
 
 ## 🧭 Manager Support Matrix
 
