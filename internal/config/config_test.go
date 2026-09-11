@@ -3,15 +3,24 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
 	"github.com/spf13/viper"
 )
 
+// isolateTestHome points os.UserHomeDir at a temp dir on every platform:
+// windows reads USERPROFILE, unix reads HOME.
+func isolateTestHome(t *testing.T, dir string) {
+	t.Helper()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
+}
+
 func TestMigrateLegacyConfig(t *testing.T) {
 	tempHome := t.TempDir()
-	t.Setenv("HOME", tempHome)
+	isolateTestHome(t, tempHome)
 
 	octDir := filepath.Join(tempHome, ".oct")
 	if err := os.MkdirAll(octDir, 0o755); err != nil {
@@ -51,8 +60,12 @@ func TestMigrateLegacyConfig(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stat config.yaml failed: %v", err)
 	}
-	if perm := info.Mode().Perm(); perm != 0o600 {
-		t.Fatalf("config.yaml perms = %o, want 600", perm)
+	if runtime.GOOS != "windows" {
+		// Windows has no POSIX permission bits, so the 0600 chmod cannot
+		// be observed there.
+		if perm := info.Mode().Perm(); perm != 0o600 {
+			t.Fatalf("config.yaml perms = %o, want 600", perm)
+		}
 	}
 
 	if _, err := os.Stat(legacyPath); !os.IsNotExist(err) {
@@ -69,7 +82,7 @@ func TestMigrateLegacyConfig(t *testing.T) {
 
 func TestMigrateLegacyConfigSkipsWhenNewConfigExists(t *testing.T) {
 	tempHome := t.TempDir()
-	t.Setenv("HOME", tempHome)
+	isolateTestHome(t, tempHome)
 
 	octDir := filepath.Join(tempHome, ".oct")
 	if err := os.MkdirAll(octDir, 0o755); err != nil {
@@ -97,7 +110,7 @@ func TestMigrateLegacyConfigSkipsWhenNewConfigExists(t *testing.T) {
 
 func TestMigrateLegacyConfigNoopWithoutLegacyFile(t *testing.T) {
 	tempHome := t.TempDir()
-	t.Setenv("HOME", tempHome)
+	isolateTestHome(t, tempHome)
 
 	viper.Reset()
 	t.Cleanup(viper.Reset)
