@@ -133,6 +133,30 @@ var Tools = []Tool{
 		LobeIcon:    "GithubCopilot",
 		HexColor:    "#BC8CF2",
 	},
+	{
+		Name:       "Kimi Code",
+		Package:    "@moonshot-ai/kimi-code",
+		BinaryName: "kimi",
+		Icon:       "🌙",
+		LobeIcon:   "Moonshot",
+		HexColor:   "#16191E",
+	},
+	{
+		Name:       "Qwen Code",
+		Package:    "@qwen-code/qwen-code",
+		BinaryName: "qwen",
+		Icon:       "🟣",
+		LobeIcon:   "QwenCode",
+		HexColor:   "#615CED",
+	},
+	{
+		Name:       "MiniMax",
+		Package:    "mmx-cli",
+		BinaryName: "mmx",
+		Icon:       "🌀",
+		LobeIcon:   "MiniMax",
+		HexColor:   "#FF4D4F",
+	},
 }
 
 func NormalizeToolName(name string) string {
