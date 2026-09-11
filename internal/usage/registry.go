@@ -24,6 +24,12 @@ type Provider struct {
 	Label string
 	// CompactLabel is the letter used in compact titles ("" = derive from name).
 	CompactLabel string
+	// Standalone marks providers with no installable CLI tool behind them
+	// (plan/account services). They have no update.Tool entry, so GetUsage
+	// fetches them only when the user lists them in agent_order or
+	// enabled_tools — an unconfigured standalone service must never add a
+	// permanent "not configured" row to the default usage table.
+	Standalone bool
 	// Fetch collects the provider's usage. It reports problems through the
 	// UsageResult itself, never via error.
 	Fetch func(ctx context.Context) UsageResult
