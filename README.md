@@ -10,6 +10,18 @@
 - **GitHub Copilot** (`@github/copilot`)
 - **Cursor CLI** (official `agent` install flow via `cursor.com/install`)
 - **OpenCode** (`opencode-ai`)
+- **Kimi Code** (`@moonshot-ai/kimi-code`, binary: `kimi`)
+- **Qwen Code** (`@qwen-code/qwen-code`, binary: `qwen`)
+- **MiniMax** (`mmx-cli`, binary: `mmx`)
+
+### Standalone usage providers (usage 전용, CLI 미설치 대상)
+
+설치/업데이트 대상 CLI는 아니지만 사용량 조회만 지원합니다. `agent_order` 또는 `enabled_tools`에 이름을 넣으면 표에 나타납니다 (예: `oct config set enabled_tools zai`).
+
+- **Z.ai (GLM Coding Plan)** — `ZAI_API_KEY` / `ZHIPU_API_KEY`, 또는 opencode `zai-coding-plan` 로그인
+- **DeepSeek** — `DEEPSEEK_API_KEY`
+- **OpenRouter** — `OPENROUTER_API_KEY`
+- **Grok (xAI SuperGrok)** — `grok login` 자격증명 또는 `GROK_OAUTH_TOKEN`
 
 ## Installation
 
