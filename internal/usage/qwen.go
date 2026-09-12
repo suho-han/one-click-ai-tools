@@ -52,6 +52,21 @@ type qwenUsageRecord struct {
 	Timestamp json.RawMessage `json:"timestamp"`
 }
 
+// qwenTimestampString decodes the record's raw timestamp JSON (a number or a
+// quoted string) to its plain value, so downstream parsers never see the JSON
+// quotes.
+func qwenTimestampString(rec qwenUsageRecord) string {
+	raw := strings.TrimSpace(string(rec.Timestamp))
+	if raw == "" {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal([]byte(raw), &s); err == nil {
+		return strings.TrimSpace(s)
+	}
+	return raw
+}
+
 // qwenRecordDate extracts the record's local date (YYYY-MM-DD), preferring the
 // explicit date fields and falling back to a unix timestamp.
 func qwenRecordDate(rec qwenUsageRecord) string {
@@ -61,7 +76,7 @@ func qwenRecordDate(rec qwenUsageRecord) string {
 	if d := strings.TrimSpace(rec.LocalDate); d != "" {
 		return d
 	}
-	s := strings.TrimSpace(string(rec.Timestamp))
+	s := qwenTimestampString(rec)
 	if s == "" {
 		return ""
 	}

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/suho-han/one-click-ai-tools/internal/netclient"
 )
@@ -37,10 +38,13 @@ const (
 	grokAuthFallback  = "accounts.x.ai/sign-in"
 )
 
-// grokBillingEndpoint allows overriding the API URL for testing.
+// grokBillingEndpoint allows overriding the API URL for testing. The settings
+// enrichment gets its own short budget so a slow /v1/settings can never hold
+// the billing result until the shared usage deadline replaces it entirely.
 var (
 	grokBillingEndpoint  = grokBillingURL
 	grokSettingsEndpoint = grokSettingsURL
+	grokSettingsTimeout  = 3 * time.Second
 )
 
 type grokBillingResponse struct {
@@ -165,7 +169,10 @@ func FetchGrokUsage(ctx context.Context) UsageResult {
 	if settingsEndpoint == "" {
 		settingsEndpoint = grokSettingsEndpoint
 	}
-	if settings, err := fetchGrokSettings(ctx, settingsEndpoint, token); err == nil {
+	settingsCtx, cancelSettings := context.WithTimeout(ctx, grokSettingsTimeout)
+	settings, err := fetchGrokSettings(settingsCtx, settingsEndpoint, token)
+	cancelSettings()
+	if err == nil {
 		if tier := settings.tier(); tier != "" {
 			result.Plan = tier
 			result.PlanSource = "remote_api"
