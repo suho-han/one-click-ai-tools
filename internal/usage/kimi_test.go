@@ -40,20 +40,24 @@ func TestFetchKimiUsageMapsWindows(t *testing.T) {
 	if result.Plan != "Moderato" {
 		t.Errorf("plan = %q, want Moderato", result.Plan)
 	}
-	if result.Buckets["7d"] != "214" {
-		t.Errorf("weekly bucket = %q, want 214", result.Buckets["7d"])
+	// Each window is a percentage of its own limit: 214/2048 -> 10%, 139/200 -> 70%.
+	if result.Buckets["7d"] != "10" {
+		t.Errorf("weekly bucket = %q, want 10 (214/2048 percent)", result.Buckets["7d"])
 	}
-	if result.Buckets["5h"] != "139" {
-		t.Errorf("5h bucket = %q, want 139", result.Buckets["5h"])
+	if result.Buckets["5h"] != "70" {
+		t.Errorf("5h bucket = %q, want 70 (139/200 percent)", result.Buckets["5h"])
 	}
 	if result.BucketResets["5h"] != "2026-09-12T18:00:00Z" {
 		t.Errorf("5h reset = %q", result.BucketResets["5h"])
 	}
-	if result.Used != "214" || result.Limit != "2048" {
-		t.Errorf("used/limit = %q/%q, want 214/2048", result.Used, result.Limit)
+	if result.Used != "10" {
+		t.Errorf("used = %q, want 10 (weekly primary)", result.Used)
 	}
-	if result.Unit != "req" {
-		t.Errorf("unit = %q, want req", result.Unit)
+	if result.Limit != "100" {
+		t.Errorf("limit = %q, want 100 (percent scale)", result.Limit)
+	}
+	if result.Unit != "percent" {
+		t.Errorf("unit = %q, want percent (remaining mode and alerts key off it)", result.Unit)
 	}
 }
 
@@ -99,6 +103,32 @@ func TestResolveKimiTokenPrefersEnv(t *testing.T) {
 	token, source := resolveKimiToken()
 	if token != "env-token" || source != "env:KIMI_CODE_API_KEY" {
 		t.Errorf("token/source = %q/%q, want env-token/env:KIMI_CODE_API_KEY", token, source)
+	}
+}
+
+func TestResolveKimiTokenFromDefaultHome(t *testing.T) {
+	t.Setenv("KIMI_CODE_API_KEY", "")
+	t.Setenv("KIMI_CODE_HOME", "")
+	base := t.TempDir()
+	origHome := userHomeDir
+	userHomeDir = func() (string, error) { return base, nil }
+	t.Cleanup(func() { userHomeDir = origHome })
+
+	credDir := filepath.Join(base, ".kimi-code", "credentials")
+	if err := os.MkdirAll(credDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	credPath := filepath.Join(credDir, "kimi-code.json")
+	if err := os.WriteFile(credPath, []byte(`{"access_token":"home-token"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	token, source := resolveKimiToken()
+	if token != "home-token" {
+		t.Errorf("token = %q, want home-token (default home appends .kimi-code)", token)
+	}
+	if source != "kimi-code.json" {
+		t.Errorf("source = %q, want kimi-code.json", source)
 	}
 }
 

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/suho-han/one-click-ai-tools/internal/netclient"
@@ -14,7 +15,9 @@ import (
 
 // Kimi Code (Moonshot) subscription quota. The Kimi Code CLI stores its OAuth
 // token under ~/.kimi-code; the coding API exposes weekly + 5-hour request
-// windows for the subscription.
+// windows for the subscription. oct converts each window to a percentage of
+// its own limit so remaining-mode display, compact output, and threshold
+// alerts treat it like the other percent-unit providers.
 //
 // Endpoint: GET https://api.kimi.com/coding/v1/usages
 // Auth:     Authorization: Bearer <KIMI_CODE_API_KEY | credentials access_token>
@@ -55,8 +58,9 @@ type kimiWindow struct {
 }
 
 // resolveKimiToken finds the Kimi Code bearer token.
-// Priority: KIMI_CODE_API_KEY env -> ~/.kimi-code/credentials/kimi-code.json
-// (the Kimi Code CLI's OAuth credential; oct reads it, never refreshes it).
+// Priority: KIMI_CODE_API_KEY env -> credentials/kimi-code.json under
+// KIMI_CODE_HOME, defaulting to ~/.kimi-code (the Kimi Code CLI's OAuth
+// credential; oct reads it, never refreshes it).
 func resolveKimiToken() (string, string) {
 	if key := os.Getenv("KIMI_CODE_API_KEY"); key != "" {
 		return key, "env:KIMI_CODE_API_KEY"
@@ -64,7 +68,9 @@ func resolveKimiToken() (string, string) {
 
 	home := os.Getenv("KIMI_CODE_HOME")
 	if home == "" {
-		home, _ = userHomeDir()
+		if userHome, err := userHomeDir(); err == nil {
+			home = filepath.Join(userHome, ".kimi-code")
+		}
 	}
 	if home == "" {
 		return "", ""
@@ -84,13 +90,25 @@ func resolveKimiToken() (string, string) {
 	return cred.AccessToken, "kimi-code.json"
 }
 
+// kimiPercent converts one window's used/limit request counts to a rounded
+// percentage string, or "" when either side is missing or unparsable.
+func kimiPercent(used, limit string) string {
+	u, errU := strconv.ParseFloat(strings.TrimSpace(used), 64)
+	l, errL := strconv.ParseFloat(strings.TrimSpace(limit), 64)
+	if errU != nil || errL != nil || l <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%.0f", u/l*100)
+}
+
 // FetchKimiUsage fetches the Kimi Code subscription usage (weekly + 5-hour
-// request windows). Problems travel in the UsageResult, never as an error.
+// request windows, normalized to percentages). Problems travel in the
+// UsageResult, never as an error.
 func FetchKimiUsage(ctx context.Context) UsageResult {
 	result := UsageResult{
 		Provider: "kimi",
 		Period:   "5h/7d",
-		Unit:     "req",
+		Unit:     "percent",
 		Source:   "remote",
 		Status:   "warn",
 		Message:  "No data: Kimi Code token not found (run 'kimi login' or set KIMI_CODE_API_KEY)",
@@ -127,19 +145,24 @@ func FetchKimiUsage(ctx context.Context) UsageResult {
 	}
 
 	// Top-level usage is the weekly window; the 300-minute limits[] entry is
-	// the rolling 5-hour window.
-	result.Buckets["7d"] = strings.TrimSpace(resp.Usage.Used)
-	result.BucketResets["7d"] = strings.TrimSpace(resp.Usage.ResetTime)
+	// the rolling 5-hour window. Each window is normalized to a percentage of
+	// its own limit (Limit stays "100" on the percent scale).
+	if v := kimiPercent(resp.Usage.Used, resp.Usage.Limit); v != "" {
+		result.Buckets["7d"] = v
+		result.BucketResets["7d"] = strings.TrimSpace(resp.Usage.ResetTime)
+	}
 	for _, l := range resp.Limits {
 		if l.Window.Duration == 300 && l.Window.TimeUnit == "TIME_UNIT_MINUTE" {
-			result.Buckets["5h"] = strings.TrimSpace(l.Detail.Used)
-			result.BucketResets["5h"] = strings.TrimSpace(l.Detail.ResetTime)
+			if v := kimiPercent(l.Detail.Used, l.Detail.Limit); v != "" {
+				result.Buckets["5h"] = v
+				result.BucketResets["5h"] = strings.TrimSpace(l.Detail.ResetTime)
+			}
 			break
 		}
 	}
 
 	result.Used = firstNonEmpty(result.Buckets["7d"], result.Buckets["5h"])
-	result.Limit = strings.TrimSpace(resp.Usage.Limit)
+	result.Limit = "100"
 	result.Message = "Fetched from Kimi Code API"
 	if osDebugEnabled() {
 		result.SourceDetail = fmt.Sprintf("auth_source=%s endpoint=%s", source, endpoint)
