@@ -9,7 +9,7 @@
 oct is a single Go binary that pulls scattered AI coding tool management into one place.
 
 - **Update them all** — one command updates 10 AI coding CLIs (Claude Code, Codex, Copilot, Cursor, …) by auto-detecting each tool's install manager (brew/npm/official installers)
-- **Watch every quota plan** — live queries 14 providers' subscription quotas straight from their usage APIs, in one table / JSON / macOS menubar
+- **Watch every quota plan** — collects 14 providers' subscription quotas into one table / JSON / macOS menubar
 - **Schedule the maintenance** — register updates and session probes with launchd / cron / SchTasks, with threshold-based OS alerts
 
 ## Why oct
@@ -17,7 +17,7 @@ oct is a single Go binary that pulls scattered AI coding tool management into on
 Usage tools can't update; updaters can't show usage. oct's core bet is combining both in one binary.
 
 - **Single Go binary** — no Node/Python runtime, macOS / Linux / Windows
-- **Live quota** — reads each provider's usage API directly instead of parsing local logs, so you get remaining percentages and state
+- **Hybrid collection** — queries each provider's usage API directly where one exists (remaining percentages, reset state); tools without an API (e.g. Qwen) fall back to local usage records
 - **Reuses existing credentials** — uses the OAuth tokens / API keys your CLIs already saved; no separate sign-in
 - **Manager auto-detection** — finds the manager each tool was installed with and runs the right update command (regression-tested)
 
@@ -126,7 +126,7 @@ oct session-refresh --dry-run                                       # manual pro
 
 ### Standalone usage providers (usage-only, no CLI managed)
 
-These are plan/account services with no installable CLI; `oct usage` reports them only when listed in `agent_order` or `enabled_tools` (e.g. `oct config set enabled_tools zai`).
+These are plan/account services with no installable CLI; `oct usage` reports them only when listed in `agent_order` or `enabled_tools` (e.g. `oct config set tools zai`).
 
 - **Z.ai (GLM Coding Plan)** — `ZAI_API_KEY` / `ZHIPU_API_KEY`, or an OpenCode `zai-coding-plan` login
 - **DeepSeek** — `DEEPSEEK_API_KEY`
