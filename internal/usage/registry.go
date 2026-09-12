@@ -173,6 +173,31 @@ func defaultProviderOrder() []string {
 	return order
 }
 
+// LookupStandalone resolves a raw config entry (exact name or alias match) to
+// a standalone provider. Installable tools resolve through update.Tools, so
+// config validation and the interactive save path use this to accept and
+// preserve the usage-only provider names.
+func LookupStandalone(name string) (Provider, bool) {
+	p := strings.ToLower(strings.TrimSpace(name))
+	if p == "" {
+		return Provider{}, false
+	}
+	for _, entry := range providers {
+		if !entry.Standalone {
+			continue
+		}
+		if entry.Name == p {
+			return entry, true
+		}
+		for _, alias := range entry.Aliases {
+			if alias == p {
+				return entry, true
+			}
+		}
+	}
+	return Provider{}, false
+}
+
 // matchProvider resolves an arbitrary provider display string to a registry
 // entry, by exact key first and lowercase substring second.
 func matchProvider(name string) (Provider, bool) {

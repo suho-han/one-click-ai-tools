@@ -305,3 +305,27 @@ func TestConfigModel_NoWindowSizeRendersAll(t *testing.T) {
 		t.Error("no scroll indicators expected without a known window size")
 	}
 }
+
+func TestAppendStandaloneEntries(t *testing.T) {
+	dst := appendStandaloneEntries([]string{"codex"}, []string{"zai", "codex"})
+	if len(dst) != 2 || dst[0] != "codex" || dst[1] != "zai" {
+		t.Fatalf("appendStandaloneEntries = %v, want [codex zai]", dst)
+	}
+
+	dst = appendStandaloneEntries(dst, []string{"ZAI"})
+	if len(dst) != 2 {
+		t.Fatalf("duplicate standalone appended: %v", dst)
+	}
+
+	// Installable tool names and unknown entries are ignored.
+	dst = appendStandaloneEntries(dst, []string{"claude", "not-a-provider"})
+	if len(dst) != 2 {
+		t.Fatalf("non-standalone entries leaked into result: %v", dst)
+	}
+
+	// Comma-separated entries are split like the config values they mirror.
+	dst = appendStandaloneEntries(nil, []string{"grok,deepseek"})
+	if len(dst) != 2 || dst[0] != "grok" || dst[1] != "deepseek" {
+		t.Fatalf("comma-split = %v, want [grok deepseek]", dst)
+	}
+}

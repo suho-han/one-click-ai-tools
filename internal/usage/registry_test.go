@@ -127,3 +127,21 @@ func TestSwappingFetchers(t *testing.T) {
 		t.Fatal("wholesale fetcher swap broken")
 	}
 }
+
+func TestLookupStandalone(t *testing.T) {
+	if p, ok := LookupStandalone("zai"); !ok || p.Name != "zai" {
+		t.Fatalf("LookupStandalone(zai) = %q, %v; want zai, true", p.Name, ok)
+	}
+	if p, ok := LookupStandalone("Zhipu"); !ok || p.Name != "zai" {
+		t.Fatalf("LookupStandalone(Zhipu) = %q, %v; want alias resolution to zai", p.Name, ok)
+	}
+	if p, ok := LookupStandalone("deepseek"); !ok || p.Name != "deepseek" {
+		t.Fatalf("LookupStandalone(deepseek) = %q, %v; want deepseek, true", p.Name, ok)
+	}
+	if _, ok := LookupStandalone("claude"); ok {
+		t.Fatal("LookupStandalone(claude) = true; installable tools must not resolve as standalone")
+	}
+	if _, ok := LookupStandalone(""); ok {
+		t.Fatal("LookupStandalone(empty) = true; want false")
+	}
+}
