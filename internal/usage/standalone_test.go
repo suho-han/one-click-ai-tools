@@ -96,6 +96,37 @@ func TestGetUsageStandaloneFetchedByAlias(t *testing.T) {
 	}
 }
 
+func TestGetUsageHonorsRequestedOrderForStandalone(t *testing.T) {
+	// Nested swaps: standalone swap saves the real registry, fetcher swap then
+	// saves the standalone-only fetcher map; cleanups unwind in reverse.
+	swapStandaloneFetchers(t, Provider{
+		Name:       "zai",
+		Standalone: true,
+		Fetch: func(context.Context) UsageResult {
+			return UsageResult{Provider: "zai", Status: "ok"}
+		},
+	})
+	swapFetchers(t, map[string]func(context.Context) UsageResult{
+		"claude": func(context.Context) UsageResult { return UsageResult{Provider: "claude", Status: "ok"} },
+		"codex":  func(context.Context) UsageResult { return UsageResult{Provider: "codex", Status: "ok"} },
+	})
+
+	selectOnly(t, "zai", "codex", "claude")
+	results, err := GetUsage(context.Background())
+	if err != nil {
+		t.Fatalf("GetUsage() error = %v", err)
+	}
+	want := []string{"zai", "codex", "claude"}
+	if len(results) != len(want) {
+		t.Fatalf("results = %+v, want %v", results, want)
+	}
+	for i, name := range want {
+		if results[i].Provider != name {
+			t.Fatalf("results[%d].Provider = %q, want %q (full order: %v)", i, results[i].Provider, name, results)
+		}
+	}
+}
+
 func TestProviderRequested(t *testing.T) {
 	requested := requestedProviderNames()
 	if len(requested) != 0 {

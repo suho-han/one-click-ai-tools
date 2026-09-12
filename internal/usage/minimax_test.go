@@ -45,8 +45,27 @@ func TestFetchMinimaxUsageMapsWindows(t *testing.T) {
 	if result.Used != "10" {
 		t.Errorf("used = %q, want 10 (weekly primary)", result.Used)
 	}
+	if result.Unit != "percent" {
+		t.Errorf("unit = %q, want percent (buckets are percentages of each window)", result.Unit)
+	}
+	if result.Limit != "100" {
+		t.Errorf("limit = %q, want 100 (percent scale, not the raw request count)", result.Limit)
+	}
 	if result.BucketResets["5h"] == "" || result.BucketResets["7d"] == "" {
 		t.Errorf("resets = %v, want both windows' reset times", result.BucketResets)
+	}
+}
+
+func TestMinimaxDefaultEndpointFollowsRegion(t *testing.T) {
+	t.Setenv("OCT_MINIMAX_USAGE_ENDPOINT", "")
+	t.Setenv("MINIMAX_REGION", "")
+	if got := minimaxDefaultEndpoint(); got != "https://api.minimax.io/v1/coding_plan/remains" {
+		t.Errorf("default endpoint = %q, want global host", got)
+	}
+
+	t.Setenv("MINIMAX_REGION", "cn")
+	if got := minimaxDefaultEndpoint(); got != "https://api.minimaxi.com/v1/coding_plan/remains" {
+		t.Errorf("cn endpoint = %q, want mainland host", got)
 	}
 }
 

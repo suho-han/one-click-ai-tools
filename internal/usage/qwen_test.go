@@ -1,6 +1,7 @@
 package usage
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -131,5 +132,28 @@ func TestQwenPlanLabel(t *testing.T) {
 		if got := qwenPlanLabel(in); got != want {
 			t.Errorf("qwenPlanLabel(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestQwenRecordDateDecodesQuotedTimestamp(t *testing.T) {
+	// A quoted RFC3339 timestamp must be decoded before parsing; the raw JSON
+	// bytes include the surrounding quotes.
+	rec := qwenUsageRecord{Timestamp: json.RawMessage(`"2026-09-12T08:30:00Z"`)}
+	want, _ := time.Parse(time.RFC3339, "2026-09-12T08:30:00Z")
+	if got := qwenRecordDate(rec); got != want.Local().Format("2006-01-02") {
+		t.Errorf("quoted RFC3339 date = %q, want %q", got, want.Local().Format("2006-01-02"))
+	}
+
+	// Quoted unix milliseconds must unquote before ParseInt.
+	rec = qwenUsageRecord{Timestamp: json.RawMessage(`"1767225600000"`)}
+	wantDate := time.Unix(1767225600, 0).Format("2006-01-02")
+	if got := qwenRecordDate(rec); got != wantDate {
+		t.Errorf("quoted unix-ms date = %q, want %q", got, wantDate)
+	}
+
+	// Bare numeric timestamps keep working.
+	rec = qwenUsageRecord{Timestamp: json.RawMessage(`1767225600000`)}
+	if got := qwenRecordDate(rec); got != wantDate {
+		t.Errorf("numeric unix-ms date = %q, want %q", got, wantDate)
 	}
 }

@@ -15,7 +15,8 @@ import (
 )
 
 // MiniMax Coding/Token Plan quota. The plan API reports 5-hour and weekly
-// request windows as used/total counts.
+// request windows as used/total counts; oct converts both windows to
+// percentages of their own limits.
 //
 // Endpoint: POST {base}/v1/coding_plan/remains   (base: api.minimax.io |
 //
@@ -27,10 +28,7 @@ import (
 //	{"current_interval_total_count": 200, "current_interval_usage_count": 139,
 //	 "end_time": 1760000000000, "current_weekly_total_count": 2048,
 //	 "current_weekly_usage_count": 214, "weekly_end_time": ...}
-const minimaxUsageURL = "https://api.minimax.io/v1/coding_plan/remains"
-
-// minimaxUsageEndpoint allows overriding the API URL for testing.
-var minimaxUsageEndpoint = minimaxUsageURL
+const minimaxRemainsPath = "/v1/coding_plan/remains"
 
 // flexNum accepts a JSON number or a numeric string; the MiniMax API has
 // mixed the two across versions.
@@ -88,6 +86,11 @@ func minimaxBaseURL() string {
 	}
 }
 
+// minimaxDefaultEndpoint builds the region-aware default remains URL.
+func minimaxDefaultEndpoint() string {
+	return minimaxBaseURL() + minimaxRemainsPath
+}
+
 func minimaxReset(unixMs flexNum) (string, bool) {
 	if unixMs <= 0 {
 		return "", false
@@ -100,11 +103,14 @@ func minimaxReset(unixMs flexNum) (string, bool) {
 }
 
 // FetchMinimaxUsage fetches the MiniMax plan quota (5-hour + weekly windows).
+// Both windows are percentages of their own limits, so Unit is "percent" and
+// Limit is the percent scale — remaining-mode inversion, compact output, and
+// threshold alerts key off that unit.
 func FetchMinimaxUsage(ctx context.Context) UsageResult {
 	result := UsageResult{
 		Provider: "minimax",
 		Period:   "5h/7d",
-		Unit:     "req",
+		Unit:     "percent",
 		Source:   "remote",
 		Status:   "warn",
 		Message:  "No data: MiniMax API token not found (set MINIMAX_CODING_API_KEY or MINIMAX_API_KEY)",
@@ -118,7 +124,7 @@ func FetchMinimaxUsage(ctx context.Context) UsageResult {
 
 	endpoint := os.Getenv("OCT_MINIMAX_USAGE_ENDPOINT")
 	if endpoint == "" {
-		endpoint = minimaxUsageEndpoint
+		endpoint = minimaxDefaultEndpoint()
 	}
 
 	remains, err := fetchMinimaxRemains(ctx, endpoint, token)
@@ -159,9 +165,7 @@ func FetchMinimaxUsage(ctx context.Context) UsageResult {
 	}
 
 	result.Used = firstNonEmpty(result.Buckets["7d"], result.Buckets["5h"])
-	if weeklyLimit := remains.WeeklyTotal; weeklyLimit > 0 {
-		result.Limit = fmt.Sprintf("%.0f", float64(weeklyLimit))
-	}
+	result.Limit = "100"
 	result.Message = "Fetched from MiniMax plan API"
 
 	var degraded []string

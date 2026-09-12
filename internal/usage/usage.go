@@ -87,24 +87,59 @@ func GetUsage(ctx context.Context) ([]UsageResult, error) {
 		label string
 		fetch func(context.Context) UsageResult
 	}
-	jobs := make([]fetchJob, 0, len(selectedTools)+1)
+
+	// Installable-tool jobs keep the SelectedTools order (agent_order or the
+	// registry default). Standalone providers have no update.Tool entry, so
+	// they are fetched only when the user explicitly listed them (by name or
+	// alias) in agent_order or enabled_tools — an unconfigured service must
+	// never add a permanent "not configured" row to the default table. They
+	// are interleaved at the position their name occupies in those lists, so
+	// agent_order like [zai, codex] is honored instead of standalone rows
+	// always landing last.
+	toolJobs := make([]fetchJob, 0, len(selectedTools))
+	toolIndex := make(map[string]int, len(selectedTools))
 	for _, t := range selectedTools {
 		if fetcher, ok := providerFetchers[strings.ToLower(t.BinaryName)]; ok {
-			jobs = append(jobs, fetchJob{label: t.BinaryName, fetch: fetcher})
+			toolIndex[update.NormalizeToolName(t.BinaryName)] = len(toolJobs)
+			toolJobs = append(toolJobs, fetchJob{label: t.BinaryName, fetch: fetcher})
 		}
 	}
 
-	// Standalone providers have no update.Tool entry, so the loop above never
-	// sees them. Fetch each one only when the user explicitly listed it (by
-	// name or alias) in agent_order or enabled_tools; otherwise an
-	// unconfigured service would add a permanent "not configured" row to the
-	// default table.
-	requested := requestedProviderNames()
+	standaloneJobs := make(map[string]fetchJob)
+	standaloneSeen := make(map[string]bool)
 	for _, p := range providers {
-		if !p.Standalone || !providerRequested(p, requested) {
+		if !p.Standalone {
 			continue
 		}
-		jobs = append(jobs, fetchJob{label: p.Name, fetch: p.Fetch})
+		job := fetchJob{label: p.Name, fetch: p.Fetch}
+		standaloneJobs[strings.ToLower(p.Name)] = job
+		for _, alias := range p.Aliases {
+			standaloneJobs[strings.ToLower(alias)] = job
+		}
+	}
+
+	jobs := make([]fetchJob, 0, len(toolJobs)+len(standaloneJobs))
+	toolEmitted := make([]bool, len(toolJobs))
+	emitTool := func(i int) {
+		if !toolEmitted[i] {
+			toolEmitted[i] = true
+			jobs = append(jobs, toolJobs[i])
+		}
+	}
+	for _, name := range orderedRequestedNames() {
+		if job, ok := standaloneJobs[name]; ok {
+			if !standaloneSeen[job.label] {
+				standaloneSeen[job.label] = true
+				jobs = append(jobs, job)
+			}
+			continue
+		}
+		if i, ok := toolIndex[update.NormalizeToolName(name)]; ok {
+			emitTool(i)
+		}
+	}
+	for i := range toolJobs {
+		emitTool(i)
 	}
 
 	results := make([]UsageResult, len(jobs))
@@ -149,6 +184,24 @@ func requestedProviderNames() map[string]bool {
 		}
 	}
 	return requested
+}
+
+// orderedRequestedNames lists the same entries as requestedProviderNames but
+// order-preserving and deduplicated: agent_order entries first, then
+// enabled_tools.
+func orderedRequestedNames() []string {
+	raw := append(viper.GetStringSlice("agent_order"), viper.GetStringSlice("enabled_tools")...)
+	var names []string
+	seen := make(map[string]bool)
+	for _, entry := range raw {
+		for _, part := range strings.Split(strings.ToLower(entry), ",") {
+			if part = strings.TrimSpace(part); part != "" && !seen[part] {
+				seen[part] = true
+				names = append(names, part)
+			}
+		}
+	}
+	return names
 }
 
 // providerRequested reports whether a standalone provider was listed by name
