@@ -543,6 +543,34 @@ func printSummaryBorder(innerWidth int) {
 	fmt.Printf("--||%s||--\n", strings.Repeat("=", innerWidth+2))
 }
 
+// appendStandaloneEntries appends the standalone usage-provider names found in
+// raw (comma-separated entries allowed) to dst, skipping names already present.
+func appendStandaloneEntries(dst, raw []string) []string {
+	for _, entry := range raw {
+		for _, part := range strings.Split(entry, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			p, ok := usage.LookupStandalone(part)
+			if !ok {
+				continue
+			}
+			dup := false
+			for _, existing := range dst {
+				if strings.EqualFold(existing, p.Name) {
+					dup = true
+					break
+				}
+			}
+			if !dup {
+				dst = append(dst, p.Name)
+			}
+		}
+	}
+	return dst
+}
+
 func printSummaryContent(content string) {
 	fmt.Printf("  %s\n", content)
 }
@@ -560,6 +588,12 @@ var configCmd = &cobra.Command{
 			fmt.Fprintln(cmd.OutOrStdout(), "Configuration cancelled.")
 			return nil
 		}
+		// The interactive picker only lists installable tools; keep any
+		// standalone usage providers the user enabled by name or in agent_order.
+		oldOrder := viper.GetStringSlice("agent_order")
+		newEnabledTools = appendStandaloneEntries(newEnabledTools, viper.GetStringSlice("enabled_tools"))
+		newEnabledTools = appendStandaloneEntries(newEnabledTools, oldOrder)
+		newOrder = appendStandaloneEntries(newOrder, oldOrder)
 		viper.Set("enabled_tools", newEnabledTools)
 		viper.Set("agent_order", newOrder)
 		viper.Set("usage_display_mode", usageMode)
@@ -597,6 +631,14 @@ var configSetToolsCmd = &cobra.Command{
 					validTools = append(validTools, t.BinaryName)
 					found = true
 					break
+				}
+			}
+			if !found {
+				// Standalone usage providers have no update.Tool entry but are
+				// valid enabled_tools values (usage-only rows).
+				if p, ok := usage.LookupStandalone(tool); ok {
+					validTools = append(validTools, p.Name)
+					found = true
 				}
 			}
 			if !found {
