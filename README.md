@@ -9,7 +9,7 @@
 oct는 흩어져 있는 AI 코딩 도구 관리를 하나로 모으는 단일 Go 바이너리 CLI입니다.
 
 - **전부 업데이트** — Claude Code, Codex, Copilot, Cursor 등 10개 CLI를 설치 매니저 자동 감지(brew/npm/공식 인스톨러)로 한 번에 업데이트
-- **전부 쿼터 감시** — 14개 프로바이더의 구독 쿼터를 라이브 API로 직접 조회해 하나의 테이블 / JSON / macOS 메뉴바로 표시
+- **전부 쿼터 감시** — 14개 프로바이더의 구독 쿼터를 하나의 테이블 / JSON / macOS 메뉴바로 표시
 - **유지보수 예약** — 업데이트와 세션 점검을 launchd / cron / SchTasks에 예약하고, 임계값 도달 시 OS 알림
 
 ## 왜 oct인가
@@ -17,7 +17,7 @@ oct는 흩어져 있는 AI 코딩 도구 관리를 하나로 모으는 단일 Go
 사용량 조회 도구는 업데이트를 못 하고, 업데이터는 사용량을 못 봅니다. oct는 이 둘을 한 바이너리로 묶은 것이 핵심입니다.
 
 - **단일 Go 바이너리** — Node/Python 런타임 불필요, macOS / Linux / Windows
-- **라이브 쿼터** — 로컬 로그 파싱이 아니라 각 프로바이더 usage API를 직접 조회해 남은 비율과 상태를 확인
+- **하이브리드 수집** — usage API가 있는 프로바이더는 API를 직접 조회해 남은 비율과 상태를 확인하고, API가 없는 도구(Qwen 등)는 로컬 사용 기록으로 보완
 - **자격증명 재사용** — 각 CLI가 이미 저장한 OAuth 토큰·API 키를 그대로 사용, 별도 로그인 없음
 - **매니저 자동 감지** — 도구마다 설치된 매니저를 찾아 맞는 업데이트 명령을 실행 (회귀 테스트로 고정)
 
@@ -126,7 +126,7 @@ oct session-refresh --dry-run                                       # 토큰 소
 
 ### 사용량 전용 프로바이더 (설치 대상 아님, opt-in)
 
-설치/업데이트 대상 CLI는 아니지만 사용량 조회만 지원합니다. `agent_order` 또는 `enabled_tools`에 이름을 넣으면 표에 나타납니다 (예: `oct config set enabled_tools zai`).
+설치/업데이트 대상 CLI는 아니지만 사용량 조회만 지원합니다. `agent_order` 또는 `enabled_tools`에 이름을 넣으면 표에 나타납니다 (예: `oct config set tools zai`).
 
 - **Z.ai (GLM Coding Plan)** — `ZAI_API_KEY` / `ZHIPU_API_KEY`, 또는 opencode `zai-coding-plan` 로그인
 - **DeepSeek** — `DEEPSEEK_API_KEY`
