@@ -139,7 +139,9 @@ var Tools = []Tool{
 		BinaryName: "kimi",
 		Icon:       "🌙",
 		LobeIcon:   "Moonshot",
-		HexColor:   "#16191E",
+		// Kimi's brand near-black (#16191E) was unreadable on dark terminals;
+		// a light slate keeps the row legible on both dark and light themes.
+		HexColor: "#9AA5CE",
 	},
 	{
 		Name:       "Qwen Code",
