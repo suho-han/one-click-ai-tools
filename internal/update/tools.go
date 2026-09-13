@@ -233,22 +233,27 @@ func GetOrderedTools(order []string) []Tool {
 	return ordered
 }
 
+// GetFilteredTools returns the subset of ordered that is listed in enabled,
+// preserving the ordered list's sequence. agent_order is the documented
+// execution priority (the settings UI reorders it with arrow controls), so
+// consumers must not fall back to the enabled list's order when the two
+// diverge — e.g. after `config set tools`, which rewrites enabled_tools in
+// typed order while leaving agent_order alone.
 func GetFilteredTools(enabled []string, ordered []Tool) []Tool {
-	enabled = splitToolNames(enabled)
-	if len(enabled) == 0 {
+	enabledNames := splitToolNames(enabled)
+	if len(enabledNames) == 0 {
 		return ordered
 	}
-	result := make([]Tool, 0, len(enabled))
-	seen := make(map[string]bool, len(enabled))
-	for _, et := range enabled {
-		normalized := NormalizeToolName(et)
-		if normalized == "" || seen[normalized] {
+	result := make([]Tool, 0, len(enabledNames))
+	seen := make(map[string]bool, len(enabledNames))
+	for _, t := range ordered {
+		if seen[t.BinaryName] {
 			continue
 		}
-		for _, t := range ordered {
-			if t.MatchesName(normalized) {
+		for _, name := range enabledNames {
+			if t.MatchesName(name) {
 				result = append(result, t)
-				seen[normalized] = true
+				seen[t.BinaryName] = true
 				break
 			}
 		}

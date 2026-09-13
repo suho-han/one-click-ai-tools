@@ -99,7 +99,10 @@ func TestUsageOrderedTools_RespectsEnabledTools(t *testing.T) {
 	if len(tools) != 2 {
 		t.Fatalf("expected 2 tools, got %d", len(tools))
 	}
-	if tools[0].BinaryName != "codex" || tools[1].BinaryName != "opencode" {
+	// Filtering honors enabled_tools, but the row sequence follows agent_order
+	// (the execution priority) so the TTY table agrees with `usage --json` and
+	// the menubar popover.
+	if tools[0].BinaryName != "opencode" || tools[1].BinaryName != "codex" {
 		t.Fatalf("unexpected tool order: %s, %s", tools[0].BinaryName, tools[1].BinaryName)
 	}
 }
