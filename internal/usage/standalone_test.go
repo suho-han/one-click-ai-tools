@@ -3,6 +3,8 @@ package usage
 import (
 	"context"
 	"testing"
+
+	"github.com/spf13/viper"
 )
 
 // swapStandaloneFetchers replaces the registry with a single standalone
@@ -142,5 +144,43 @@ func TestProviderRequested(t *testing.T) {
 	}
 	if !providerRequested(p, map[string]bool{"glm": true}) {
 		t.Fatal("providerRequested false for alias")
+	}
+}
+
+func TestGetUsageStandaloneDisabledViaEnabledTools(t *testing.T) {
+	fetched := false
+	swapStandaloneFetchers(t, Provider{
+		Name:       "standalone-test",
+		Standalone: true,
+		Fetch: func(context.Context) UsageResult {
+			fetched = true
+			return UsageResult{Provider: "standalone-test", Status: "ok"}
+		},
+	})
+
+	// The settings UI unchecks a provider by removing it from enabled_tools
+	// while keeping agent_order intact; that must disable the fetch.
+	viper.Set("agent_order", []string{"standalone-test", "codex"})
+	viper.Set("enabled_tools", []string{"codex"})
+	t.Cleanup(func() {
+		viper.Set("agent_order", nil)
+		viper.Set("enabled_tools", nil)
+	})
+
+	if _, err := GetUsage(context.Background()); err != nil {
+		t.Fatalf("GetUsage() error = %v", err)
+	}
+	if fetched {
+		t.Fatal("standalone provider fetched although enabled_tools dropped it")
+	}
+
+	// With enabled_tools empty, listing the provider in agent_order opts in.
+	viper.Set("enabled_tools", nil)
+	fetched = false
+	if _, err := GetUsage(context.Background()); err != nil {
+		t.Fatalf("GetUsage() error = %v", err)
+	}
+	if !fetched {
+		t.Fatal("agent_order opt-in ignored while enabled_tools is empty")
 	}
 }
