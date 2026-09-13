@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/spf13/viper"
 	"github.com/suho-han/one-click-ai-tools/internal/update"
@@ -243,15 +244,28 @@ func menubarTimeLabel(now time.Time) string {
 	return now.Format("15:04:05")
 }
 
+// truncateMenubarText trims s to at most max bytes without splitting a
+// multi-byte rune. Truncation targets are provider messages, source labels,
+// and error text that come from CLI output and can contain non-ASCII text;
+// a raw byte slice would emit invalid UTF-8 into menu item titles.
 func truncateMenubarText(s string, max int) string {
 	s = strings.TrimSpace(s)
 	if max <= 0 || len(s) <= max {
 		return s
 	}
 	if max <= 3 {
-		return s[:max]
+		return truncateAtByteBoundary(s, max)
 	}
-	return s[:max-3] + "..."
+	return truncateAtByteBoundary(s, max-3) + "..."
+}
+
+// truncateAtByteBoundary cuts s to at most max bytes without splitting a
+// multi-byte rune (same contract as usage's truncateText).
+func truncateAtByteBoundary(s string, max int) string {
+	for max > 0 && !utf8.RuneStart(s[max]) {
+		max--
+	}
+	return s[:max]
 }
 
 func menubarRefreshInterval(raw string) time.Duration {
