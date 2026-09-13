@@ -157,3 +157,27 @@ func TestMinimaxFetcherKeyedByToolBinaryName(t *testing.T) {
 		t.Fatal(`providerFetchers missing "minimax"`)
 	}
 }
+
+func TestCanonicalProviderName(t *testing.T) {
+	cases := map[string]string{
+		"minimax":     "minimax",
+		"mmx":         "minimax", // config UI stores the tool binary name
+		"zhipu":       "zai",     // alias
+		"claude":      "claude",
+		"claude-code": "claude",       // legacy tool name
+		"cursor":      "cursor-agent", // legacy display name
+		"antigravity": "agy",
+	}
+	for raw, want := range cases {
+		got, ok := CanonicalProviderName(raw)
+		if !ok || got != want {
+			t.Errorf("CanonicalProviderName(%q) = %q, %v; want %q", raw, got, ok, want)
+		}
+	}
+	if _, ok := CanonicalProviderName("not-a-provider"); ok {
+		t.Error("unknown provider resolved")
+	}
+	if _, ok := CanonicalProviderName(""); ok {
+		t.Error("empty name resolved")
+	}
+}
