@@ -52,13 +52,16 @@ func TestFetchQwenUsageCountsToday(t *testing.T) {
 		t.Fatalf("status = %q, message = %q", result.Status, result.Message)
 	}
 	if result.Used != "4" {
-		t.Errorf("used = %q, want 4 (3 today-dated + 1 localDate today)", result.Used)
+		t.Errorf("used = %q, want 4 (4 of 100 requests today, in percent)", result.Used)
 	}
 	if result.Limit != "100" {
-		t.Errorf("limit = %q, want 100 (viper default)", result.Limit)
+		t.Errorf("limit = %q, want 100 (percent scale)", result.Limit)
 	}
-	if result.Period != "1d" || result.Unit != "req" {
-		t.Errorf("period/unit = %q/%q, want 1d/req", result.Period, result.Unit)
+	if result.Period != "1d" || result.Unit != "percent" {
+		t.Errorf("period/unit = %q/%q, want 1d/percent (remaining mode and alerts key off it)", result.Period, result.Unit)
+	}
+	if !strings.Contains(result.Message, "4/100 requests today") {
+		t.Errorf("message = %q, want the raw count preserved", result.Message)
 	}
 	if result.Plan != "OAuth" {
 		t.Errorf("plan = %q, want OAuth (first record's auth type)", result.Plan)
@@ -77,8 +80,11 @@ func TestFetchQwenUsageRespectsDailyLimitConfig(t *testing.T) {
 	if result.Status != "warn" {
 		t.Fatalf("status = %q, want warn at/over limit", result.Status)
 	}
-	if result.Limit != "4" {
-		t.Errorf("limit = %q, want 4", result.Limit)
+	if result.Used != "150" {
+		t.Errorf("used = %q, want 150 (6 of 4 requests)", result.Used)
+	}
+	if result.Limit != "100" {
+		t.Errorf("limit = %q, want 100 (percent scale)", result.Limit)
 	}
 	if !strings.Contains(result.Message, "limit") {
 		t.Errorf("message = %q, want limit mention", result.Message)

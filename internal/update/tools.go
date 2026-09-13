@@ -173,6 +173,9 @@ func NormalizeToolName(name string) string {
 		return "cursor-agent"
 	case "antigravity", "gemini", "gemini-cli":
 		return "agy"
+	case "minimax":
+		// The Tool binary is mmx; ordering/config flows speak either name.
+		return "mmx"
 	default:
 		return strings.ToLower(strings.TrimSpace(name))
 	}
