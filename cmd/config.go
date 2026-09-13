@@ -13,14 +13,12 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
-	"github.com/suho-han/one-click-ai-tools/internal/ui"
 	"github.com/suho-han/one-click-ai-tools/internal/update"
 	"github.com/suho-han/one-click-ai-tools/internal/usage"
 )
 
 type toolItem struct {
 	tool   update.Tool
-	icon3  [3]string
 	check  bool
 	cursor bool
 	// choose all/none control row (not a real tool)
@@ -40,30 +38,22 @@ type configModel struct {
 	// unit tests) renders everything.
 	viewHeight  int
 	offset      int // first visible item index
-	visibleRows int // visible item count at the current rowHeight
-	rowHeight   int // 3 (icon + name + icon) or 1 (name only, tiny terminals)
+	visibleRows int // visible item count (one line per item)
 }
 
 // viewChrome is the number of lines around the item list: 1 header + 1 blank
 // + 4 help lines. Scroll indicators are carved out of the item budget below.
 const viewChrome = 6
 
-// layoutForHeight resolves (rowHeight, visibleRows) for a terminal height.
-func layoutForHeight(height int) (int, int) {
+// layoutForHeight resolves the number of visible item rows for a terminal
+// height. Every item renders as a single line, so the budget is all that is
+// left after the chrome and up to 2 scroll-indicator rows.
+func layoutForHeight(height int) int {
 	itemBudget := height - viewChrome - 2 // reserve up to 2 scroll-indicator rows
-	if itemBudget < 5 {
-		// Too small for a 3-line item: degrade to one line per item.
-		visible := itemBudget
-		if visible < 1 {
-			visible = 1
-		}
-		return 1, visible
+	if itemBudget < 1 {
+		return 1
 	}
-	visible := itemBudget / 3
-	if visible < 1 {
-		visible = 1
-	}
-	return 3, visible
+	return itemBudget
 }
 
 // applyWindowSize records the terminal height and keeps the cursor inside
@@ -73,7 +63,7 @@ func (m *configModel) applyWindowSize(height int) {
 		return
 	}
 	m.viewHeight = height
-	m.rowHeight, m.visibleRows = layoutForHeight(height)
+	m.visibleRows = layoutForHeight(height)
 	m.clampOffset()
 }
 
@@ -126,17 +116,8 @@ func newConfigModel(enabledTools []string, agentOrder []string) configModel {
 				}
 			}
 		}
-		// 3 lines = 12 dots high. For 1:1 aspect ratio, we need 12 dots wide = 6 Braille chars.
-		lines := ui.InlineIconLines(t.LobeIcon, 6, 3)
-		var icon3 [3]string
-		if len(lines) >= 3 {
-			icon3[0], icon3[1], icon3[2] = lines[0], lines[1], lines[2]
-		} else {
-			icon3[1] = "•"
-		}
 		items = append(items, toolItem{
 			tool:   t,
-			icon3:  icon3,
 			check:  enabled,
 			cursor: i == 0,
 		})
@@ -149,7 +130,6 @@ func newConfigModel(enabledTools []string, agentOrder []string) configModel {
 			Icon:       "⇄",
 			HexColor:   "#9CA3AF",
 		},
-		icon3:           [3]string{"", "⇄", ""},
 		check:           false,
 		cursor:          false,
 		isToggleControl: true,
@@ -161,7 +141,6 @@ func newConfigModel(enabledTools []string, agentOrder []string) configModel {
 			Icon:       "✓",
 			HexColor:   "#10B981",
 		},
-		icon3:            [3]string{"", "✓", ""},
 		check:            false,
 		cursor:           false,
 		isConfirmControl: true,
@@ -301,7 +280,7 @@ func (m configModel) View() string {
 	return b.String()
 }
 
-// renderItemLines renders one item as 1 (compact) or 3 (icon) view lines.
+// renderItemLines renders one item as a single name row (no icon art).
 func (m configModel) renderItemLines(it toolItem) []string {
 	mark := "[ ]"
 	if it.check {
@@ -336,17 +315,7 @@ func (m configModel) renderItemLines(it toolItem) []string {
 		name = it.tool.ColorizeWithBackgroundBlackText(nameText)
 	}
 
-	// 3 lines = 12 dots high; compact mode (very short terminals) drops the
-	// Braille icon and renders the name row only.
-	if m.rowHeight == 3 {
-		indent := "     "
-		return []string{
-			indent + it.icon3[0],
-			fmt.Sprintf("%s%s %s %s", cursor, mark, it.icon3[1], name),
-			indent + it.icon3[2],
-		}
-	}
-	return []string{fmt.Sprintf("%s%s %s %s", cursor, mark, it.icon3[1], name)}
+	return []string{fmt.Sprintf("%s%s %s", cursor, mark, name)}
 }
 
 func writeConfig() error {

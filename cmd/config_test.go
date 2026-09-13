@@ -171,21 +171,18 @@ func TestConfigPromptsTreatEOFAsDefaults(t *testing.T) {
 func TestConfigLayoutForHeight(t *testing.T) {
 	tests := []struct {
 		height         int
-		wantRowHeight  int
 		wantVisibleMin int
 	}{
-		{height: 24, wantRowHeight: 3, wantVisibleMin: 5},
-		{height: 20, wantRowHeight: 3, wantVisibleMin: 4},
-		{height: 14, wantRowHeight: 3, wantVisibleMin: 2},
-		{height: 13, wantRowHeight: 3, wantVisibleMin: 1},
-		{height: 12, wantRowHeight: 1, wantVisibleMin: 4},
-		{height: 8, wantRowHeight: 1, wantVisibleMin: 1},
+		{height: 24, wantVisibleMin: 16},
+		{height: 20, wantVisibleMin: 12},
+		{height: 14, wantVisibleMin: 6},
+		{height: 13, wantVisibleMin: 5},
+		{height: 12, wantVisibleMin: 4},
+		{height: 8, wantVisibleMin: 1},
+		{height: 4, wantVisibleMin: 1},
 	}
 	for _, tt := range tests {
-		rowHeight, visible := layoutForHeight(tt.height)
-		if rowHeight != tt.wantRowHeight {
-			t.Errorf("layoutForHeight(%d) rowHeight = %d, want %d", tt.height, rowHeight, tt.wantRowHeight)
-		}
+		visible := layoutForHeight(tt.height)
 		if visible < tt.wantVisibleMin {
 			t.Errorf("layoutForHeight(%d) visible = %d, want >= %d", tt.height, visible, tt.wantVisibleMin)
 		}
@@ -211,7 +208,7 @@ func TestConfigModel_WindowShowsScrollIndicator(t *testing.T) {
 	if got := len(m.items); got < 6 {
 		t.Fatalf("expected a realistic item list, got %d items", got)
 	}
-	m.applyWindowSize(20) // 4 items visible at 3 rows each
+	m.applyWindowSize(12) // 4 items visible, one line each
 
 	view := m.View()
 	if !strings.Contains(view, m.items[0].tool.Name) {
@@ -230,7 +227,7 @@ func TestConfigModel_WindowShowsScrollIndicator(t *testing.T) {
 
 func TestConfigModel_WindowFollowsCursorDown(t *testing.T) {
 	m := newConfigModel(nil, nil)
-	m.applyWindowSize(20)
+	m.applyWindowSize(12)
 
 	for i := 0; i < 4; i++ {
 		updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
@@ -254,7 +251,7 @@ func TestConfigModel_WindowFollowsCursorDown(t *testing.T) {
 
 func TestConfigModel_WindowFollowsCursorWrapAround(t *testing.T) {
 	m := newConfigModel(nil, nil)
-	m.applyWindowSize(20)
+	m.applyWindowSize(12)
 	last := len(m.items) - 1
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
@@ -274,7 +271,7 @@ func TestConfigModel_WindowFollowsCursorWrapAround(t *testing.T) {
 
 func TestConfigModel_ConfirmReachableInWindow(t *testing.T) {
 	m := newConfigModel(nil, nil)
-	m.applyWindowSize(12) // compact mode, few rows
+	m.applyWindowSize(12) // windowed mode, confirm row starts off-screen
 	last := len(m.items) - 1
 
 	for m.index() != last {
