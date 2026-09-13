@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/spf13/viper"
 	"github.com/suho-han/one-click-ai-tools/internal/usage"
@@ -304,3 +305,23 @@ type staticErr string
 func (e staticErr) Error() string { return string(e) }
 
 func assertErr(msg string) error { return staticErr(msg) }
+
+// TestTruncateMenubarText_RuneSafe pins UTF-8 integrity: provider messages
+// can contain non-ASCII CLI output, and a byte-slice cut used to emit
+// invalid UTF-8 into menu item titles.
+func TestTruncateMenubarText_RuneSafe(t *testing.T) {
+	in := "한글 오류 메시지 한글 오류 메시지 한글"
+	got := truncateMenubarText(in, 20)
+	if !utf8.ValidString(got) {
+		t.Fatalf("truncateMenubarText produced invalid UTF-8: %q", got)
+	}
+	if got := truncateMonitorText("abcdefghijklmnopqrstuvwxyz", 10); got != "abcdefg..." {
+		t.Fatalf("unexpected truncateMonitorText result: %q", got)
+	}
+	if got := truncateMenubarText("abc", 3); got != "abc" {
+		t.Fatalf("short input must pass through: %q", got)
+	}
+	if got := truncateMenubarText("한글", 2); !utf8.ValidString(got) || got == "한글" {
+		t.Fatalf("tiny budget must still stay rune-safe: %q", got)
+	}
+}

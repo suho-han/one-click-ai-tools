@@ -180,15 +180,10 @@ func monitorMessageWidth(width int) int {
 	}
 }
 
+// truncateMonitorText shares the menubar implementation: both truncate the
+// same kind of CLI-derived text and must stay rune-safe.
 func truncateMonitorText(s string, max int) string {
-	s = strings.TrimSpace(s)
-	if max <= 0 || len(s) <= max {
-		return s
-	}
-	if max <= 3 {
-		return s[:max]
-	}
-	return s[:max-3] + "..."
+	return truncateMenubarText(s, max)
 }
 
 func padANSI(s string, width int) string {
