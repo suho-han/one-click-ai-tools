@@ -417,13 +417,19 @@ func persistViperConfig() error {
 		}
 		cfg = filepath.Join(home, ".oct", "config.yaml")
 	}
-	if err := os.MkdirAll(filepath.Dir(cfg), 0o755); err != nil {
+	// Match writeConfig: the config holds API tokens, so keep the directory
+	// private and the file owner-only regardless of umask.
+	if err := os.MkdirAll(filepath.Dir(cfg), 0o700); err != nil {
 		return err
 	}
 	if _, err := os.Stat(cfg); err == nil {
-		return viper.WriteConfigAs(cfg)
+		if err := viper.WriteConfigAs(cfg); err != nil {
+			return err
+		}
+	} else if err := viper.SafeWriteConfigAs(cfg); err != nil {
+		return err
 	}
-	return viper.SafeWriteConfigAs(cfg)
+	return os.Chmod(cfg, 0o600)
 }
 
 func snoozeDisplayKey(provider, window string) string {
