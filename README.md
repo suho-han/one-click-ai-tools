@@ -61,7 +61,7 @@ oct usage --json     # 스크립트/파이프용
 
 | 단계 | 명령어 | 하는 일 |
 | --- | --- | --- |
-| 설정 | `oct config` | 도구·프로바이더 선택, 알림 임계값 설정 (인터랙티브) |
+| 설정 | `oct config` | 도구·프로바이더 선택, 사용량 표시 모드 설정 (인터랙티브) |
 | 업데이트 | `oct agent-update` | 설치된 AI CLI 전부 업데이트 (`--dry-run --explain` 사전 점검) |
 | 감시 | `oct usage` | 전 프로바이더 쿼터 1회 조회 (`--json`, `--compact`, `--notify`) |
 | 감시 | `oct monitor` | 상시 갱신 화면 (`--interval`, `--once`, 정렬·필터) |
