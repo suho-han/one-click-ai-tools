@@ -571,6 +571,50 @@ func appendStandaloneEntries(dst, raw []string) []string {
 	return dst
 }
 
+// mergeStandaloneIntoOrder keeps standalone usage providers at their original
+// positions in agent_order across an interactive save: the picker only lists
+// installable tools, so a plain overwrite would push standalone rows to the
+// end and change usage/monitor/menubar ordering. Tool entries the user
+// deselected are dropped; newly selected tools are appended after the
+// carried-over order.
+func mergeStandaloneIntoOrder(newOrder, oldOrder []string) []string {
+	if len(oldOrder) == 0 {
+		return newOrder
+	}
+	selected := make(map[string]bool, len(newOrder))
+	for _, name := range newOrder {
+		selected[update.NormalizeToolName(name)] = true
+	}
+	merged := make([]string, 0, len(newOrder)+len(oldOrder))
+	seen := make(map[string]bool, len(newOrder)+len(oldOrder))
+	appendName := func(name string) {
+		if name != "" && !seen[name] {
+			seen[name] = true
+			merged = append(merged, name)
+		}
+	}
+	for _, entry := range oldOrder {
+		for _, part := range strings.Split(entry, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			if p, ok := usage.LookupStandalone(part); ok {
+				appendName(p.Name)
+				continue
+			}
+			normalized := update.NormalizeToolName(part)
+			if selected[normalized] {
+				appendName(normalized)
+			}
+		}
+	}
+	for _, name := range newOrder {
+		appendName(update.NormalizeToolName(name))
+	}
+	return merged
+}
+
 func printSummaryContent(content string) {
 	fmt.Printf("  %s\n", content)
 }
@@ -593,7 +637,7 @@ var configCmd = &cobra.Command{
 		oldOrder := viper.GetStringSlice("agent_order")
 		newEnabledTools = appendStandaloneEntries(newEnabledTools, viper.GetStringSlice("enabled_tools"))
 		newEnabledTools = appendStandaloneEntries(newEnabledTools, oldOrder)
-		newOrder = appendStandaloneEntries(newOrder, oldOrder)
+		newOrder = mergeStandaloneIntoOrder(newOrder, oldOrder)
 		viper.Set("enabled_tools", newEnabledTools)
 		viper.Set("agent_order", newOrder)
 		viper.Set("usage_display_mode", usageMode)

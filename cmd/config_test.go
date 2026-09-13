@@ -3,6 +3,7 @@ package cmd
 import (
 	"bufio"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -327,5 +328,32 @@ func TestAppendStandaloneEntries(t *testing.T) {
 	dst = appendStandaloneEntries(nil, []string{"grok,deepseek"})
 	if len(dst) != 2 || dst[0] != "grok" || dst[1] != "deepseek" {
 		t.Fatalf("comma-split = %v, want [grok deepseek]", dst)
+	}
+}
+
+func TestMergeStandaloneIntoOrder(t *testing.T) {
+	// A standalone provider keeps its original position ahead of the tool.
+	got := mergeStandaloneIntoOrder([]string{"codex", "claude"}, []string{"zai", "codex"})
+	if !slices.Equal(got, []string{"zai", "codex", "claude"}) {
+		t.Fatalf("merge = %v, want [zai codex claude]", got)
+	}
+
+	// Deselected tools drop; newly selected tools append after the carried
+	// order.
+	got = mergeStandaloneIntoOrder([]string{"claude"}, []string{"codex", "zai"})
+	if !slices.Equal(got, []string{"zai", "claude"}) {
+		t.Fatalf("merge = %v, want [zai claude]", got)
+	}
+
+	// Empty old order passes the picker order through untouched.
+	got = mergeStandaloneIntoOrder([]string{"codex"}, nil)
+	if !slices.Equal(got, []string{"codex"}) {
+		t.Fatalf("merge = %v, want [codex]", got)
+	}
+
+	// Legacy tool names canonicalize while merging.
+	got = mergeStandaloneIntoOrder([]string{"agy"}, []string{"gemini"})
+	if !slices.Equal(got, []string{"agy"}) {
+		t.Fatalf("merge = %v, want [agy]", got)
 	}
 }
