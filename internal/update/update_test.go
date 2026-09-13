@@ -1,6 +1,7 @@
 package update
 
 import (
+	"bufio"
 	"io"
 	"os"
 	"path/filepath"
@@ -112,7 +113,7 @@ func TestConfirmMissingToolInstalls(t *testing.T) {
 	defer func() { confirmInstallPrompt = origPrompt }()
 
 	prompted := []string{}
-	confirmInstallPrompt = func(_ io.Reader, _ io.Writer, plan Plan) (bool, error) {
+	confirmInstallPrompt = func(_ *bufio.Reader, _ io.Writer, plan Plan) (bool, error) {
 		prompted = append(prompted, plan.Tool.Name)
 		return plan.Tool.Name == "OpenAI Codex", nil
 	}
@@ -140,7 +141,7 @@ func TestConfirmMissingToolInstalls(t *testing.T) {
 
 func TestDefaultConfirmInstallPrompt(t *testing.T) {
 	out := &strings.Builder{}
-	ok, err := defaultConfirmInstallPrompt(strings.NewReader("n\n"), out, Plan{
+	ok, err := defaultConfirmInstallPrompt(bufio.NewReader(strings.NewReader("n\n")), out, Plan{
 		Tool:           Tool{Name: "OpenAI Codex"},
 		Manager:        Npm,
 		InstallCommand: []string{"npm", "install", "-g", "@openai/codex"},
@@ -153,6 +154,33 @@ func TestDefaultConfirmInstallPrompt(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "OpenAI Codex is not installed") || !strings.Contains(out.String(), "npm install -g @openai/codex") {
 		t.Fatalf("unexpected prompt output: %q", out.String())
+	}
+}
+
+// TestConfirmMissingToolInstalls_PipedAnswersReachEveryPrompt pins the shared
+// prompt reader: with the old per-prompt bufio wrapper, the first prompt's
+// reader buffered the whole piped input and the second prompt saw EOF, whose
+// default answer is "yes" -- silently installing a tool the user declined.
+func TestConfirmMissingToolInstalls_PipedAnswersReachEveryPrompt(t *testing.T) {
+	origPrompt := confirmInstallPrompt
+	defer func() { confirmInstallPrompt = origPrompt }()
+	confirmInstallPrompt = defaultConfirmInstallPrompt
+
+	tools := []Tool{
+		{Name: "OpenAI Codex", BinaryName: "codex"},
+		{Name: "Claude Code", BinaryName: "claude"},
+	}
+	plans := []Plan{
+		{Tool: tools[0], Reason: "default fallback", InstallCommand: []string{"npm", "install", "-g", "@openai/codex"}},
+		{Tool: tools[1], Reason: "default fallback", InstallCommand: []string{"npm", "install", "-g", "@anthropic-ai/claude-code"}},
+	}
+
+	confirmed, _, err := confirmMissingToolInstalls(strings.NewReader("n\nn\n"), io.Discard, tools, plans)
+	if err != nil {
+		t.Fatalf("confirmMissingToolInstalls() error = %v", err)
+	}
+	if len(confirmed) != 0 {
+		t.Fatalf("confirmed = %d tools, want 0 (both piped answers decline)", len(confirmed))
 	}
 }
 
