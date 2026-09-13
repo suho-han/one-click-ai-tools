@@ -242,6 +242,11 @@ func cleanupExpiredSnooze(st *alertState, now time.Time) bool {
 }
 
 func SetSnooze(path, provider, window string, until time.Time) error {
+	// Serialize with MaybeSendUsageAlerts so a concurrent alert check cannot
+	// overwrite the snooze it just read past.
+	if unlock, err := lockStateFile(path); err == nil {
+		defer unlock()
+	}
 	st, _ := loadState(path)
 	if st.SnoozedUntil == nil {
 		st.SnoozedUntil = map[string]time.Time{}
@@ -251,6 +256,9 @@ func SetSnooze(path, provider, window string, until time.Time) error {
 }
 
 func ClearSnooze(path, provider, window string) error {
+	if unlock, err := lockStateFile(path); err == nil {
+		defer unlock()
+	}
 	st, _ := loadState(path)
 	if st.SnoozedUntil == nil {
 		return nil
