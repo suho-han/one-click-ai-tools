@@ -214,3 +214,62 @@ func TestConfigSnapshotExposesMenubarRefreshInterval(t *testing.T) {
 		t.Fatalf("snapshot JSON missing menubar_refresh_interval key: %s", data)
 	}
 }
+
+func TestBuildConfigSnapshotIncludesStandaloneProviders(t *testing.T) {
+	t.Cleanup(viper.Reset)
+	viper.Reset()
+	viper.Set("enabled_tools", []string{"codex", "zai"})
+	viper.Set("agent_order", []string{"zai", "codex"})
+
+	got := buildConfigSnapshot("/tmp/oct.yaml")
+
+	var zai *configToolStatus
+	for i := range got.Tools {
+		if got.Tools[i].BinaryName == "zai" {
+			zai = &got.Tools[i]
+		}
+	}
+	if zai == nil {
+		t.Fatalf("standalone provider zai missing from snapshot tools: %+v", got.Tools)
+	}
+	if !zai.Enabled {
+		t.Errorf("zai.Enabled = false, want true (listed in enabled_tools)")
+	}
+	// Opt-in: an unconfigured standalone provider must not appear.
+	for _, tool := range got.Tools {
+		if tool.BinaryName == "grok" {
+			t.Fatalf("unconfigured standalone provider grok leaked into snapshot: %+v", got.Tools)
+		}
+	}
+	// The requested position is carried into AgentOrder.
+	if got.AgentOrder[0] != "zai" {
+		t.Fatalf("AgentOrder = %v, want zai first", got.AgentOrder)
+	}
+}
+
+func TestApplyConfigUpdateKeepsStandaloneProviders(t *testing.T) {
+	t.Cleanup(viper.Reset)
+	viper.Reset()
+
+	payload := configUpdatePayload{
+		EnabledTools: []string{"codex", "zai"},
+		AgentOrder:   []string{"zai", "codex", "deepseek"},
+	}
+	if err := applyConfigUpdate(payload); err != nil {
+		t.Fatalf("applyConfigUpdate() error = %v", err)
+	}
+	enabled := viper.GetStringSlice("enabled_tools")
+	if len(enabled) != 2 || enabled[0] != "codex" || enabled[1] != "zai" {
+		t.Fatalf("enabled_tools = %v, want [codex zai]", enabled)
+	}
+	order := viper.GetStringSlice("agent_order")
+	if len(order) < 3 || order[0] != "zai" || order[1] != "codex" || order[2] != "deepseek" {
+		t.Fatalf("agent_order = %v, want [zai codex deepseek ...]", order)
+	}
+
+	// Unknown names are still rejected.
+	bad := configUpdatePayload{EnabledTools: []string{"zai", "not-a-provider"}}
+	if err := applyConfigUpdate(bad); err == nil {
+		t.Fatal("applyConfigUpdate accepted unknown provider")
+	}
+}

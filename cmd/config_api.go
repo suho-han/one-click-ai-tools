@@ -56,16 +56,73 @@ func parseConfigUpdatePayload(raw string) (configUpdatePayload, error) {
 
 func buildConfigSnapshot(configFile string) configSnapshot {
 	enabledTools := viper.GetStringSlice("enabled_tools")
-	orderedTools := update.GetOrderedTools(viper.GetStringSlice("agent_order"))
+	rawOrder := viper.GetStringSlice("agent_order")
+	orderedTools := update.GetOrderedTools(rawOrder)
+
+	toolByBinary := make(map[string]update.Tool, len(orderedTools))
+	for _, tool := range orderedTools {
+		toolByBinary[tool.BinaryName] = tool
+	}
+
 	agentOrder := make([]string, 0, len(orderedTools))
 	tools := make([]configToolStatus, 0, len(orderedTools))
-	for _, tool := range orderedTools {
+	seen := map[string]bool{}
+	var appendTool func(update.Tool)
+	var appendStandalone func(usage.Provider)
+	appendTool = func(tool update.Tool) {
+		if seen[tool.BinaryName] {
+			return
+		}
+		seen[tool.BinaryName] = true
 		agentOrder = append(agentOrder, tool.BinaryName)
 		tools = append(tools, configToolStatus{
 			Name:       tool.Name,
 			BinaryName: tool.BinaryName,
 			Enabled:    configToolEnabled(enabledTools, tool),
 		})
+	}
+	appendStandalone = func(p usage.Provider) {
+		if seen[p.Name] {
+			return
+		}
+		seen[p.Name] = true
+		agentOrder = append(agentOrder, p.Name)
+		tools = append(tools, configToolStatus{
+			Name:       p.Name,
+			BinaryName: p.Name,
+			Enabled:    standaloneProviderEnabled(enabledTools, p),
+		})
+	}
+
+	// Walk the requested order first so installable tools and standalone
+	// usage providers appear exactly where the user put them, then append the
+	// remaining tools in default order and any standalone providers that are
+	// only enabled_tools-listed. Without this, a Swift settings save would
+	// round-trip a reordered list and silently drop standalone providers.
+	for _, entry := range rawOrder {
+		for _, part := range strings.Split(entry, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			if p, ok := usage.LookupStandalone(part); ok {
+				appendStandalone(p)
+				continue
+			}
+			if tool, ok := toolByBinary[update.NormalizeToolName(part)]; ok {
+				appendTool(tool)
+			}
+		}
+	}
+	for _, tool := range orderedTools {
+		appendTool(tool)
+	}
+	for _, name := range enabledTools {
+		for _, part := range strings.Split(name, ",") {
+			if p, ok := usage.LookupStandalone(strings.TrimSpace(part)); ok {
+				appendStandalone(p)
+			}
+		}
 	}
 
 	return configSnapshot{
@@ -153,15 +210,15 @@ func normalizeConfigUpdateTools(rawTools []string) ([]string, bool, error) {
 	normalized := make([]string, 0, len(rawTools))
 	seen := map[string]bool{}
 	for _, rawTool := range rawTools {
-		tool, ok := canonicalConfigTool(rawTool)
+		name, ok := canonicalConfigProvider(rawTool)
 		if !ok {
 			return nil, false, fmt.Errorf("unknown provider: %s", rawTool)
 		}
-		if seen[tool.BinaryName] {
+		if seen[name] {
 			continue
 		}
-		seen[tool.BinaryName] = true
-		normalized = append(normalized, tool.BinaryName)
+		seen[name] = true
+		normalized = append(normalized, name)
 	}
 	return normalized, true, nil
 }
@@ -176,15 +233,15 @@ func normalizeConfigUpdateOrder(rawOrder []string) ([]string, bool, error) {
 	normalized := make([]string, 0, len(update.Tools))
 	seen := map[string]bool{}
 	for _, rawTool := range rawOrder {
-		tool, ok := canonicalConfigTool(rawTool)
+		name, ok := canonicalConfigProvider(rawTool)
 		if !ok {
 			return nil, false, fmt.Errorf("unknown provider in agent_order: %s", rawTool)
 		}
-		if seen[tool.BinaryName] {
+		if seen[name] {
 			continue
 		}
-		seen[tool.BinaryName] = true
-		normalized = append(normalized, tool.BinaryName)
+		seen[name] = true
+		normalized = append(normalized, name)
 	}
 
 	for _, tool := range update.Tools {
@@ -289,6 +346,32 @@ func canonicalConfigTool(rawTool string) (update.Tool, bool) {
 		}
 	}
 	return update.Tool{}, false
+}
+
+// canonicalConfigProvider resolves a raw config entry to its canonical config
+// value, accepting both installable tools and standalone usage providers.
+func canonicalConfigProvider(rawTool string) (string, bool) {
+	if tool, ok := canonicalConfigTool(rawTool); ok {
+		return tool.BinaryName, true
+	}
+	if p, ok := usage.LookupStandalone(rawTool); ok {
+		return p.Name, true
+	}
+	return "", false
+}
+
+// standaloneProviderEnabled reports whether a standalone usage provider was
+// explicitly listed in enabled_tools. Unlike installable tools they are
+// opt-in: an empty enabled_tools list does NOT enable them.
+func standaloneProviderEnabled(enabledTools []string, p usage.Provider) bool {
+	for _, enabled := range enabledTools {
+		for _, part := range strings.Split(enabled, ",") {
+			if resolved, ok := usage.LookupStandalone(part); ok && resolved.Name == p.Name {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func configPathForDisplay() string {
