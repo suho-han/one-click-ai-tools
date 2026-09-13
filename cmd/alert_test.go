@@ -68,24 +68,61 @@ func TestBuildAlertConfigFromViperIncludesCriticalPercent(t *testing.T) {
 
 func TestProviderOptionsIncludesCursor(t *testing.T) {
 	viper.Reset()
+	t.Cleanup(viper.Reset)
 	viper.Set("enabled_tools", []string{"cursor-agent", "agy", "opencode"})
 	opts := providerOptions()
-	hasCursor := false
-	hasAntigravity := false
+	has := func(name string) bool {
+		for _, o := range opts {
+			if o == name {
+				return true
+			}
+		}
+		return false
+	}
+	// Options are canonical registry keys matching UsageResult.Provider, so
+	// stored thresholds and snoozes resolve at evaluation time.
+	if !has("cursor-agent") {
+		t.Fatalf("expected cursor-agent in provider options: %v", opts)
+	}
+	if !has("agy") {
+		t.Fatalf("expected agy in provider options: %v", opts)
+	}
+}
+
+func TestProviderOptionsCoverDefaultAndOptInProviders(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	// Fresh config: enabled_tools is empty, yet every installable provider --
+	// including the newer Kimi/Qwen/MiniMax ones -- is fetched by default and
+	// must be selectable for provider-specific thresholds.
+	opts := providerOptions()
+	has := func(name string) bool {
+		for _, o := range opts {
+			if o == name {
+				return true
+			}
+		}
+		return false
+	}
+	for _, name := range []string{"kimi", "qwen", "minimax", "claude", "codex"} {
+		if !has(name) {
+			t.Fatalf("expected %s in default provider options: %v", name, opts)
+		}
+	}
+	// Standalone providers stay opt-in.
+	if has("zai") {
+		t.Fatalf("unconfigured standalone provider leaked into options: %v", opts)
+	}
+
+	viper.Set("enabled_tools", []string{"codex", "zai"})
+	opts = providerOptions()
 	for _, o := range opts {
-		if o == "cursor" {
-			hasCursor = true
-		}
-		if o == "antigravity" {
-			hasAntigravity = true
+		if o == "zai" {
+			return
 		}
 	}
-	if !hasCursor {
-		t.Fatalf("expected cursor in provider options")
-	}
-	if !hasAntigravity {
-		t.Fatalf("expected antigravity in provider options")
-	}
+	t.Fatalf("expected opted-in standalone zai in provider options: %v", opts)
 }
 
 func TestAlertPriorityLabel(t *testing.T) {

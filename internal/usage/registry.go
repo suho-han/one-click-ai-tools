@@ -2,7 +2,11 @@ package usage
 
 import (
 	"context"
+	"sort"
 	"strings"
+
+	"github.com/spf13/viper"
+	"github.com/suho-han/one-click-ai-tools/internal/update"
 )
 
 // Provider describes one AI provider's identity and fetch entrypoint.
@@ -197,6 +201,76 @@ func LookupStandalone(name string) (Provider, bool) {
 		}
 	}
 	return Provider{}, false
+}
+
+// CanonicalProviderName resolves a raw provider reference (exact registry
+// name, alias, or legacy tool name) to the canonical name fetchers report in
+// UsageResult.Provider. Config surfaces (alert thresholds, snoozes) must
+// store and look up that name so keys match regardless of which alias the
+// user typed.
+func CanonicalProviderName(name string) (string, bool) {
+	p := strings.ToLower(strings.TrimSpace(name))
+	if p == "" {
+		return "", false
+	}
+	if resolved, ok := lookupProviderName(p); ok {
+		return resolved, true
+	}
+	// Legacy config keys speak tool names ("claude-code", "cursor") rather
+	// than registry names ("claude", "cursor-agent").
+	if normalized := update.NormalizeToolName(p); normalized != p {
+		if resolved, ok := lookupProviderName(normalized); ok {
+			return resolved, true
+		}
+	}
+	return "", false
+}
+
+func lookupProviderName(p string) (string, bool) {
+	for _, entry := range providers {
+		if entry.Name == p {
+			return entry.Name, true
+		}
+		for _, alias := range entry.Aliases {
+			if alias == p {
+				return entry.Name, true
+			}
+		}
+	}
+	return "", false
+}
+
+// AlertProviderNames lists provider names usable as alert-threshold keys:
+// every installable provider (fetched by default) plus standalone providers
+// the user explicitly opted into. Names are canonical registry keys, matching
+// UsageResult.Provider values.
+func AlertProviderNames() []string {
+	names := make([]string, 0, len(providers))
+	seen := make(map[string]bool, len(providers))
+	for _, p := range providers {
+		if !p.Standalone {
+			seen[p.Name] = true
+			names = append(names, p.Name)
+		}
+	}
+	source := viper.GetStringSlice("enabled_tools")
+	if len(source) == 0 {
+		source = viper.GetStringSlice("agent_order")
+	}
+	for _, entry := range source {
+		for _, part := range strings.Split(strings.ToLower(entry), ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			if p, ok := LookupStandalone(part); ok && !seen[p.Name] {
+				seen[p.Name] = true
+				names = append(names, p.Name)
+			}
+		}
+	}
+	sort.Strings(names)
+	return names
 }
 
 // matchProvider resolves an arbitrary provider display string to a registry
