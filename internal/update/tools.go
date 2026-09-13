@@ -133,6 +133,32 @@ var Tools = []Tool{
 		LobeIcon:    "GithubCopilot",
 		HexColor:    "#BC8CF2",
 	},
+	{
+		Name:       "Kimi Code",
+		Package:    "@moonshot-ai/kimi-code",
+		BinaryName: "kimi",
+		Icon:       "🌙",
+		LobeIcon:   "Moonshot",
+		// Kimi's brand near-black (#16191E) was unreadable on dark terminals;
+		// a light slate keeps the row legible on both dark and light themes.
+		HexColor: "#9AA5CE",
+	},
+	{
+		Name:       "Qwen Code",
+		Package:    "@qwen-code/qwen-code",
+		BinaryName: "qwen",
+		Icon:       "🟣",
+		LobeIcon:   "QwenCode",
+		HexColor:   "#615CED",
+	},
+	{
+		Name:       "MiniMax",
+		Package:    "mmx-cli",
+		BinaryName: "mmx",
+		Icon:       "🌀",
+		LobeIcon:   "MiniMax",
+		HexColor:   "#FF4D4F",
+	},
 }
 
 func NormalizeToolName(name string) string {
@@ -147,6 +173,9 @@ func NormalizeToolName(name string) string {
 		return "cursor-agent"
 	case "antigravity", "gemini", "gemini-cli":
 		return "agy"
+	case "minimax":
+		// The Tool binary is mmx; ordering/config flows speak either name.
+		return "mmx"
 	default:
 		return strings.ToLower(strings.TrimSpace(name))
 	}

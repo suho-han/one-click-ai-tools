@@ -20,12 +20,14 @@ Validate that `schedule enable/disable` and install-time `session-refresh` wirin
   - `agent-update`
   - `session-refresh`
 
-## Install-time (postinstall) validation
+## Install-time validation
 
 ### Common
 
 1. Start from a clean HOME or test account
-2. Run `npm install -g one-click-tools` or equivalent install flow
+2. Install via the release installer:
+   `curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | sh`
+   (the npm package `one-click-tools` was unpublished 2026-07-14; there is no npm channel anymore)
 3. Confirm `~/.oct/config.yaml` is created
 4. Confirm defaults:
    - `session_refresh_enabled: false`
@@ -35,7 +37,7 @@ Validate that `schedule enable/disable` and install-time `session-refresh` wirin
 ### Non-interactive
 
 1. Run install in a non-TTY / CI-like environment
-2. Confirm `Enable periodic token-free session refresh?` is not shown
+2. Confirm the post-install `oct config` step is skipped automatically (or force-skip with `OCT_INSTALL_RUN_CONFIG=0`)
 3. Confirm `session_refresh_enabled: false` remains in config
 4. Confirm no scheduler entry is auto-created
 

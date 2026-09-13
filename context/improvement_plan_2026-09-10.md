@@ -3,8 +3,8 @@
 Execution plan (fix design + test plan per item) for the Top 10 priorities in
 [code_review_2026-09-10.md](code_review_2026-09-10.md). Review baseline: v0.1.5
 (`d4842af`); `file:line` references below are anchored to that commit and will
-drift. Status: **executed 2026-09-10 — commits on local `main`, NOT pushed**;
-publishing requires explicit approval. Batch 1 (items 1, 3, 10-a, 2, 10-b),
+drift. Status: **executed 2026-09-10, pushed 2026-09-11** (landed on `main`;
+`origin/dev` now carries the same tip, `a75108f`). Batch 1 (items 1, 3, 10-a, 2, 10-b),
 batch 2 (items 6, 9), batch 3 (items 7, 8, 5), and item 4-A are done. Full Go
 suite green (`go test ./...`, 10 packages). Swift changes are compile- and
 test-verified: the default CommandLineTools toolchain lacks the SwiftUI

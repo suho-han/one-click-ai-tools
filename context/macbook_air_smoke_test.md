@@ -1,12 +1,12 @@
 # MacBook Air Smoke Test Guide
 
-This is the minimal smoke-test procedure for quickly validating `one-click-tools` on the primary macOS work host (`100.73.225.85`).
+This is the minimal smoke-test procedure for quickly validating `one-click-ai-tools` (oct) on the primary macOS work host (`100.73.225.85`).
 
 ## Target environment
 
 - host: `100.73.225.85`
 - user: `suhohan`
-- repo: `/Users/suhohan/Projects/one-click-tools`
+- repo: `/Users/suhohan/Projects/one-click-ai-tools`
 - purpose: quick post-change sanity validation
 
 ## Goals
@@ -27,7 +27,7 @@ For full validation or remote operations, see:
 ```bash
 ssh -o IdentitiesOnly=yes -i ~/.ssh/hermes_kbo_live_ed25519 suhohan@100.73.225.85
 export PATH=/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH
-cd /Users/suhohan/Projects/one-click-tools
+cd /Users/suhohan/Projects/one-click-ai-tools
 ```
 
 ## Recommended smoke-test sequence

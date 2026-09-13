@@ -28,7 +28,7 @@ func TestRegistryCoversEveryFetcherKey(t *testing.T) {
 			t.Fatalf("fetcher key %q not backed by the registry", key)
 		}
 	}
-	for _, key := range []string{"agy", "antigravity", "gemini", "claude", "commandcode", "cursor-agent", "copilot", "opencode", "codex"} {
+	for _, key := range []string{"agy", "antigravity", "gemini", "claude", "commandcode", "cursor-agent", "copilot", "opencode", "codex", "kimi", "zai", "zhipu", "qwen", "deepseek", "openrouter", "minimax", "grok"} {
 		if _, ok := providerFetchers[key]; !ok {
 			t.Fatalf("fetcher key %q missing", key)
 		}
@@ -36,7 +36,7 @@ func TestRegistryCoversEveryFetcherKey(t *testing.T) {
 }
 
 func TestDefaultProviderOrderMatchesRegistry(t *testing.T) {
-	want := []string{"agy", "claude", "commandcode", "cursor-agent", "copilot", "opencode", "codex"}
+	want := []string{"agy", "claude", "commandcode", "cursor-agent", "copilot", "opencode", "codex", "kimi", "zai", "qwen", "deepseek", "openrouter", "minimax", "grok"}
 	got := defaultProviderOrder()
 	if len(got) != len(want) {
 		t.Fatalf("defaultProviderOrder() = %v, want %v", got, want)
@@ -125,5 +125,59 @@ func TestSwappingFetchers(t *testing.T) {
 	}
 	if _, ok := providerFetchers["codex"]; !ok {
 		t.Fatal("wholesale fetcher swap broken")
+	}
+}
+
+func TestLookupStandalone(t *testing.T) {
+	if p, ok := LookupStandalone("zai"); !ok || p.Name != "zai" {
+		t.Fatalf("LookupStandalone(zai) = %q, %v; want zai, true", p.Name, ok)
+	}
+	if p, ok := LookupStandalone("Zhipu"); !ok || p.Name != "zai" {
+		t.Fatalf("LookupStandalone(Zhipu) = %q, %v; want alias resolution to zai", p.Name, ok)
+	}
+	if p, ok := LookupStandalone("deepseek"); !ok || p.Name != "deepseek" {
+		t.Fatalf("LookupStandalone(deepseek) = %q, %v; want deepseek, true", p.Name, ok)
+	}
+	if _, ok := LookupStandalone("claude"); ok {
+		t.Fatal("LookupStandalone(claude) = true; installable tools must not resolve as standalone")
+	}
+	if _, ok := LookupStandalone(""); ok {
+		t.Fatal("LookupStandalone(empty) = true; want false")
+	}
+}
+
+func TestMinimaxFetcherKeyedByToolBinaryName(t *testing.T) {
+	// GetUsage resolves installable providers by update.Tool BinaryName, so
+	// the MiniMax tool (mmx) needs a fetcher under that key — otherwise the
+	// advertised provider never fetches in the default configuration.
+	if _, ok := providerFetchers["mmx"]; !ok {
+		t.Fatal(`providerFetchers missing "mmx"; the MiniMax tool would never fetch`)
+	}
+	if _, ok := providerFetchers["minimax"]; !ok {
+		t.Fatal(`providerFetchers missing "minimax"`)
+	}
+}
+
+func TestCanonicalProviderName(t *testing.T) {
+	cases := map[string]string{
+		"minimax":     "minimax",
+		"mmx":         "minimax", // config UI stores the tool binary name
+		"zhipu":       "zai",     // alias
+		"claude":      "claude",
+		"claude-code": "claude",       // legacy tool name
+		"cursor":      "cursor-agent", // legacy display name
+		"antigravity": "agy",
+	}
+	for raw, want := range cases {
+		got, ok := CanonicalProviderName(raw)
+		if !ok || got != want {
+			t.Errorf("CanonicalProviderName(%q) = %q, %v; want %q", raw, got, ok, want)
+		}
+	}
+	if _, ok := CanonicalProviderName("not-a-provider"); ok {
+		t.Error("unknown provider resolved")
+	}
+	if _, ok := CanonicalProviderName(""); ok {
+		t.Error("empty name resolved")
 	}
 }

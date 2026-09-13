@@ -33,6 +33,84 @@ type configModel struct {
 	items     []toolItem
 	cancelled bool
 	done      bool
+	// Terminal-fit windowing: bubbletea paints the whole View() into the
+	// alt screen, and the alt screen has no scrollback -- an oversized view
+	// loses its top. The model therefore renders a sliding window of items
+	// sized from tea.WindowSizeMsg. viewHeight == 0 (no size known yet, e.g.
+	// unit tests) renders everything.
+	viewHeight  int
+	offset      int // first visible item index
+	visibleRows int // visible item count at the current rowHeight
+	rowHeight   int // 3 (icon + name + icon) or 1 (name only, tiny terminals)
+}
+
+// viewChrome is the number of lines around the item list: 1 header + 1 blank
+// + 4 help lines. Scroll indicators are carved out of the item budget below.
+const viewChrome = 6
+
+// layoutForHeight resolves (rowHeight, visibleRows) for a terminal height.
+func layoutForHeight(height int) (int, int) {
+	itemBudget := height - viewChrome - 2 // reserve up to 2 scroll-indicator rows
+	if itemBudget < 5 {
+		// Too small for a 3-line item: degrade to one line per item.
+		visible := itemBudget
+		if visible < 1 {
+			visible = 1
+		}
+		return 1, visible
+	}
+	visible := itemBudget / 3
+	if visible < 1 {
+		visible = 1
+	}
+	return 3, visible
+}
+
+// applyWindowSize records the terminal height and keeps the cursor inside
+// the visible window.
+func (m *configModel) applyWindowSize(height int) {
+	if height <= 0 {
+		return
+	}
+	m.viewHeight = height
+	m.rowHeight, m.visibleRows = layoutForHeight(height)
+	m.clampOffset()
+}
+
+// clampOffset shifts offset so the cursor row stays within the window.
+func (m *configModel) clampOffset() {
+	if m.visibleRows <= 0 || m.viewHeight == 0 {
+		return
+	}
+	if last := len(m.items) - 1; last < 0 {
+		m.offset = 0
+		return
+	}
+	i := m.index()
+	if i < m.offset {
+		m.offset = i
+	}
+	if i >= m.offset+m.visibleRows {
+		m.offset = i - m.visibleRows + 1
+	}
+	if max := len(m.items) - m.visibleRows; m.offset > max {
+		m.offset = max
+	}
+	if m.offset < 0 {
+		m.offset = 0
+	}
+}
+
+// visibleItems returns the item index range to render.
+func (m configModel) visibleItems() (from, to int) {
+	if m.viewHeight == 0 {
+		return 0, len(m.items)
+	}
+	to = m.offset + m.visibleRows
+	if to > len(m.items) {
+		to = len(m.items)
+	}
+	return m.offset, to
 }
 
 func newConfigModel(enabledTools []string, agentOrder []string) configModel {
@@ -95,6 +173,8 @@ func (m configModel) Init() tea.Cmd { return nil }
 
 func (m configModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.applyWindowSize(msg.Height)
 	case tea.KeyMsg:
 		if msg.Type == tea.KeyEnter {
 			i := m.index()
@@ -155,6 +235,7 @@ func (m *configModel) move(delta int) {
 		n = 0
 	}
 	m.items[n].cursor = true
+	m.clampOffset()
 }
 
 func (m configModel) index() int {
@@ -167,55 +248,105 @@ func (m configModel) index() int {
 }
 
 func (m configModel) View() string {
-	var b strings.Builder
-	b.WriteString("? Select tools to enable for agent-update:\n")
-	for _, it := range m.items {
-		mark := "[ ]"
-		if it.check {
-			mark = "[x]"
-		}
-		cursor := " "
-		if it.cursor {
-			cursor = ">"
-		}
+	from, to := m.visibleItems()
 
-		// Each item line starts with "X[X] ", where X is cursor and [X] is mark.
-		// That's 1 (cursor) + 3 (mark) + 1 (space) = 5 characters.
-		// To align icon top/bottom with the center row, they should have 5 spaces.
-		indent := "     "
-
-		b.WriteString(fmt.Sprintf("%s%s\n", indent, it.icon3[0]))
-		nameText := it.tool.Name
-		if it.isToggleControl {
-			allChecked := true
-			for _, x := range m.items {
-				if x.isToggleControl || x.isConfirmControl {
-					continue
-				}
-				if !x.check {
-					allChecked = false
-					break
-				}
-			}
-			if allChecked {
-				nameText = "Choose none"
-			} else {
-				nameText = "Choose all"
-			}
-		}
-
-		name := it.tool.Colorize(nameText)
-		if it.cursor {
-			name = it.tool.ColorizeWithBackgroundBlackText(nameText)
-		}
-		b.WriteString(fmt.Sprintf("%s%s %s %s\n", cursor, mark, it.icon3[1], name))
-		b.WriteString(fmt.Sprintf("%s%s\n", indent, it.icon3[2]))
+	// Assemble the view as ranked lines: when the terminal is too small for
+	// the full layout, chrome drops in rank order (help lines, blank, scroll
+	// indicators, header) before any item row is sacrificed. The alt screen
+	// has no scrollback, so an oversized view would clip its top.
+	type viewLine struct {
+		text string
+		rank int // higher drops first; 0 never drops
 	}
-	b.WriteString("\n[Use ↑/↓ to move]\n")
-	b.WriteString("[Use Enter to toggle current item]\n")
-	b.WriteString("[Choose all/none row toggles all tools]\n")
-	b.WriteString("[Move to last 'Confirm' row and press Enter to save, Ctrl+C/Ctrl+Q to exit]\n")
+	lines := []viewLine{{text: "? Select tools to enable for agent-update:", rank: 1}}
+	if from > 0 {
+		lines = append(lines, viewLine{text: fmt.Sprintf("  ↑ %d more", from), rank: 2})
+	}
+	for _, it := range m.items[from:to] {
+		for _, text := range m.renderItemLines(it) {
+			lines = append(lines, viewLine{text: text})
+		}
+	}
+	if more := len(m.items) - to; more > 0 {
+		lines = append(lines, viewLine{text: fmt.Sprintf("  ↓ %d more", more), rank: 2})
+	}
+	lines = append(lines,
+		viewLine{text: "", rank: 3},
+		viewLine{text: "[Use ↑/↓ to move]", rank: 4},
+		viewLine{text: "[Use Enter to toggle current item]", rank: 4},
+		viewLine{text: "[Choose all/none row toggles all tools]", rank: 4},
+		viewLine{text: "[Move to last 'Confirm' row and press Enter to save, Ctrl+C/Ctrl+Q to exit]", rank: 4},
+	)
+
+	for m.viewHeight > 0 && len(lines) > m.viewHeight {
+		drop := -1
+		best := 0
+		for i, l := range lines {
+			if l.rank > best {
+				best = l.rank
+				drop = i
+			}
+		}
+		if drop == -1 {
+			break
+		}
+		lines = append(lines[:drop], lines[drop+1:]...)
+	}
+
+	var b strings.Builder
+	for _, l := range lines {
+		b.WriteString(l.text)
+		b.WriteString("\n")
+	}
 	return b.String()
+}
+
+// renderItemLines renders one item as 1 (compact) or 3 (icon) view lines.
+func (m configModel) renderItemLines(it toolItem) []string {
+	mark := "[ ]"
+	if it.check {
+		mark = "[x]"
+	}
+	cursor := " "
+	if it.cursor {
+		cursor = ">"
+	}
+
+	nameText := it.tool.Name
+	if it.isToggleControl {
+		allChecked := true
+		for _, x := range m.items {
+			if x.isToggleControl || x.isConfirmControl {
+				continue
+			}
+			if !x.check {
+				allChecked = false
+				break
+			}
+		}
+		if allChecked {
+			nameText = "Choose none"
+		} else {
+			nameText = "Choose all"
+		}
+	}
+
+	name := it.tool.Colorize(nameText)
+	if it.cursor {
+		name = it.tool.ColorizeWithBackgroundBlackText(nameText)
+	}
+
+	// 3 lines = 12 dots high; compact mode (very short terminals) drops the
+	// Braille icon and renders the name row only.
+	if m.rowHeight == 3 {
+		indent := "     "
+		return []string{
+			indent + it.icon3[0],
+			fmt.Sprintf("%s%s %s %s", cursor, mark, it.icon3[1], name),
+			indent + it.icon3[2],
+		}
+	}
+	return []string{fmt.Sprintf("%s%s %s %s", cursor, mark, it.icon3[1], name)}
 }
 
 func writeConfig() error {
@@ -448,6 +579,78 @@ func printSummaryBorder(innerWidth int) {
 	fmt.Printf("--||%s||--\n", strings.Repeat("=", innerWidth+2))
 }
 
+// appendStandaloneEntries appends the standalone usage-provider names found in
+// raw (comma-separated entries allowed) to dst, skipping names already present.
+func appendStandaloneEntries(dst, raw []string) []string {
+	for _, entry := range raw {
+		for _, part := range strings.Split(entry, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			p, ok := usage.LookupStandalone(part)
+			if !ok {
+				continue
+			}
+			dup := false
+			for _, existing := range dst {
+				if strings.EqualFold(existing, p.Name) {
+					dup = true
+					break
+				}
+			}
+			if !dup {
+				dst = append(dst, p.Name)
+			}
+		}
+	}
+	return dst
+}
+
+// mergeStandaloneIntoOrder keeps standalone usage providers at their original
+// positions in agent_order across an interactive save: the picker only lists
+// installable tools, so a plain overwrite would push standalone rows to the
+// end and change usage/monitor/menubar ordering. Tool entries the user
+// deselected are dropped; newly selected tools are appended after the
+// carried-over order.
+func mergeStandaloneIntoOrder(newOrder, oldOrder []string) []string {
+	if len(oldOrder) == 0 {
+		return newOrder
+	}
+	selected := make(map[string]bool, len(newOrder))
+	for _, name := range newOrder {
+		selected[update.NormalizeToolName(name)] = true
+	}
+	merged := make([]string, 0, len(newOrder)+len(oldOrder))
+	seen := make(map[string]bool, len(newOrder)+len(oldOrder))
+	appendName := func(name string) {
+		if name != "" && !seen[name] {
+			seen[name] = true
+			merged = append(merged, name)
+		}
+	}
+	for _, entry := range oldOrder {
+		for _, part := range strings.Split(entry, ",") {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			if p, ok := usage.LookupStandalone(part); ok {
+				appendName(p.Name)
+				continue
+			}
+			normalized := update.NormalizeToolName(part)
+			if selected[normalized] {
+				appendName(normalized)
+			}
+		}
+	}
+	for _, name := range newOrder {
+		appendName(update.NormalizeToolName(name))
+	}
+	return merged
+}
+
 func printSummaryContent(content string) {
 	fmt.Printf("  %s\n", content)
 }
@@ -465,6 +668,12 @@ var configCmd = &cobra.Command{
 			fmt.Fprintln(cmd.OutOrStdout(), "Configuration cancelled.")
 			return nil
 		}
+		// The interactive picker only lists installable tools; keep any
+		// standalone usage providers the user enabled by name or in agent_order.
+		oldOrder := viper.GetStringSlice("agent_order")
+		newEnabledTools = appendStandaloneEntries(newEnabledTools, viper.GetStringSlice("enabled_tools"))
+		newEnabledTools = appendStandaloneEntries(newEnabledTools, oldOrder)
+		newOrder = mergeStandaloneIntoOrder(newOrder, oldOrder)
 		viper.Set("enabled_tools", newEnabledTools)
 		viper.Set("agent_order", newOrder)
 		viper.Set("usage_display_mode", usageMode)
@@ -502,6 +711,14 @@ var configSetToolsCmd = &cobra.Command{
 					validTools = append(validTools, t.BinaryName)
 					found = true
 					break
+				}
+			}
+			if !found {
+				// Standalone usage providers have no update.Tool entry but are
+				// valid enabled_tools values (usage-only rows).
+				if p, ok := usage.LookupStandalone(tool); ok {
+					validTools = append(validTools, p.Name)
+					found = true
 				}
 			}
 			if !found {

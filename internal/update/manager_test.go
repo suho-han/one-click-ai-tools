@@ -467,6 +467,10 @@ func TestBuiltInToolManagerSupportMatrix(t *testing.T) {
 		"codex":        Npm,
 		"agy":          AntigravityInstaller,
 		"copilot":      Npm,
+		"kimi":         Npm,
+		"qwen":         Npm,
+		"minimax":      Npm,
+		"mmx":          Npm,
 	}
 
 	for _, tool := range Tools {

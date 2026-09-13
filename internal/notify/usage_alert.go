@@ -178,6 +178,11 @@ func overThresholdKeys(r usage.UsageResult, cfg UsageAlertConfig) []alertHit {
 
 func thresholdFor(cfg UsageAlertConfig, provider, window string) float64 {
 	p := strings.ToLower(strings.TrimSpace(provider))
+	// Thresholds may be stored under any provider alias; canonicalize so the
+	// lookup matches UsageResult.Provider.
+	if canonical, ok := usage.CanonicalProviderName(p); ok {
+		p = canonical
+	}
 	w := strings.ToLower(strings.TrimSpace(window))
 
 	if pm, ok := cfg.ProviderThreshold[p]; ok {

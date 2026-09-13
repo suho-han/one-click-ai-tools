@@ -5,9 +5,11 @@ implemented and pushed as of `32b259f`). Scope: `main.go`, `cmd/` (25 files),
 `internal/` (10 packages), `scripts/*.sh`, and the Swift menubar helper.
 Focus: unhandled errors and inefficiencies missed by the first pass.
 
-All fixes below landed as 12 local commits on `main` (2026-09-11, not pushed
-at the time of writing). Verification: `GOTOOLCHAIN=auto go test ./...` green,
-`gofmt` clean, Swift build + 26/26 tests green under the Xcode beta toolchain.
+All fixes below landed as 12 local commits on `main` (2026-09-11). Status
+update 2026-09-12: pushed — `origin/dev` was created at the tip (`a75108f`)
+and `dev` is the ongoing working branch. Verification: `GOTOOLCHAIN=auto go
+test ./...` green, `gofmt` clean, Swift build + 26/26 tests green under the
+Xcode beta toolchain.
 
 ## Related docs
 

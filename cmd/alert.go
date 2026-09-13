@@ -15,7 +15,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/suho-han/one-click-ai-tools/internal/notify"
-	"github.com/suho-han/one-click-ai-tools/internal/update"
 	"github.com/suho-han/one-click-ai-tools/internal/usage"
 )
 
@@ -115,6 +114,9 @@ var alertTestCmd = &cobra.Command{
 		if window == "" {
 			window = "5h"
 		}
+		if canonical, ok := usage.CanonicalProviderName(provider); ok {
+			provider = canonical
+		}
 
 		cfg := buildAlertConfigFromViper(true)
 		cfg.StatePath = viper.GetString("usage_alert_state_path")
@@ -161,6 +163,9 @@ var alertSnoozeSetCmd = &cobra.Command{
 		}
 		statePath := getAlertStatePath()
 		until := time.Now().Add(duration)
+		if canonical, ok := usage.CanonicalProviderName(provider); ok {
+			provider = canonical
+		}
 		if err := notify.SetSnooze(statePath, provider, window, until); err != nil {
 			return fmt.Errorf("failed to set snooze: %w", err)
 		}
@@ -207,6 +212,9 @@ var alertSnoozeClearCmd = &cobra.Command{
 		provider, _ := cmd.Flags().GetString("provider")
 		window, _ := cmd.Flags().GetString("window")
 		statePath := getAlertStatePath()
+		if canonical, ok := usage.CanonicalProviderName(provider); ok {
+			provider = canonical
+		}
 		if err := notify.ClearSnooze(statePath, provider, window); err != nil {
 			return fmt.Errorf("failed to clear snooze: %w", err)
 		}
@@ -292,6 +300,11 @@ func setAlertConfigValue(key, val string) error {
 			return err
 		}
 		provider = strings.ToLower(provider)
+		// Store the canonical registry name so the key matches
+		// UsageResult.Provider at evaluation time (e.g. "mmx" -> "minimax").
+		if canonical, ok := usage.CanonicalProviderName(provider); ok {
+			provider = canonical
+		}
 		window = strings.ToLower(window)
 		viper.Set("usage_alert_provider_thresholds."+provider+"."+window, f)
 		return nil
@@ -354,33 +367,12 @@ func parseAlertClockMinute(val string) (int, bool) {
 }
 
 func providerOptions() []string {
-	base := []string{"antigravity", "codex", "claude-code", "commandcode", "copilot", "cursor", "opencode"}
-	seen := map[string]bool{}
-	out := make([]string, 0, len(base)+4)
-	for _, p := range base {
-		seen[p] = true
-		out = append(out, p)
-	}
-	for _, et := range viper.GetStringSlice("enabled_tools") {
-		p := update.NormalizeToolName(et)
-		switch p {
-		case "agy":
-			p = "antigravity"
-		case "cursor-agent":
-			p = "cursor"
-		case "claude":
-			p = "claude-code"
-		case "commandcode":
-			p = "commandcode"
-		}
-		if p == "" || seen[p] {
-			continue
-		}
-		seen[p] = true
-		out = append(out, p)
-	}
-	sort.Strings(out)
-	return out
+	// Derived from the provider registry so newly added providers show up
+	// without editing this command: installable providers are fetched by
+	// default, standalone ones only when opted into. Names are canonical
+	// registry keys, matching UsageResult.Provider (and therefore the
+	// threshold/snooze lookup keys).
+	return usage.AlertProviderNames()
 }
 
 func pickProviderInteractive(options []string) (string, error) {
@@ -481,11 +473,18 @@ func parseThresholdMap(raw map[string]any) map[string]float64 {
 func parseProviderThresholdMap(raw map[string]any) map[string]map[string]float64 {
 	out := map[string]map[string]float64{}
 	for provider, v := range raw {
+		// Legacy keys may use aliases or tool names ("mmx", "antigravity",
+		// "claude-code"); canonicalize so lookups by UsageResult.Provider
+		// match.
+		key := strings.ToLower(provider)
+		if canonical, ok := usage.CanonicalProviderName(key); ok {
+			key = canonical
+		}
 		m, ok := v.(map[string]any)
 		if !ok {
 			continue
 		}
-		out[strings.ToLower(provider)] = parseThresholdMap(m)
+		out[key] = parseThresholdMap(m)
 	}
 	return out
 }

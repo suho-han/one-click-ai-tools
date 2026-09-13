@@ -15,7 +15,7 @@ oct monitor --once --sort-by used --desc --top 5 --compact
 
 - `--interval`: refresh interval (default 30s)
 - `--once`: run one cycle and exit
-- `--sort-by provider|used|5h|7d`: sort key
+- `--sort-by used|5h|7d|1m`: sort key; any other value (or empty) keeps provider-name order, with provider name as the tiebreaker
 - `--desc`: descending order
 - `--top N`: show only top N
 - `--compact`: compact output
@@ -23,7 +23,7 @@ oct monitor --once --sort-by used --desc --top 5 --compact
 
 ## Output and snapshots
 
-- Columns: `provider`, `5h`, `7d`, `sev`, `status` (+ `used`, `limit`, `message` in default mode)
+- Columns: `provider`, `5h`, `7d`, `1m`, `sev`, `status` (+ `used`, `limit`, `message` in default mode)
 - Default snapshot path: `~/.oct/state/usage-latest.json`
 - If `usage_display_mode=remaining`, values are shown as remaining quota (`100-used`)
 
