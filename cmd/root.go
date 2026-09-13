@@ -18,7 +18,7 @@ var rootCmd = &cobra.Command{
 	Use:     "oct",
 	Short:   "One-Click Tools for AI Engineers",
 	Long:    `A high-performance CLI tool to manage and update AI-related command-line tools across different platforms.`,
-	Version: "0.1.5",
+	Version: "0.1.6-beta.1",
 	// Errors are reported once by runCLI/Execute on stderr; cobra must not
 	// print them (or usage) itself.
 	SilenceErrors: true,
