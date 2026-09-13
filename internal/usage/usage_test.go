@@ -149,7 +149,9 @@ func TestSelectedTools_RespectsEnabledTools(t *testing.T) {
 	if len(selected) != 2 {
 		t.Fatalf("expected 2 selected tools, got %d", len(selected))
 	}
-	if selected[0].BinaryName != "codex" || selected[1].BinaryName != "opencode" {
+	// Filtering honors enabled_tools, but the sequence follows agent_order
+	// (the execution priority), matching GetUsage's requested-name ordering.
+	if selected[0].BinaryName != "opencode" || selected[1].BinaryName != "codex" {
 		t.Fatalf("unexpected selected order: %s, %s", selected[0].BinaryName, selected[1].BinaryName)
 	}
 }

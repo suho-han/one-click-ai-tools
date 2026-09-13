@@ -55,11 +55,27 @@ func TestToolFilteringMultiple(t *testing.T) {
 	if len(result) != 2 {
 		t.Fatalf("expected 2 tools, got %d", len(result))
 	}
-	if result[0].BinaryName != "agy" {
-		t.Fatalf("expected agy, got %s", result[0].BinaryName)
+	// Result follows the ordered list's sequence (claude, commandcode,
+	// cursor-agent, ... agy), not the enabled list's order.
+	if result[0].BinaryName != "cursor-agent" {
+		t.Fatalf("expected cursor-agent, got %s", result[0].BinaryName)
 	}
-	if result[1].BinaryName != "cursor-agent" {
-		t.Fatalf("expected cursor-agent, got %s", result[1].BinaryName)
+	if result[1].BinaryName != "agy" {
+		t.Fatalf("expected agy, got %s", result[1].BinaryName)
+	}
+}
+
+// TestToolFilteringFollowsOrderedNotEnabledOrder pins the execution-priority
+// contract: when enabled_tools and agent_order disagree on order (e.g. after
+// `config set tools`), the filtered sequence must follow agent_order.
+func TestToolFilteringFollowsOrderedNotEnabledOrder(t *testing.T) {
+	ordered := GetOrderedTools([]string{"claude", "codex"})
+	result := GetFilteredTools([]string{"codex", "claude"}, ordered)
+	if len(result) != 2 {
+		t.Fatalf("expected 2 tools, got %d", len(result))
+	}
+	if result[0].BinaryName != "claude" || result[1].BinaryName != "codex" {
+		t.Fatalf("filtered = [%s %s], want [claude codex] (ordered-list sequence)", result[0].BinaryName, result[1].BinaryName)
 	}
 }
 
