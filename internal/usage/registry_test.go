@@ -145,3 +145,15 @@ func TestLookupStandalone(t *testing.T) {
 		t.Fatal("LookupStandalone(empty) = true; want false")
 	}
 }
+
+func TestMinimaxFetcherKeyedByToolBinaryName(t *testing.T) {
+	// GetUsage resolves installable providers by update.Tool BinaryName, so
+	// the MiniMax tool (mmx) needs a fetcher under that key — otherwise the
+	// advertised provider never fetches in the default configuration.
+	if _, ok := providerFetchers["mmx"]; !ok {
+		t.Fatal(`providerFetchers missing "mmx"; the MiniMax tool would never fetch`)
+	}
+	if _, ok := providerFetchers["minimax"]; !ok {
+		t.Fatal(`providerFetchers missing "minimax"`)
+	}
+}
