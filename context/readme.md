@@ -20,6 +20,7 @@ a view, `oct usage --notify` pushes alerts when thresholds are crossed.
 - [competitive_landscape_2026-09-12.md](competitive_landscape_2026-09-12.md): competitor scan + originality/open-source readiness assessment (usage space saturated; update+usage combination unoccupied)
 - [opencode_quota_feature_spec.md](opencode_quota_feature_spec.md): feature spec for a planned `oct quota` command (roadmap P2)
 - [todo.md](todo.md): flat backlog of future work + usage-provider endpoint research
+- [usage_provider_checklist.md](usage_provider_checklist.md): pre-merge checklist for adding/changing a usage provider (each item traces to a real review finding)
 
 Role boundary: `roadmap` decides order and priorities, `competitive_landscape`
 holds the evidence behind the positioning, `quota spec` is the per-feature
