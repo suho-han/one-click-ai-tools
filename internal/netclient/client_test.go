@@ -1,8 +1,10 @@
 package netclient
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -218,5 +220,44 @@ func TestTruncateBodyRuneSafe(t *testing.T) {
 	got := truncateBody("가나다", 4)
 	if got != "가..." {
 		t.Fatalf("unexpected truncate result: %q", got)
+	}
+}
+
+func TestDoWithRetryPostBodyReset(t *testing.T) {
+	noRetrySleep(t)
+	var bodies []string
+	var attempts int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		bodies = append(bodies, string(body))
+		if atomic.AddInt32(&attempts, 1) <= 1 {
+			w.WriteHeader(http.StatusTooManyRequests)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := &Client{
+		HTTPClient: server.Client(),
+		MaxRetries: 3,
+	}
+
+	// A bytes.Reader body has no Seeker through req.Body; the retry must go
+	// through req.GetBody instead of failing with "does not support seeking".
+	req, _ := http.NewRequest(http.MethodPost, server.URL, bytes.NewReader([]byte(`{"ok":true}`)))
+	resp, err := client.DoWithRetry(req)
+
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("Expected status OK, got %v", resp.Status)
+	}
+	if atomic.LoadInt32(&attempts) != 2 {
+		t.Errorf("Expected 2 attempts, got %d", attempts)
+	}
+	if len(bodies) != 2 || bodies[0] != `{"ok":true}` || bodies[1] != `{"ok":true}` {
+		t.Errorf("Bodies = %q, want the full body on both attempts", bodies)
 	}
 }
