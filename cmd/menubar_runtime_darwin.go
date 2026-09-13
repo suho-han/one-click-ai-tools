@@ -12,11 +12,15 @@ import (
 )
 
 func selectedMenubarToolNames() []string {
+	// Standalone providers ride in the same usage results as installable
+	// tools; give them loading rows too so the dropdown matches what a
+	// refresh actually returns instead of silently dropping their lines.
+	standalone := usage.SelectedStandaloneNames()
 	tools := usage.SelectedTools()
-	if len(tools) == 0 {
+	if len(tools) == 0 && len(standalone) == 0 {
 		return []string{"No enabled providers"}
 	}
-	names := make([]string, 0, len(tools))
+	names := make([]string, 0, len(tools)+len(standalone))
 	for _, tool := range tools {
 		name := tool.Name
 		if name == "" {
@@ -24,7 +28,7 @@ func selectedMenubarToolNames() []string {
 		}
 		names = append(names, name)
 	}
-	return names
+	return append(names, standalone...)
 }
 
 func (ui *menubarUI) run() {

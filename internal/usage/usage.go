@@ -213,6 +213,18 @@ func orderedRequestedNames() []string {
 // intact); with enabled_tools empty, listing the provider in agent_order opts
 // it in. Returns a set of job labels.
 func standaloneAllowedJobs(standaloneJobs map[string]fetchJob) map[string]bool {
+	allowed := make(map[string]bool, len(standaloneJobs))
+	for name := range standaloneAllowedNames() {
+		if job, ok := standaloneJobs[name]; ok {
+			allowed[job.label] = true
+		}
+	}
+	return allowed
+}
+
+// standaloneAllowedNames returns the canonical names of opted-in standalone
+// providers, using the same authority rule as standaloneAllowedJobs.
+func standaloneAllowedNames() map[string]bool {
 	source := viper.GetStringSlice("enabled_tools")
 	if len(source) == 0 {
 		source = viper.GetStringSlice("agent_order")
@@ -223,12 +235,31 @@ func standaloneAllowedJobs(standaloneJobs map[string]fetchJob) map[string]bool {
 			if part = strings.TrimSpace(part); part == "" {
 				continue
 			}
-			if job, ok := standaloneJobs[part]; ok {
-				allowed[job.label] = true
+			if p, ok := LookupStandalone(part); ok {
+				allowed[p.Name] = true
 			}
 		}
 	}
 	return allowed
+}
+
+// SelectedStandaloneNames lists the canonical names of the standalone
+// providers GetUsage will fetch, in requested order. Display surfaces (the
+// legacy menubar's loading rows) use it so their row list matches what a
+// refresh actually returns.
+func SelectedStandaloneNames() []string {
+	allowed := standaloneAllowedNames()
+	var names []string
+	seen := make(map[string]bool)
+	for _, name := range orderedRequestedNames() {
+		p, ok := LookupStandalone(name)
+		if !ok || seen[p.Name] || !allowed[p.Name] {
+			continue
+		}
+		seen[p.Name] = true
+		names = append(names, p.Name)
+	}
+	return names
 }
 
 // providerRequested reports whether a standalone provider was listed by name

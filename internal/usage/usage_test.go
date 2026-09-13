@@ -323,3 +323,38 @@ func TestTruncateTextRuneSafe(t *testing.T) {
 		t.Fatalf("truncated text is not valid UTF-8: %q", got)
 	}
 }
+
+func TestSelectedStandaloneNames(t *testing.T) {
+	oldOrder := viper.GetStringSlice("agent_order")
+	oldEnabled := viper.GetStringSlice("enabled_tools")
+	t.Cleanup(func() {
+		viper.Set("agent_order", oldOrder)
+		viper.Set("enabled_tools", oldEnabled)
+	})
+
+	// enabled_tools is authoritative: a standalone listed only in agent_order
+	// is opted out, one listed in enabled_tools is opted in, unlisted ones
+	// never appear, and the requested order is preserved.
+	viper.Set("agent_order", []string{"grok", "codex", "zai"})
+	viper.Set("enabled_tools", []string{"codex", "zai"})
+
+	got := SelectedStandaloneNames()
+	if len(got) != 1 || got[0] != "zai" {
+		t.Fatalf("SelectedStandaloneNames = %v, want [zai]", got)
+	}
+
+	// With enabled_tools empty, agent_order listing opts the provider in.
+	viper.Set("enabled_tools", []string{})
+	viper.Set("agent_order", []string{"grok", "codex", "zai"})
+	got = SelectedStandaloneNames()
+	if len(got) != 2 || got[0] != "grok" || got[1] != "zai" {
+		t.Fatalf("SelectedStandaloneNames = %v, want [grok zai]", got)
+	}
+
+	// Nothing listed -> nothing fetched.
+	viper.Set("agent_order", []string{"codex", "claude"})
+	got = SelectedStandaloneNames()
+	if len(got) != 0 {
+		t.Fatalf("SelectedStandaloneNames = %v, want empty", got)
+	}
+}
