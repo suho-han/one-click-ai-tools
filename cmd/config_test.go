@@ -357,3 +357,22 @@ func TestMergeStandaloneIntoOrder(t *testing.T) {
 		t.Fatalf("merge = %v, want [agy]", got)
 	}
 }
+
+// TestConfigModel_WindowFitsTerminalHeightMidList pins the mid-list case: with
+// the cursor deep in the list both scroll indicators render, and the view must
+// shed chrome instead of overflowing the alt screen.
+func TestConfigModel_WindowFitsTerminalHeightMidList(t *testing.T) {
+	for _, height := range []int{12, 10, 9, 8, 6, 4} {
+		m := newConfigModel(nil, nil)
+		m.applyWindowSize(height)
+		last := len(m.items) - 1
+		for m.index() != last/2 {
+			updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+			m = updated.(configModel)
+		}
+		view := m.View()
+		if lines := strings.Count(view, "\n"); lines > height {
+			t.Errorf("height %d: mid-list view has %d lines, want <= %d", height, lines, height)
+		}
+	}
+}
