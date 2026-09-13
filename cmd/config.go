@@ -248,69 +248,105 @@ func (m configModel) index() int {
 }
 
 func (m configModel) View() string {
-	var b strings.Builder
-	b.WriteString("? Select tools to enable for agent-update:\n")
-
 	from, to := m.visibleItems()
-	if more := from; more > 0 {
-		b.WriteString(fmt.Sprintf("  ↑ %d more\n", more))
+
+	// Assemble the view as ranked lines: when the terminal is too small for
+	// the full layout, chrome drops in rank order (help lines, blank, scroll
+	// indicators, header) before any item row is sacrificed. The alt screen
+	// has no scrollback, so an oversized view would clip its top.
+	type viewLine struct {
+		text string
+		rank int // higher drops first; 0 never drops
+	}
+	lines := []viewLine{{text: "? Select tools to enable for agent-update:", rank: 1}}
+	if from > 0 {
+		lines = append(lines, viewLine{text: fmt.Sprintf("  ↑ %d more", from), rank: 2})
 	}
 	for _, it := range m.items[from:to] {
-		mark := "[ ]"
-		if it.check {
-			mark = "[x]"
-		}
-		cursor := " "
-		if it.cursor {
-			cursor = ">"
-		}
-
-		// Each item line starts with "X[X] ", where X is cursor and [X] is mark.
-		// That's 1 (cursor) + 3 (mark) + 1 (space) = 5 characters.
-		// To align icon top/bottom with the center row, they should have 5 spaces.
-		indent := "     "
-
-		// Compact mode (very short terminals) drops the 3-line Braille icon
-		// and renders the name row only.
-		if m.rowHeight == 3 {
-			b.WriteString(fmt.Sprintf("%s%s\n", indent, it.icon3[0]))
-		}
-		nameText := it.tool.Name
-		if it.isToggleControl {
-			allChecked := true
-			for _, x := range m.items {
-				if x.isToggleControl || x.isConfirmControl {
-					continue
-				}
-				if !x.check {
-					allChecked = false
-					break
-				}
-			}
-			if allChecked {
-				nameText = "Choose none"
-			} else {
-				nameText = "Choose all"
-			}
-		}
-
-		name := it.tool.Colorize(nameText)
-		if it.cursor {
-			name = it.tool.ColorizeWithBackgroundBlackText(nameText)
-		}
-		b.WriteString(fmt.Sprintf("%s%s %s %s\n", cursor, mark, it.icon3[1], name))
-		if m.rowHeight == 3 {
-			b.WriteString(fmt.Sprintf("%s%s\n", indent, it.icon3[2]))
+		for _, text := range m.renderItemLines(it) {
+			lines = append(lines, viewLine{text: text})
 		}
 	}
 	if more := len(m.items) - to; more > 0 {
-		b.WriteString(fmt.Sprintf("  ↓ %d more\n", more))
+		lines = append(lines, viewLine{text: fmt.Sprintf("  ↓ %d more", more), rank: 2})
 	}
-	b.WriteString("\n[Use ↑/↓ to move]\n")
-	b.WriteString("[Use Enter to toggle current item]\n")
-	b.WriteString("[Choose all/none row toggles all tools]\n")
-	b.WriteString("[Move to last 'Confirm' row and press Enter to save, Ctrl+C/Ctrl+Q to exit]\n")
+	lines = append(lines,
+		viewLine{text: "", rank: 3},
+		viewLine{text: "[Use ↑/↓ to move]", rank: 4},
+		viewLine{text: "[Use Enter to toggle current item]", rank: 4},
+		viewLine{text: "[Choose all/none row toggles all tools]", rank: 4},
+		viewLine{text: "[Move to last 'Confirm' row and press Enter to save, Ctrl+C/Ctrl+Q to exit]", rank: 4},
+	)
+
+	for m.viewHeight > 0 && len(lines) > m.viewHeight {
+		drop := -1
+		best := 0
+		for i, l := range lines {
+			if l.rank > best {
+				best = l.rank
+				drop = i
+			}
+		}
+		if drop == -1 {
+			break
+		}
+		lines = append(lines[:drop], lines[drop+1:]...)
+	}
+
+	var b strings.Builder
+	for _, l := range lines {
+		b.WriteString(l.text)
+		b.WriteString("\n")
+	}
 	return b.String()
+}
+
+// renderItemLines renders one item as 1 (compact) or 3 (icon) view lines.
+func (m configModel) renderItemLines(it toolItem) []string {
+	mark := "[ ]"
+	if it.check {
+		mark = "[x]"
+	}
+	cursor := " "
+	if it.cursor {
+		cursor = ">"
+	}
+
+	nameText := it.tool.Name
+	if it.isToggleControl {
+		allChecked := true
+		for _, x := range m.items {
+			if x.isToggleControl || x.isConfirmControl {
+				continue
+			}
+			if !x.check {
+				allChecked = false
+				break
+			}
+		}
+		if allChecked {
+			nameText = "Choose none"
+		} else {
+			nameText = "Choose all"
+		}
+	}
+
+	name := it.tool.Colorize(nameText)
+	if it.cursor {
+		name = it.tool.ColorizeWithBackgroundBlackText(nameText)
+	}
+
+	// 3 lines = 12 dots high; compact mode (very short terminals) drops the
+	// Braille icon and renders the name row only.
+	if m.rowHeight == 3 {
+		indent := "     "
+		return []string{
+			indent + it.icon3[0],
+			fmt.Sprintf("%s%s %s %s", cursor, mark, it.icon3[1], name),
+			indent + it.icon3[2],
+		}
+	}
+	return []string{fmt.Sprintf("%s%s %s %s", cursor, mark, it.icon3[1], name)}
 }
 
 func writeConfig() error {
