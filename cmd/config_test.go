@@ -2,12 +2,15 @@ package cmd
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/spf13/viper"
 )
 
 func TestConfigModel_HasControlRowsAtEnd(t *testing.T) {
@@ -20,6 +23,22 @@ func TestConfigModel_HasControlRowsAtEnd(t *testing.T) {
 	}
 	if !m.items[len(m.items)-1].isConfirmControl {
 		t.Fatalf("expected last item to be confirm control")
+	}
+}
+
+// TestConfigModel_CommaJoinedEnabledTools pins checkbox agreement with usage:
+// a comma-joined enabled_tools entry is split by usage when fetching, so the
+// picker must check those rows too.
+func TestConfigModel_CommaJoinedEnabledTools(t *testing.T) {
+	m := newConfigModel([]string{"codex,agy"}, []string{"codex", "agy"})
+	for _, it := range m.items {
+		if it.isToggleControl || it.isConfirmControl {
+			continue
+		}
+		want := it.tool.BinaryName == "codex" || it.tool.BinaryName == "agy"
+		if it.check != want {
+			t.Fatalf("tool %s check = %v, want %v", it.tool.BinaryName, it.check, want)
+		}
 	}
 }
 
@@ -301,6 +320,54 @@ func TestConfigModel_NoWindowSizeRendersAll(t *testing.T) {
 	}
 	if strings.Contains(view, "more\n") {
 		t.Error("no scroll indicators expected without a known window size")
+	}
+}
+
+// TestConfigSetTools_ToleratesEmptyParts pins CLI ergonomics: extra or
+// trailing commas are skipped like every other enabled_tools consumer, while
+// an all-empty argument is rejected instead of silently writing
+// enabled_tools:[] (which means "all tools enabled").
+func TestConfigSetTools_ToleratesEmptyPartsAndRejectsEmptyInput(t *testing.T) {
+	t.Cleanup(viper.Reset)
+	viper.Reset()
+	viper.SetConfigFile(filepath.Join(t.TempDir(), "config.yaml"))
+
+	if err := configSetToolsCmd.RunE(configSetToolsCmd, []string{"codex,,agy,"}); err != nil {
+		t.Fatalf("set tools with empty parts: %v", err)
+	}
+	if got := viper.GetStringSlice("enabled_tools"); !slices.Equal(got, []string{"codex", "agy"}) {
+		t.Fatalf("enabled_tools = %v, want [codex agy]", got)
+	}
+
+	if err := configSetToolsCmd.RunE(configSetToolsCmd, []string{","}); err == nil {
+		t.Fatal("expected all-empty input to be rejected")
+	}
+	if got := viper.GetStringSlice("enabled_tools"); !slices.Equal(got, []string{"codex", "agy"}) {
+		t.Fatalf("enabled_tools = %v, want unchanged [codex agy] after rejection", got)
+	}
+}
+
+// TestConfigListTextShowsStandaloneProviders keeps the plain-text report in
+// sync with the JSON snapshot: usage-only providers ride in enabled_tools and
+// must be visible there too.
+func TestConfigListTextShowsStandaloneProviders(t *testing.T) {
+	t.Cleanup(viper.Reset)
+	viper.Reset()
+	viper.Set("enabled_tools", []string{"codex", "zai"})
+
+	var buf bytes.Buffer
+	configListCmd.SetOut(&buf)
+	defer configListCmd.SetOut(nil)
+	if err := configListCmd.RunE(configListCmd, nil); err != nil {
+		t.Fatalf("config list: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Standalone usage providers") {
+		t.Fatalf("missing standalone section in config list output:\n%s", out)
+	}
+	if !strings.Contains(out, "zai") {
+		t.Fatalf("standalone provider zai missing from config list output:\n%s", out)
 	}
 }
 
