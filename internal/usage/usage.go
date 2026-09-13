@@ -68,6 +68,13 @@ func SelectedTools() []update.Tool {
 // partial results instead of a killed subprocess. Swappable in tests.
 var usageFetchTimeout = 15 * time.Second
 
+// fetchJob pairs a provider label with its fetch entrypoint for the
+// concurrent fan-out in GetUsage.
+type fetchJob struct {
+	label string
+	fetch func(context.Context) UsageResult
+}
+
 // GetUsage fans provider fetches out concurrently under a single deadline.
 // Fetchers never fail outright: providers still running when the deadline
 // fires get an error UsageResult while finished results are preserved, so
@@ -82,11 +89,6 @@ func GetUsage(ctx context.Context) ([]UsageResult, error) {
 		ctx = context.Background()
 	}
 	selectedTools := SelectedTools()
-
-	type fetchJob struct {
-		label string
-		fetch func(context.Context) UsageResult
-	}
 
 	// Installable-tool jobs keep the SelectedTools order (agent_order or the
 	// registry default). Standalone providers have no update.Tool entry, so
@@ -126,9 +128,10 @@ func GetUsage(ctx context.Context) ([]UsageResult, error) {
 			jobs = append(jobs, toolJobs[i])
 		}
 	}
+	allowedStandalone := standaloneAllowedJobs(standaloneJobs)
 	for _, name := range orderedRequestedNames() {
 		if job, ok := standaloneJobs[name]; ok {
-			if !standaloneSeen[job.label] {
+			if !standaloneSeen[job.label] && allowedStandalone[job.label] {
 				standaloneSeen[job.label] = true
 				jobs = append(jobs, job)
 			}
@@ -202,6 +205,30 @@ func orderedRequestedNames() []string {
 		}
 	}
 	return names
+}
+
+// standaloneAllowedJobs resolves which standalone providers are opted in.
+// A non-empty enabled_tools list is authoritative (the settings UI unchecks a
+// provider by removing it from enabled_tools while keeping agent_order
+// intact); with enabled_tools empty, listing the provider in agent_order opts
+// it in. Returns a set of job labels.
+func standaloneAllowedJobs(standaloneJobs map[string]fetchJob) map[string]bool {
+	source := viper.GetStringSlice("enabled_tools")
+	if len(source) == 0 {
+		source = viper.GetStringSlice("agent_order")
+	}
+	allowed := make(map[string]bool)
+	for _, entry := range source {
+		for _, part := range strings.Split(strings.ToLower(entry), ",") {
+			if part = strings.TrimSpace(part); part == "" {
+				continue
+			}
+			if job, ok := standaloneJobs[part]; ok {
+				allowed[job.label] = true
+			}
+		}
+	}
+	return allowed
 }
 
 // providerRequested reports whether a standalone provider was listed by name
