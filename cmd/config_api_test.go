@@ -92,8 +92,8 @@ func TestConfigUpdatePayload_applyConfigUpdatePersistsValidValues(t *testing.T) 
 		t.Fatalf("session_refresh_hour = %d, want 22", got)
 	}
 	gotOrder := viper.GetStringSlice("agent_order")
-	if len(gotOrder) < 2 || gotOrder[0] != "claude" || gotOrder[1] != "codex" {
-		t.Fatalf("agent_order = %v, want prefix [claude codex]", gotOrder)
+	if len(gotOrder) != 2 || gotOrder[0] != "claude" || gotOrder[1] != "codex" {
+		t.Fatalf("agent_order = %v, want exactly [claude codex] (no catalog padding)", gotOrder)
 	}
 }
 
@@ -247,6 +247,63 @@ func TestBuildConfigSnapshotIncludesStandaloneProviders(t *testing.T) {
 	}
 }
 
+// TestBuildConfigSnapshot_MirrorsConfigWhenEnabledToolsSet pins the menubar
+// contract: with a curated enabled_tools the snapshot lists exactly what the
+// config file contains — no catalog defaults padded on — so the menubar
+// Settings provider list cannot drift from the file.
+func TestBuildConfigSnapshot_MirrorsConfigWhenEnabledToolsSet(t *testing.T) {
+	t.Cleanup(viper.Reset)
+	viper.Reset()
+	viper.Set("enabled_tools", []string{"codex", "agy"})
+	viper.Set("agent_order", []string{"codex", "agy", "claude"})
+
+	got := buildConfigSnapshot("/tmp/oct.yaml")
+
+	want := []string{"codex", "agy", "claude"}
+	if len(got.Tools) != len(want) || len(got.AgentOrder) != len(want) {
+		t.Fatalf("snapshot = %v / %v, want exactly %v", got.AgentOrder, toolNames(got.Tools), want)
+	}
+	for i, name := range want {
+		if got.Tools[i].BinaryName != name || got.AgentOrder[i] != name {
+			t.Fatalf("snapshot position %d = %s / %s, want %s", i, got.Tools[i].BinaryName, got.AgentOrder[i], name)
+		}
+	}
+	if !got.Tools[0].Enabled || !got.Tools[1].Enabled {
+		t.Fatalf("codex/agy enabled flags = %v/%v, want true/true", got.Tools[0].Enabled, got.Tools[1].Enabled)
+	}
+	if got.Tools[2].Enabled {
+		t.Fatal("claude Enabled = true, want false (absent from enabled_tools)")
+	}
+}
+
+// TestBuildConfigSnapshot_SurfacesEnabledEntryMissingFromOrder: a provider
+// listed only in enabled_tools must still appear (at the end), or a settings
+// save would silently drop it.
+func TestBuildConfigSnapshot_SurfacesEnabledEntryMissingFromOrder(t *testing.T) {
+	t.Cleanup(viper.Reset)
+	viper.Reset()
+	viper.Set("enabled_tools", []string{"codex", "zai"})
+	viper.Set("agent_order", []string{"codex"})
+
+	got := buildConfigSnapshot("/tmp/oct.yaml")
+
+	names := toolNames(got.Tools)
+	if len(names) != 2 || names[0] != "codex" || names[1] != "zai" {
+		t.Fatalf("tools = %v, want [codex zai]", names)
+	}
+	if !got.Tools[1].Enabled {
+		t.Fatal("zai Enabled = false, want true (listed in enabled_tools)")
+	}
+}
+
+func toolNames(tools []configToolStatus) []string {
+	names := make([]string, 0, len(tools))
+	for _, tool := range tools {
+		names = append(names, tool.BinaryName)
+	}
+	return names
+}
+
 func TestApplyConfigUpdateKeepsStandaloneProviders(t *testing.T) {
 	t.Cleanup(viper.Reset)
 	viper.Reset()
@@ -263,8 +320,8 @@ func TestApplyConfigUpdateKeepsStandaloneProviders(t *testing.T) {
 		t.Fatalf("enabled_tools = %v, want [codex zai]", enabled)
 	}
 	order := viper.GetStringSlice("agent_order")
-	if len(order) < 3 || order[0] != "zai" || order[1] != "codex" || order[2] != "deepseek" {
-		t.Fatalf("agent_order = %v, want [zai codex deepseek ...]", order)
+	if len(order) != 3 || order[0] != "zai" || order[1] != "codex" || order[2] != "deepseek" {
+		t.Fatalf("agent_order = %v, want exactly [zai codex deepseek] (no catalog padding)", order)
 	}
 
 	// Unknown names are still rejected.

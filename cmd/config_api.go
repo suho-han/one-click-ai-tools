@@ -95,10 +95,7 @@ func buildConfigSnapshot(configFile string) configSnapshot {
 	}
 
 	// Walk the requested order first so installable tools and standalone
-	// usage providers appear exactly where the user put them, then append the
-	// remaining tools in default order and any standalone providers that are
-	// only enabled_tools-listed. Without this, a Swift settings save would
-	// round-trip a reordered list and silently drop standalone providers.
+	// usage providers appear exactly where the user put them.
 	for _, entry := range rawOrder {
 		for _, part := range strings.Split(entry, ",") {
 			part = strings.TrimSpace(part)
@@ -114,13 +111,30 @@ func buildConfigSnapshot(configFile string) configSnapshot {
 			}
 		}
 	}
-	for _, tool := range orderedTools {
-		appendTool(tool)
+	// An unset enabled_tools means "every installable tool", so the whole
+	// catalog must surface: a settings save round-trips this list, and a
+	// shorter one would shrink the effective enabled set.
+	if len(enabledTools) == 0 {
+		for _, tool := range orderedTools {
+			appendTool(tool)
+		}
 	}
+	// Entries enabled in config but absent from agent_order (installable or
+	// standalone) must still surface, or a settings save would silently drop
+	// them from enabled_tools. With a curated enabled_tools this keeps the
+	// snapshot equal to the file instead of padding it with catalog defaults.
 	for _, name := range enabledTools {
 		for _, part := range strings.Split(name, ",") {
-			if p, ok := usage.LookupStandalone(strings.TrimSpace(part)); ok {
+			part = strings.TrimSpace(part)
+			if part == "" {
+				continue
+			}
+			if p, ok := usage.LookupStandalone(part); ok {
 				appendStandalone(p)
+				continue
+			}
+			if tool, ok := toolByBinary[update.NormalizeToolName(part)]; ok {
+				appendTool(tool)
 			}
 		}
 	}
@@ -222,6 +236,11 @@ func normalizeConfigUpdateTools(rawTools []string) ([]string, bool, error) {
 	}
 	return normalized, true, nil
 }
+
+// normalizeConfigUpdateOrder validates and canonicalizes the order sent by a
+// settings save. It deliberately does not pad the list with catalog
+// defaults: the snapshot mirrors the config file, so the save must write
+// back exactly what the UI showed the user.
 func normalizeConfigUpdateOrder(rawOrder []string) ([]string, bool, error) {
 	if rawOrder == nil {
 		return nil, false, nil
@@ -230,7 +249,7 @@ func normalizeConfigUpdateOrder(rawOrder []string) ([]string, bool, error) {
 		return nil, false, fmt.Errorf("agent_order must include at least one provider")
 	}
 
-	normalized := make([]string, 0, len(update.Tools))
+	normalized := make([]string, 0, len(rawOrder))
 	seen := map[string]bool{}
 	for _, rawTool := range rawOrder {
 		name, ok := canonicalConfigProvider(rawTool)
@@ -242,13 +261,6 @@ func normalizeConfigUpdateOrder(rawOrder []string) ([]string, bool, error) {
 		}
 		seen[name] = true
 		normalized = append(normalized, name)
-	}
-
-	for _, tool := range update.Tools {
-		if seen[tool.BinaryName] {
-			continue
-		}
-		normalized = append(normalized, tool.BinaryName)
 	}
 	return normalized, true, nil
 }
