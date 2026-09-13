@@ -61,7 +61,7 @@ oct usage --json     # for scripts/pipes
 
 | Step | Command | What it does |
 | --- | --- | --- |
-| Setup | `oct config` | pick tools/providers, alert thresholds (interactive) |
+| Setup | `oct config` | pick tools/providers, usage display mode (interactive) |
 | Update | `oct agent-update` | update every installed AI CLI (`--dry-run --explain` to preview) |
 | Watch | `oct usage` | one-shot quota snapshot (`--json`, `--compact`, `--notify`) |
 | Watch | `oct monitor` | always-on refreshing screen (`--interval`, `--once`, sort/filter) |
