@@ -170,6 +170,9 @@ func (p Plan) IsInstalled() bool {
 func confirmMissingToolInstalls(in io.Reader, out io.Writer, tools []Tool, plans []Plan) ([]Tool, []Plan, error) {
 	confirmedTools := make([]Tool, 0, len(tools))
 	confirmedPlans := make([]Plan, 0, len(plans))
+	// One reader shared by every prompt in the run so buffered input is never
+	// dropped between prompts.
+	reader := bufio.NewReader(in)
 
 	for i, plan := range plans {
 		if plan.IsInstalled() {
@@ -178,7 +181,7 @@ func confirmMissingToolInstalls(in io.Reader, out io.Writer, tools []Tool, plans
 			continue
 		}
 
-		install, err := confirmInstallPrompt(in, out, plan)
+		install, err := confirmInstallPrompt(reader, out, plan)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -193,15 +196,18 @@ func confirmMissingToolInstalls(in io.Reader, out io.Writer, tools []Tool, plans
 	return confirmedTools, confirmedPlans, nil
 }
 
-func defaultConfirmInstallPrompt(in io.Reader, out io.Writer, plan Plan) (bool, error) {
+// defaultConfirmInstallPrompt reads the answer from the shared prompt reader
+// passed in: a fresh bufio.Reader per prompt would buffer ahead and silently
+// swallow answers meant for later prompts when stdin is piped (the same bug
+// class the config flow's shared prompt reader fixes).
+func defaultConfirmInstallPrompt(in *bufio.Reader, out io.Writer, plan Plan) (bool, error) {
 	cmd := strings.Join(plan.InstallCommand, " ")
 	if cmd == "" {
 		cmd = string(plan.Manager)
 	}
 	fmt.Fprintf(out, "%s is not installed. Install now?\nCommand: %s\n[Y/n]: ", plan.Tool.Name, cmd)
 
-	reader := bufio.NewReader(in)
-	answer, err := reader.ReadString('\n')
+	answer, err := in.ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
 		return false, err
 	}
