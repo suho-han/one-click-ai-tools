@@ -131,6 +131,15 @@ To properly fetch usage, ensure you are authenticated:
   - Copilot: Configure your token via 'oct config'
   - OpenCode: Reads usage from local session logs first (no API token)
   - Codex:   Automatically reads from local session logs
+  - Kimi Code: Run 'kimi login' or set KIMI_CODE_API_KEY
+  - Qwen Code: Counts local usage records; daily cap is configurable (qwen_daily_limit)
+  - MiniMax:  Set MINIMAX_CODING_API_KEY (or MINIMAX_API_KEY)
+
+Standalone providers (fetched only when listed in agent_order or enabled_tools):
+  - Z.ai (GLM):   Set ZAI_API_KEY / ZHIPU_API_KEY, or sign in via 'opencode auth login'
+  - DeepSeek:     Set DEEPSEEK_API_KEY
+  - OpenRouter:   Set OPENROUTER_API_KEY (spending-limit tracking)
+  - Grok (xAI):   Run 'grok login' or set GROK_OAUTH_TOKEN
 
 Legacy aliases 'gemini' and 'gemini-cli' still map to 'agy' for compatibility.`,
 	RunE: func(cmd *cobra.Command, args []string) error {

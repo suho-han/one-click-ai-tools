@@ -417,3 +417,21 @@ func TestCooldownAndSnooze_NoDuplicateSendsBelowCritical(t *testing.T) {
 		t.Fatalf("expected no duplicate sends within cooldown with snooze, got %d", notifyCount)
 	}
 }
+
+func TestThresholdForCanonicalizesAliases(t *testing.T) {
+	cfg := UsageAlertConfig{
+		ProviderThreshold: map[string]map[string]float64{
+			// Stored under the tool binary name the config UI writes.
+			"minimax": {"default": 90},
+		},
+		GlobalThresholds: map[string]float64{"default": 80},
+	}
+	// A threshold saved via "mmx" (alias) must be found by the fetcher's
+	// canonical provider name and vice versa.
+	if got := thresholdFor(cfg, "mmx", "default"); got != 90 {
+		t.Errorf("thresholdFor(mmx) = %v, want 90", got)
+	}
+	if got := thresholdFor(cfg, "minimax", "default"); got != 90 {
+		t.Errorf("thresholdFor(minimax) = %v, want 90", got)
+	}
+}

@@ -4,13 +4,20 @@ Everything about provider icon mapping and rendering in one place.
 
 `one-click-tools` uses Lobe Icons metadata to map provider icons.
 
-Current mappings:
+Current mappings (source of truth: `LobeIcon` fields in `internal/update/tools.go`):
 - Claude Code -> `ClaudeCode`
+- Command Code -> `CommandCode`
 - OpenAI Codex -> `Codex`
-- Gemini CLI -> `GeminiCLI`
+- Gemini CLI / Antigravity -> `GeminiCLI`
 - GitHub Copilot -> `GithubCopilot`
-- Cursor -> text fallback (no Lobe icon)
-- OpenCode -> text fallback (no Lobe icon)
+- Cursor -> `Cursor`
+- OpenCode -> `OpenCode`
+- Kimi Code -> `Moonshot`
+- Qwen Code -> `QwenCode`
+- MiniMax -> `MiniMax`
+
+Standalone usage providers (`zai`, `deepseek`, `openrouter`, `grok`) have no
+update tool entry, so they have no icon mapping.
 
 ## Rendering
 

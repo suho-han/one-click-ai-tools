@@ -68,6 +68,13 @@ func SelectedTools() []update.Tool {
 // partial results instead of a killed subprocess. Swappable in tests.
 var usageFetchTimeout = 15 * time.Second
 
+// fetchJob pairs a provider label with its fetch entrypoint for the
+// concurrent fan-out in GetUsage.
+type fetchJob struct {
+	label string
+	fetch func(context.Context) UsageResult
+}
+
 // GetUsage fans provider fetches out concurrently under a single deadline.
 // Fetchers never fail outright: providers still running when the deadline
 // fires get an error UsageResult while finished results are preserved, so
@@ -83,19 +90,72 @@ func GetUsage(ctx context.Context) ([]UsageResult, error) {
 	}
 	selectedTools := SelectedTools()
 
-	results := make([]UsageResult, len(selectedTools))
+	// Installable-tool jobs keep the SelectedTools order (agent_order or the
+	// registry default). Standalone providers have no update.Tool entry, so
+	// they are fetched only when the user explicitly listed them (by name or
+	// alias) in agent_order or enabled_tools — an unconfigured service must
+	// never add a permanent "not configured" row to the default table. They
+	// are interleaved at the position their name occupies in those lists, so
+	// agent_order like [zai, codex] is honored instead of standalone rows
+	// always landing last.
+	toolJobs := make([]fetchJob, 0, len(selectedTools))
+	toolIndex := make(map[string]int, len(selectedTools))
+	for _, t := range selectedTools {
+		if fetcher, ok := providerFetchers[strings.ToLower(t.BinaryName)]; ok {
+			toolIndex[update.NormalizeToolName(t.BinaryName)] = len(toolJobs)
+			toolJobs = append(toolJobs, fetchJob{label: t.BinaryName, fetch: fetcher})
+		}
+	}
+
+	standaloneJobs := make(map[string]fetchJob)
+	standaloneSeen := make(map[string]bool)
+	for _, p := range providers {
+		if !p.Standalone {
+			continue
+		}
+		job := fetchJob{label: p.Name, fetch: p.Fetch}
+		standaloneJobs[strings.ToLower(p.Name)] = job
+		for _, alias := range p.Aliases {
+			standaloneJobs[strings.ToLower(alias)] = job
+		}
+	}
+
+	jobs := make([]fetchJob, 0, len(toolJobs)+len(standaloneJobs))
+	toolEmitted := make([]bool, len(toolJobs))
+	emitTool := func(i int) {
+		if !toolEmitted[i] {
+			toolEmitted[i] = true
+			jobs = append(jobs, toolJobs[i])
+		}
+	}
+	allowedStandalone := standaloneAllowedJobs(standaloneJobs)
+	for _, name := range orderedRequestedNames() {
+		if job, ok := standaloneJobs[name]; ok {
+			if !standaloneSeen[job.label] && allowedStandalone[job.label] {
+				standaloneSeen[job.label] = true
+				jobs = append(jobs, job)
+			}
+			continue
+		}
+		if i, ok := toolIndex[update.NormalizeToolName(name)]; ok {
+			emitTool(i)
+		}
+	}
+	for i := range toolJobs {
+		emitTool(i)
+	}
+
+	results := make([]UsageResult, len(jobs))
 	g, gctx := errgroup.WithContext(ctx)
 	gctx, cancel := context.WithTimeout(gctx, usageFetchTimeout)
 	defer cancel()
 
-	for i, t := range selectedTools {
-		i, t := i, t // Capture for goroutine
-		if fetcher, ok := providerFetchers[strings.ToLower(t.BinaryName)]; ok {
-			g.Go(func() error {
-				results[i] = fetchWithDeadline(gctx, t.BinaryName, fetcher)
-				return nil
-			})
-		}
+	for i, job := range jobs {
+		i, job := i, job // Capture for goroutine
+		g.Go(func() error {
+			results[i] = fetchWithDeadline(gctx, job.label, job.fetch)
+			return nil
+		})
 	}
 
 	// Fetchers report problems via their UsageResult, so g.Wait() carries no
@@ -111,6 +171,78 @@ func GetUsage(ctx context.Context) ([]UsageResult, error) {
 	}
 
 	return filtered, nil
+}
+
+// requestedProviderNames lowercases and splits the raw agent_order and
+// enabled_tools config values (comma-separated entries allowed, matching
+// splitToolNames in internal/update) into a lookup set.
+func requestedProviderNames() map[string]bool {
+	raw := append(viper.GetStringSlice("agent_order"), viper.GetStringSlice("enabled_tools")...)
+	requested := make(map[string]bool, len(raw))
+	for _, entry := range raw {
+		for _, part := range strings.Split(strings.ToLower(entry), ",") {
+			if part = strings.TrimSpace(part); part != "" {
+				requested[part] = true
+			}
+		}
+	}
+	return requested
+}
+
+// orderedRequestedNames lists the same entries as requestedProviderNames but
+// order-preserving and deduplicated: agent_order entries first, then
+// enabled_tools.
+func orderedRequestedNames() []string {
+	raw := append(viper.GetStringSlice("agent_order"), viper.GetStringSlice("enabled_tools")...)
+	var names []string
+	seen := make(map[string]bool)
+	for _, entry := range raw {
+		for _, part := range strings.Split(strings.ToLower(entry), ",") {
+			if part = strings.TrimSpace(part); part != "" && !seen[part] {
+				seen[part] = true
+				names = append(names, part)
+			}
+		}
+	}
+	return names
+}
+
+// standaloneAllowedJobs resolves which standalone providers are opted in.
+// A non-empty enabled_tools list is authoritative (the settings UI unchecks a
+// provider by removing it from enabled_tools while keeping agent_order
+// intact); with enabled_tools empty, listing the provider in agent_order opts
+// it in. Returns a set of job labels.
+func standaloneAllowedJobs(standaloneJobs map[string]fetchJob) map[string]bool {
+	source := viper.GetStringSlice("enabled_tools")
+	if len(source) == 0 {
+		source = viper.GetStringSlice("agent_order")
+	}
+	allowed := make(map[string]bool)
+	for _, entry := range source {
+		for _, part := range strings.Split(strings.ToLower(entry), ",") {
+			if part = strings.TrimSpace(part); part == "" {
+				continue
+			}
+			if job, ok := standaloneJobs[part]; ok {
+				allowed[job.label] = true
+			}
+		}
+	}
+	return allowed
+}
+
+// providerRequested reports whether a standalone provider was listed by name
+// or one of its aliases.
+func providerRequested(p Provider, requested map[string]bool) bool {
+	if requested[strings.ToLower(p.Name)] {
+		return true
+	}
+	for _, alias := range p.Aliases {
+		if requested[strings.ToLower(alias)] {
+			return true
+		}
+	}
+	return false
 }
 
 // fetchWithDeadline guarantees a result even when a fetcher ignores ctx and

@@ -28,21 +28,24 @@ GOTOOLCHAIN=auto go test ./...
 GOTOOLCHAIN=auto go test -cover ./...
 ```
 
-## npm wrapper check
-
-```bash
-go build -o oct main.go
-npm link
-oct help
-oct usage
-npm unlink -g one-click-tools
-```
-
 ## API mock / endpoint testing
 
+Each provider accepts a full-URL endpoint override (`oct usage` fans out to
+every enabled provider, so pick the one under test):
+
 ```bash
-OCT_CLAUDE_USAGE_ENDPOINT="http://localhost:8080/usage" go run main.go usage
+# Claude has no override (endpoint is hardcoded) -- test it via unit tests instead.
+OCT_CODEX_USAGE_ENDPOINT="http://localhost:8080/usage" go run main.go usage
+OCT_KIMI_USAGE_ENDPOINT="http://localhost:8080/coding/v1/usages" go run main.go usage
+OCT_ZAI_USAGE_ENDPOINT="http://localhost:8080/api/monitor/usage/quota/limit" ZAI_API_KEY=tok OCT_ENABLED_TOOLS=zai go run main.go usage
+OCT_DEEPSEEK_BALANCE_ENDPOINT="http://localhost:8080/user/balance" DEEPSEEK_API_KEY=sk go run main.go usage
+OCT_OPENROUTER_USAGE_ENDPOINT="http://localhost:8080/api/v1/key" OPENROUTER_API_KEY=sk-or go run main.go usage
+OCT_MINIMAX_USAGE_ENDPOINT="http://localhost:8080/v1/coding_plan/remains" MINIMAX_CODING_API_KEY=sk-cp go run main.go usage
+OCT_GROK_USAGE_ENDPOINT="http://localhost:8080/v1/billing?format=credits" GROK_OAUTH_TOKEN=tok go run main.go usage
 ```
+
+Standalone providers (`zai`, `deepseek`, `openrouter`, `grok`) must also be
+listed in `agent_order`/`enabled_tools` (or pass the tools as shown for zai).
 
 ## Windows validation essentials
 

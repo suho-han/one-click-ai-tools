@@ -51,13 +51,23 @@ func (c *Client) DoWithRetry(req *http.Request) (*http.Response, error) {
 
 		// If it's a retry, we need to reset the request body if it exists
 		if i > 0 && req.Body != nil {
-			seeker, ok := req.Body.(io.Seeker)
-			if !ok {
+			if getBody := req.GetBody; getBody != nil {
+				// NewRequest captures bytes/buffer/string bodies here, so the
+				// standard POST fetchers can retry transparently.
+				body, bodyErr := getBody()
+				if bodyErr != nil {
+					return nil, fmt.Errorf("cannot retry request: %w", bodyErr)
+				}
+				req.Body = body
+			} else if seeker, ok := req.Body.(io.Seeker); ok {
+				if _, seekErr := seeker.Seek(0, io.SeekStart); seekErr != nil {
+					return nil, fmt.Errorf("cannot retry request: %w", seekErr)
+				}
+			} else {
 				// Retrying with a partially-consumed body would silently
 				// re-send truncated content; fail loudly instead.
 				return nil, fmt.Errorf("cannot retry request: body does not support seeking")
 			}
-			seeker.Seek(0, io.SeekStart)
 		}
 
 		resp, err = c.HTTPClient.Do(req)
