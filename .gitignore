@@ -16,3 +16,6 @@ macos/OctMenubar/.build/
 *.tgz
 .omo/
 .gjc/
+
+# Local agent workspace config
+.zcode/

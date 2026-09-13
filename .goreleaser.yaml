@@ -39,3 +39,9 @@ changelog:
     exclude:
       - '^docs:'
       - '^test:'
+
+release:
+  # Beta/rc tags (e.g. v0.1.6-beta.1) publish as pre-releases so GitHub's
+  # /releases/latest — used by install.sh and `oct update` — keeps pointing
+  # at the latest stable version.
+  prerelease: auto
