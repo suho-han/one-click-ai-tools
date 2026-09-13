@@ -133,6 +133,7 @@ var providers = []Provider{
 	},
 	{
 		Name:            "minimax",
+		Aliases:         []string{"mmx"},
 		MatchSubstrings: []string{"minimax"},
 		ColorCode:       "93",
 		CompactLabel:    "M",

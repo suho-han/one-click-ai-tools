@@ -163,13 +163,16 @@ func collectQwenUsage(qwenHome string, now time.Time) (int, string, bool) {
 	return count, plan, anyRecord
 }
 
-// FetchQwenUsage reports a local daily request estimate for Qwen Code.
+// FetchQwenUsage reports a local daily request estimate for Qwen Code. The
+// count is normalized to a percentage of the configured daily limit so
+// remaining-mode display, compact output, and threshold alerts treat it like
+// the percent-unit providers; the raw count stays in the message.
 func FetchQwenUsage(ctx context.Context) UsageResult {
 	qwenHome := resolveQwenHome()
 	result := UsageResult{
 		Provider: "qwen",
 		Period:   "1d",
-		Unit:     "req",
+		Unit:     "percent",
 		Source:   "local",
 		Status:   "warn",
 		Message:  "No data: Qwen Code usage records not found",
@@ -183,7 +186,6 @@ func FetchQwenUsage(ctx context.Context) UsageResult {
 	if limit <= 0 {
 		limit = 100
 	}
-	result.Limit = strconv.Itoa(limit)
 
 	count, plan, anyRecord := collectQwenUsage(qwenHome, time.Now())
 	if !anyRecord {
@@ -194,13 +196,18 @@ func FetchQwenUsage(ctx context.Context) UsageResult {
 		return result
 	}
 
+	percent := 0.0
+	if limit > 0 {
+		percent = float64(count) / float64(limit) * 100
+	}
 	result.Plan = plan
 	if plan != "" {
 		result.PlanSource = "local_auth"
 	}
-	result.Used = strconv.Itoa(count)
+	result.Used = fmt.Sprintf("%.0f", percent)
+	result.Limit = "100"
 	result.Status = "ok"
-	result.Message = "Local estimate from Qwen Code token-usage records (this machine only)"
+	result.Message = fmt.Sprintf("Local estimate: %d/%d requests today from Qwen Code token-usage records (this machine only)", count, limit)
 	if limit > 0 && count >= limit {
 		result.Status = "warn"
 		result.Message += "; daily limit likely reached"
