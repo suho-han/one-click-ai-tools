@@ -110,9 +110,13 @@ func newConfigModel(enabledTools []string, agentOrder []string) configModel {
 		enabled := len(enabledTools) == 0
 		if len(enabledTools) > 0 {
 			for _, et := range enabledTools {
-				if update.NormalizeToolName(et) == update.NormalizeToolName(t.BinaryName) {
-					enabled = true
-					break
+				// Split comma-joined entries to match how usage consumes
+				// enabled_tools, so the checkboxes agree with fetched rows.
+				for _, part := range strings.Split(et, ",") {
+					if update.NormalizeToolName(part) == update.NormalizeToolName(t.BinaryName) {
+						enabled = true
+						break
+					}
 				}
 			}
 		}
@@ -674,6 +678,11 @@ var configSetToolsCmd = &cobra.Command{
 		var validTools []string
 		for _, tool := range tools {
 			tool = strings.TrimSpace(tool)
+			if tool == "" {
+				// Tolerate empty parts ("a,,b", trailing comma) like every
+				// other enabled_tools consumer.
+				continue
+			}
 			found := false
 			for _, t := range update.Tools {
 				if t.MatchesName(tool) {
@@ -693,6 +702,11 @@ var configSetToolsCmd = &cobra.Command{
 			if !found {
 				return fmt.Errorf("unknown tool: %s", tool)
 			}
+		}
+		if len(validTools) == 0 {
+			// An all-empty argument must not silently write enabled_tools:[],
+			// which means "every installable tool enabled".
+			return fmt.Errorf("no tool provided (enabled_tools must include at least one provider)")
 		}
 
 		viper.Set("enabled_tools", validTools)
@@ -790,9 +804,13 @@ var configListCmd = &cobra.Command{
 				enabled = true
 			} else {
 				for _, et := range enabledTools {
-					if strings.EqualFold(et, t.BinaryName) {
-						enabled = true
-						break
+					// Comma-joined entries are legal config values; split them
+					// like usage does so this report matches actual fetching.
+					for _, part := range strings.Split(et, ",") {
+						if strings.EqualFold(strings.TrimSpace(part), t.BinaryName) {
+							enabled = true
+							break
+						}
 					}
 				}
 			}
@@ -802,6 +820,31 @@ var configListCmd = &cobra.Command{
 			} else {
 				fmt.Fprintf(out, "  ✗ %s\n", t.Colorize(t.Name))
 			}
+		}
+
+		// Standalone usage providers ride in enabled_tools but are not
+		// agent-update targets; report them so this text view covers every
+		// provider the JSON snapshot (and the menubar) shows.
+		fmt.Fprintln(out, "\nStandalone usage providers (usage-only):")
+		shownStandalone := map[string]bool{}
+		foundStandalone := false
+		for _, et := range enabledTools {
+			for _, part := range strings.Split(et, ",") {
+				part = strings.TrimSpace(part)
+				if part == "" {
+					continue
+				}
+				p, ok := usage.LookupStandalone(part)
+				if !ok || shownStandalone[p.Name] {
+					continue
+				}
+				shownStandalone[p.Name] = true
+				foundStandalone = true
+				fmt.Fprintf(out, "  ✓ %s\n", p.Name)
+			}
+		}
+		if !foundStandalone {
+			fmt.Fprintln(out, "  (none)")
 		}
 		return nil
 	},

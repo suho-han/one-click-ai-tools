@@ -207,8 +207,13 @@ func configToolEnabled(enabledTools []string, tool update.Tool) bool {
 		return true
 	}
 	for _, enabled := range enabledTools {
-		if tool.MatchesName(enabled) {
-			return true
+		// Comma-joined entries are legal config values (GetStringSlice keeps
+		// them intact) and every other consumer splits them, so a snapshot
+		// flag must not disagree with what usage actually fetches.
+		for _, part := range strings.Split(enabled, ",") {
+			if tool.MatchesName(strings.TrimSpace(part)) {
+				return true
+			}
 		}
 	}
 	return false

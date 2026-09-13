@@ -296,6 +296,29 @@ func TestBuildConfigSnapshot_SurfacesEnabledEntryMissingFromOrder(t *testing.T) 
 	}
 }
 
+// TestBuildConfigSnapshot_SplitsCommaJoinedEntries: a comma-joined entry is a
+// legal enabled_tools/agent_order value that usage fetches by splitting, so
+// the snapshot enabled flags must split too and agree with usage.
+func TestBuildConfigSnapshot_SplitsCommaJoinedEntries(t *testing.T) {
+	t.Cleanup(viper.Reset)
+	viper.Reset()
+	viper.Set("enabled_tools", []string{"codex,agy"})
+	viper.Set("agent_order", []string{"codex,agy"})
+
+	got := buildConfigSnapshot("/tmp/oct.yaml")
+
+	enabled := map[string]bool{}
+	for _, tool := range got.Tools {
+		enabled[tool.BinaryName] = tool.Enabled
+	}
+	if len(got.Tools) != 2 {
+		t.Fatalf("tools = %v, want exactly [codex agy]", toolNames(got.Tools))
+	}
+	if !enabled["codex"] || !enabled["agy"] {
+		t.Fatalf("enabled flags = %v, want codex and agy enabled", enabled)
+	}
+}
+
 func toolNames(tools []configToolStatus) []string {
 	names := make([]string, 0, len(tools))
 	for _, tool := range tools {
