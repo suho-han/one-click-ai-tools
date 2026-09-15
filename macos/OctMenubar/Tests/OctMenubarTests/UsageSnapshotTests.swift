@@ -392,6 +392,19 @@ final class UsageSnapshotTests: XCTestCase {
           "session_refresh_enabled": true,
           "session_refresh_interval": "weekly",
           "session_refresh_hour": 9,
+          "alert": {
+            "enabled": true,
+            "threshold_percent": 82.5,
+            "critical_percent": 97.5,
+            "cooldown_minutes": 120,
+            "quiet_hours": "00:00-08:00",
+            "timezone": "Asia/Seoul",
+            "thresholds": {
+              "default": 81,
+              "5h": 82.5,
+              "7d": 90
+            }
+          },
           "tools": [
             {
               "name": "OpenAI Codex",
@@ -420,6 +433,15 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertTrue(snapshot.sessionRefreshEnabled)
         XCTAssertEqual(snapshot.sessionRefreshInterval, "weekly")
         XCTAssertEqual(snapshot.sessionRefreshHour, 9)
+        XCTAssertEqual(snapshot.alert, AlertSettings(
+            enabled: true,
+            thresholdPercent: 82.5,
+            criticalPercent: 97.5,
+            cooldownMinutes: 120,
+            quietHours: "00:00-08:00",
+            timezone: "Asia/Seoul",
+            thresholds: AlertThresholds(defaultThreshold: 81, fiveHours: 82.5, sevenDays: 90)
+        ))
         XCTAssertEqual(snapshot.tools.map(\.binaryName), ["codex", "commandcode", "claude"])
         XCTAssertEqual(snapshot.tools.map(\.enabled), [true, true, false])
     }
@@ -447,6 +469,7 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.configFile, "/Users/me/.oct/config.yaml")
         XCTAssertEqual(snapshot.usageDisplayMode, .remaining)
         XCTAssertEqual(snapshot.menubarTitleMode, .oct)
+        XCTAssertEqual(snapshot.alert, .goDefaults)
         XCTAssertEqual(snapshot.tools.map(\.binaryName), ["codex"])
     }
 
@@ -473,6 +496,15 @@ final class UsageSnapshotTests: XCTestCase {
         draft.sessionRefreshInterval = "weekly"
         draft.sessionRefreshHour = 22
         draft.moveTool("claude", by: -1)
+        draft.alert.enabled = true
+        draft.alert.thresholdPercent = 82.5
+        draft.alert.criticalPercent = 97.5
+        draft.alert.cooldownMinutes = 120
+        draft.alert.quietHours = "00:00-08:00"
+        draft.alert.timezone = "Asia/Seoul"
+        draft.alert.thresholds.defaultThreshold = 81
+        draft.alert.thresholds.fiveHours = 82.5
+        draft.alert.thresholds.sevenDays = 90
 
         let payload = draft.updatePayload()
 
@@ -483,6 +515,84 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertEqual(payload.sessionRefreshInterval, "weekly")
         XCTAssertEqual(payload.sessionRefreshHour, 22)
         XCTAssertEqual(payload.agentOrder, ["codex", "claude", "commandcode"])
+        XCTAssertTrue(payload.alert.enabled)
+        XCTAssertEqual(payload.alert.thresholdPercent, 82.5)
+        XCTAssertEqual(payload.alert.criticalPercent, 97.5)
+        XCTAssertEqual(payload.alert.cooldownMinutes, 120)
+        XCTAssertEqual(payload.alert.quietHours, "00:00-08:00")
+        XCTAssertEqual(payload.alert.timezone, "Asia/Seoul")
+        XCTAssertEqual(payload.alert.thresholds.defaultThreshold, 81)
+        XCTAssertEqual(payload.alert.thresholds.fiveHours, 82.5)
+        XCTAssertEqual(payload.alert.thresholds.sevenDays, 90)
+
+        let encoded = try JSONEncoder().encode(payload)
+        let json = try JSONSerialization.jsonObject(with: encoded) as! [String: Any]
+        let alert = try XCTUnwrap(json["alert"] as? [String: Any])
+        let thresholds = try XCTUnwrap(alert["thresholds"] as? [String: Any])
+        XCTAssertEqual(Set(json.keys), [
+            "enabled_tools",
+            "usage_display_mode",
+            "menubar_title_mode",
+            "session_refresh_enabled",
+            "session_refresh_interval",
+            "session_refresh_hour",
+            "agent_order",
+            "alert",
+        ])
+        XCTAssertEqual(Set(alert.keys), [
+            "enabled",
+            "threshold_percent",
+            "critical_percent",
+            "cooldown_minutes",
+            "quiet_hours",
+            "timezone",
+            "thresholds",
+        ])
+        XCTAssertEqual(Set(thresholds.keys), ["default", "5h", "7d"])
+        XCTAssertEqual(json["enabled_tools"] as? [String], ["codex", "claude", "commandcode"])
+        XCTAssertEqual(json["usage_display_mode"] as? String, "used")
+        XCTAssertEqual(json["menubar_title_mode"] as? String, "oct")
+        XCTAssertEqual(json["session_refresh_enabled"] as? Bool, true)
+        XCTAssertEqual(json["session_refresh_interval"] as? String, "weekly")
+        XCTAssertEqual(json["session_refresh_hour"] as? Int, 22)
+        XCTAssertEqual(json["agent_order"] as? [String], ["codex", "claude", "commandcode"])
+        XCTAssertEqual(alert["enabled"] as? Bool, true)
+        XCTAssertEqual(alert["threshold_percent"] as? Double, 82.5)
+        XCTAssertEqual(alert["critical_percent"] as? Double, 97.5)
+        XCTAssertEqual(alert["cooldown_minutes"] as? Int, 120)
+        XCTAssertEqual(alert["quiet_hours"] as? String, "00:00-08:00")
+        XCTAssertEqual(alert["timezone"] as? String, "Asia/Seoul")
+        XCTAssertEqual(thresholds["default"] as? Double, 81)
+        XCTAssertEqual(thresholds["5h"] as? Double, 82.5)
+        XCTAssertEqual(thresholds["7d"] as? Double, 90)
+    }
+
+    func testConfigurationSnapshotRejectsMalformedAlertJSON() {
+        let json = #"""
+        {
+          "config_file": "/tmp/config.yaml",
+          "usage_display_mode": "remaining",
+          "session_refresh_enabled": false,
+          "session_refresh_interval": "daily",
+          "session_refresh_hour": 9,
+          "tools": [],
+          "alert": {
+            "enabled": "true",
+            "threshold_percent": 80,
+            "critical_percent": 98,
+            "cooldown_minutes": 360,
+            "quiet_hours": "",
+            "timezone": "",
+            "thresholds": { "default": 80, "5h": 80, "7d": 80 }
+          }
+        }
+        """#
+
+        XCTAssertThrowsError(try JSONDecoder().decode(ConfigurationSnapshot.self, from: Data(json.utf8))) { error in
+            guard case DecodingError.typeMismatch = error else {
+                return XCTFail("Expected a type mismatch, got \(error)")
+            }
+        }
     }
 
     func testConfigurationDraftRevertsToLoadedSnapshot() {
