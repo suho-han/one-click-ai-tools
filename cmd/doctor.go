@@ -28,7 +28,7 @@ type shellDoctorReport struct {
 var doctorCmd = &cobra.Command{
 	Use:     "doctor",
 	GroupID: "maintenance",
-	Short:   "Run environment diagnostics",
+	Short:   "🩺 Run environment diagnostics",
 }
 
 var doctorShellCmd = &cobra.Command{

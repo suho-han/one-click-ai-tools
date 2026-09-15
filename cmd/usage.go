@@ -120,7 +120,7 @@ func (m usageModel) View() string {
 var usageCmd = &cobra.Command{
 	Use:     "usage",
 	GroupID: "core",
-	Short:   "Show tool usage report",
+	Short:   "📊 Show tool usage report",
 	Long: `Show tool usage report for configured AI developer tools.
 
 To properly fetch usage, ensure you are authenticated:

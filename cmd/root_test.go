@@ -38,6 +38,33 @@ func TestRootCommand(t *testing.T) {
 	if !contains(out, "menubar") {
 		t.Errorf("expected help to include menubar command, got: %s", out)
 	}
+	if !contains(out, "⚡ Core Commands") {
+		t.Errorf("expected help to include core category emoji, got: %s", out)
+	}
+	if !contains(out, "⚙️ Configuration & Scheduling") {
+		t.Errorf("expected help to include configuration category emoji, got: %s", out)
+	}
+	if !contains(out, "🛠️ Update & Maintenance") {
+		t.Errorf("expected help to include maintenance category emoji, got: %s", out)
+	}
+	if !contains(out, "🧭 Help & Shell") {
+		t.Errorf("expected help to include help category emoji, got: %s", out)
+	}
+	if !contains(out, "📊usage") {
+		t.Errorf("expected help to include usage command emoji, got: %s", out)
+	}
+	if !contains(out, "🔄agent-update") {
+		t.Errorf("expected help to include agent-update command emoji before name, got: %s", out)
+	}
+	if contains(out, "agent-update    🔄") {
+		t.Errorf("expected help to omit command-name-before-emoji order, got: %s", out)
+	}
+	if !contains(out, "🧩completion") {
+		t.Errorf("expected help to include completion command emoji, got: %s", out)
+	}
+	if !contains(out, "❓help") {
+		t.Errorf("expected help to include help command emoji, got: %s", out)
+	}
 }
 
 func contains(s, substr string) bool {
