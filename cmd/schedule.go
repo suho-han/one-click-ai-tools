@@ -13,7 +13,7 @@ import (
 var scheduleCmd = &cobra.Command{
 	Use:     "schedule",
 	GroupID: "manage",
-	Short:   "Manage scheduled maintenance tasks",
+	Short:   "🗓️ Manage scheduled maintenance tasks",
 	Long: `Show, enable, or disable scheduled maintenance tasks (agent-update,
 session-refresh) via the platform scheduler (launchd/cron/SchTasks).`,
 	Example: `  oct schedule --task agent-update                         show status

@@ -631,7 +631,7 @@ func printSummaryContent(content string) {
 var configCmd = &cobra.Command{
 	Use:     "config",
 	GroupID: "manage",
-	Short:   "Manage configuration (interactive selection if no sub-command)",
+	Short:   "⚙️ Manage configuration (interactive selection if no sub-command)",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		newEnabledTools, newOrder, usageMode, cancelled, err := runInteractiveConfig()
 		if err != nil {

@@ -35,7 +35,7 @@ type usageDiffSummary struct {
 var sessionRefreshCmd = &cobra.Command{
 	Use:     "session-refresh",
 	GroupID: "maintenance",
-	Short:   "Probe tool sessions without sending prompts",
+	Short:   "🔍 Probe tool sessions without sending prompts",
 	Long: `Probe configured AI tool sessions without intentionally sending prompts.
 
 This command does not intentionally send prompts. It uses token-free probes such as auth-status checks and local session/auth artifact inspection,

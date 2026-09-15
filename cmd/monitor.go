@@ -27,7 +27,7 @@ var monitorIsTTY = func() bool {
 var monitorCmd = &cobra.Command{
 	Use:     "monitor",
 	GroupID: "core",
-	Short:   "Always-on usage monitoring screen",
+	Short:   "📡 Always-on usage monitoring screen",
 	Long: `Keep refreshing a live usage table for all enabled providers.
 
 Runs until interrupted on a terminal. Piped or non-interactive stdout
