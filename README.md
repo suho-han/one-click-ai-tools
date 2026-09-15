@@ -61,12 +61,12 @@ oct usage --json     # 스크립트/파이프용
 
 | 단계 | 명령어 | 하는 일 |
 | --- | --- | --- |
-| 설정 | `oct config` | 도구·프로바이더 선택, 사용량 표시 모드 설정 (인터랙티브) |
+| 설정 | `oct config` | 도구·프로바이더 선택, 사용량 표시 모드 등 일반 설정 (인터랙티브; 알림 설정은 다루지 않음) |
 | 업데이트 | `oct agent-update` | 설치된 AI CLI 전부 업데이트 (`--dry-run --explain` 사전 점검) |
 | 감시 | `oct usage` | 전 프로바이더 쿼터 1회 조회 (`--json`, `--compact`, `--notify`) |
 | 감시 | `oct monitor` | 상시 갱신 화면 (`--interval`, `--once`, 정렬·필터) |
 | 감시 | `oct menubar` | macOS 메뉴바에 상시 표시 |
-| 알림 | `oct alert` | 임계값 도달 시 OS 알림 (quiet hours, snooze 지원) |
+| 알림 | `oct alert` | 서브커맨드 없이 실행하면 방향키/키 입력 기반 인터랙티브 알림 설정; `config`·프로바이더 임계값·`test`·`snooze` 지원 |
 | 예약 | `oct schedule` | agent-update / session-refresh를 OS 스케줄러에 등록 |
 | 예약 | `oct session-refresh` | 프롬프트 없이 세션·인증 상태만 probe (`--dry-run`) |
 | 진단 | `oct doctor` | shell PATH / bootstrap 진단 |
@@ -95,10 +95,16 @@ oct usage --notify               # 임계값 규칙에 따라 알림 발송
 oct monitor --interval 10s       # 10초 갱신 상시 화면
 oct monitor --once --sort-by used --desc --top 5 --compact
 
+# 서브커맨드 없이 실행하면 방향키/키 입력 기반 인터랙티브 알림 설정
+oct alert
+
+# 고급 알림 설정은 oct alert 아래에서 관리
 oct alert config show
 oct alert config set enabled true
 oct alert config set threshold_percent 85
 oct alert config set quiet_hours 00:00-08:00
+oct alert config set-provider-threshold 5h 90 --provider codex
+oct alert test --provider codex --window 5h --value 91
 oct alert snooze set --duration 2h
 ```
 
@@ -136,6 +142,8 @@ oct session-refresh --dry-run                                       # 토큰 소
 ## 메뉴바 헬퍼 (macOS)
 
 Swift menubar helper를 따로 빌드/설치할 수 있습니다.
+
+메뉴바 앱의 Settings에서는 General 설정이 Configuration 화면으로 합쳐집니다. 이 화면의 알림 항목은 안전한 전역 알림 설정만 노출하며, 프로바이더별 임계값이나 snooze 제어는 노출하지 않습니다. 그런 고급 설정은 `oct alert config ...`와 `oct alert snooze ...`를 사용하세요.
 
 ```bash
 oct menubar                # 메뉴바 앱 실행

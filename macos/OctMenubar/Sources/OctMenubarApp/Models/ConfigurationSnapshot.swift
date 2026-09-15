@@ -73,6 +73,48 @@ struct ConfigTool: Codable, Equatable, Identifiable {
     }
 }
 
+struct AlertThresholds: Codable, Equatable {
+    var defaultThreshold: Double
+    var fiveHours: Double
+    var sevenDays: Double
+
+    enum CodingKeys: String, CodingKey {
+        case defaultThreshold = "default"
+        case fiveHours = "5h"
+        case sevenDays = "7d"
+    }
+}
+
+struct AlertSettings: Codable, Equatable {
+    var enabled: Bool
+    var thresholdPercent: Double
+    var criticalPercent: Double
+    var cooldownMinutes: Int
+    var quietHours: String
+    var timezone: String
+    var thresholds: AlertThresholds
+
+    static let goDefaults = AlertSettings(
+        enabled: false,
+        thresholdPercent: 80,
+        criticalPercent: 98,
+        cooldownMinutes: 360,
+        quietHours: "",
+        timezone: "",
+        thresholds: AlertThresholds(defaultThreshold: 80, fiveHours: 80, sevenDays: 80)
+    )
+
+    enum CodingKeys: String, CodingKey {
+        case enabled
+        case thresholdPercent = "threshold_percent"
+        case criticalPercent = "critical_percent"
+        case cooldownMinutes = "cooldown_minutes"
+        case quietHours = "quiet_hours"
+        case timezone
+        case thresholds
+    }
+}
+
 struct ConfigurationSnapshot: Codable, Equatable {
     let configFile: String
     let usageDisplayMode: UsageDisplayMode
@@ -82,6 +124,7 @@ struct ConfigurationSnapshot: Codable, Equatable {
     let sessionRefreshInterval: String
     let sessionRefreshHour: Int
     let tools: [ConfigTool]
+    let alert: AlertSettings
 
     enum CodingKeys: String, CodingKey {
         case configFile = "config_file"
@@ -92,6 +135,7 @@ struct ConfigurationSnapshot: Codable, Equatable {
         case sessionRefreshInterval = "session_refresh_interval"
         case sessionRefreshHour = "session_refresh_hour"
         case tools
+        case alert
     }
 
     init(
@@ -102,7 +146,8 @@ struct ConfigurationSnapshot: Codable, Equatable {
         sessionRefreshEnabled: Bool,
         sessionRefreshInterval: String,
         sessionRefreshHour: Int,
-        tools: [ConfigTool]
+        tools: [ConfigTool],
+        alert: AlertSettings = .goDefaults
     ) {
         self.configFile = configFile
         self.usageDisplayMode = usageDisplayMode
@@ -112,6 +157,7 @@ struct ConfigurationSnapshot: Codable, Equatable {
         self.sessionRefreshInterval = sessionRefreshInterval
         self.sessionRefreshHour = sessionRefreshHour
         self.tools = tools
+        self.alert = alert
     }
 
     init(from decoder: Decoder) throws {
@@ -124,7 +170,8 @@ struct ConfigurationSnapshot: Codable, Equatable {
             sessionRefreshEnabled: try container.decode(Bool.self, forKey: .sessionRefreshEnabled),
             sessionRefreshInterval: try container.decode(String.self, forKey: .sessionRefreshInterval),
             sessionRefreshHour: try container.decode(Int.self, forKey: .sessionRefreshHour),
-            tools: try container.decode([ConfigTool].self, forKey: .tools)
+            tools: try container.decode([ConfigTool].self, forKey: .tools),
+            alert: try container.decodeIfPresent(AlertSettings.self, forKey: .alert) ?? .goDefaults
         )
     }
 
@@ -188,6 +235,7 @@ struct ConfigurationUpdatePayload: Codable, Equatable {
     let sessionRefreshInterval: String
     let sessionRefreshHour: Int
     let agentOrder: [String]
+    let alert: AlertSettings
 
     enum CodingKeys: String, CodingKey {
         case enabledTools = "enabled_tools"
@@ -197,6 +245,7 @@ struct ConfigurationUpdatePayload: Codable, Equatable {
         case sessionRefreshInterval = "session_refresh_interval"
         case sessionRefreshHour = "session_refresh_hour"
         case agentOrder = "agent_order"
+        case alert
     }
 }
 
@@ -208,6 +257,7 @@ struct ConfigurationDraft: Equatable {
     var sessionRefreshInterval: String
     var sessionRefreshHour: Int
     var tools: [ConfigTool]
+    var alert: AlertSettings
 
     init(snapshot: ConfigurationSnapshot) {
         configFile = snapshot.configFile
@@ -217,6 +267,7 @@ struct ConfigurationDraft: Equatable {
         sessionRefreshInterval = snapshot.sessionRefreshInterval
         sessionRefreshHour = snapshot.sessionRefreshHour
         tools = snapshot.tools
+        alert = snapshot.alert
     }
 
     var hasEnabledTool: Bool {
@@ -258,7 +309,8 @@ struct ConfigurationDraft: Equatable {
             sessionRefreshEnabled: sessionRefreshEnabled,
             sessionRefreshInterval: sessionRefreshInterval,
             sessionRefreshHour: sessionRefreshHour,
-            agentOrder: tools.map(\.binaryName)
+            agentOrder: tools.map(\.binaryName),
+            alert: alert
         )
     }
 }
