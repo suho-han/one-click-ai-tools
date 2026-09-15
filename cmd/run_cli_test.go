@@ -85,6 +85,27 @@ func TestRunCLISuccessExitsZeroWithCleanStderr(t *testing.T) {
 	}
 }
 
+func TestRunCLIAlertHelpRemainsAvailable_whenInteractiveModeIsDefault(t *testing.T) {
+	// Given
+	cfgPath := writeTempConfig(t)
+	viperResetForTest(t)
+	var stdout, stderr bytes.Buffer
+
+	// When
+	code := runCLI([]string{"--config", cfgPath, "alert", "--help"}, &stdout, &stderr)
+
+	// Then
+	if code != 0 {
+		t.Fatalf("exit code = %d, stderr: %s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "Available Commands:") || !strings.Contains(stdout.String(), "config") || !strings.Contains(stdout.String(), "usage alert config") {
+		t.Fatalf("help = %q, want alert subcommands", stdout.String())
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("stderr = %q, want empty", stderr.String())
+	}
+}
+
 func viperResetForTest(t *testing.T) {
 	t.Helper()
 	cfgFile = ""
