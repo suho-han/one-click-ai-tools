@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,25 +22,75 @@ type configToolStatus struct {
 }
 
 type configSnapshot struct {
-	ConfigFile             string             `json:"config_file"`
-	UsageDisplayMode       string             `json:"usage_display_mode"`
-	MenubarTitleMode       string             `json:"menubar_title_mode"`
-	MenubarRefreshInterval string             `json:"menubar_refresh_interval"`
-	SessionRefreshEnabled  bool               `json:"session_refresh_enabled"`
-	SessionRefreshInterval string             `json:"session_refresh_interval"`
-	SessionRefreshHour     int                `json:"session_refresh_hour"`
-	AgentOrder             []string           `json:"agent_order"`
-	Tools                  []configToolStatus `json:"tools"`
+	ConfigFile             string              `json:"config_file"`
+	UsageDisplayMode       string              `json:"usage_display_mode"`
+	MenubarTitleMode       string              `json:"menubar_title_mode"`
+	MenubarRefreshInterval string              `json:"menubar_refresh_interval"`
+	SessionRefreshEnabled  bool                `json:"session_refresh_enabled"`
+	SessionRefreshInterval string              `json:"session_refresh_interval"`
+	SessionRefreshHour     int                 `json:"session_refresh_hour"`
+	AgentOrder             []string            `json:"agent_order"`
+	Tools                  []configToolStatus  `json:"tools"`
+	Alert                  configAlertSnapshot `json:"alert"`
+}
+
+type configAlertSnapshot struct {
+	Enabled          bool                  `json:"enabled"`
+	ThresholdPercent float64               `json:"threshold_percent"`
+	CriticalPercent  float64               `json:"critical_percent"`
+	CooldownMinutes  int                   `json:"cooldown_minutes"`
+	QuietHours       string                `json:"quiet_hours"`
+	Timezone         string                `json:"timezone"`
+	Thresholds       configAlertThresholds `json:"thresholds"`
+}
+
+type configAlertThresholds struct {
+	Default   float64 `json:"default"`
+	FiveHours float64 `json:"5h"`
+	SevenDays float64 `json:"7d"`
 }
 
 type configUpdatePayload struct {
-	EnabledTools           []string `json:"enabled_tools"`
-	UsageDisplayMode       string   `json:"usage_display_mode"`
-	MenubarTitleMode       string   `json:"menubar_title_mode"`
-	SessionRefreshEnabled  *bool    `json:"session_refresh_enabled"`
-	SessionRefreshInterval string   `json:"session_refresh_interval"`
-	SessionRefreshHour     *int     `json:"session_refresh_hour"`
-	AgentOrder             []string `json:"agent_order"`
+	EnabledTools           []string                  `json:"enabled_tools"`
+	UsageDisplayMode       string                    `json:"usage_display_mode"`
+	MenubarTitleMode       string                    `json:"menubar_title_mode"`
+	SessionRefreshEnabled  *bool                     `json:"session_refresh_enabled"`
+	SessionRefreshInterval string                    `json:"session_refresh_interval"`
+	SessionRefreshHour     *int                      `json:"session_refresh_hour"`
+	AgentOrder             []string                  `json:"agent_order"`
+	Alert                  *configAlertUpdatePayload `json:"alert"`
+}
+
+type configAlertUpdatePayload struct {
+	Enabled          *bool                        `json:"enabled"`
+	ThresholdPercent *float64                     `json:"threshold_percent"`
+	CriticalPercent  *float64                     `json:"critical_percent"`
+	CooldownMinutes  *int                         `json:"cooldown_minutes"`
+	QuietHours       *string                      `json:"quiet_hours"`
+	Timezone         *string                      `json:"timezone"`
+	Thresholds       *configAlertThresholdPayload `json:"thresholds"`
+}
+
+type configAlertThresholdPayload struct {
+	Default   *float64 `json:"default"`
+	FiveHours *float64 `json:"5h"`
+	SevenDays *float64 `json:"7d"`
+}
+
+type configAlertUpdate struct {
+	Enabled          *bool
+	ThresholdPercent *float64
+	CriticalPercent  *float64
+	CooldownMinutes  *int
+	QuietHours       *string
+	Timezone         *string
+	Thresholds       *configAlertThresholdUpdate
+}
+
+type configAlertThresholdUpdate struct {
+	Default   *float64
+	FiveHours *float64
+	SevenDays *float64
 }
 
 func parseConfigUpdatePayload(raw string) (configUpdatePayload, error) {
@@ -149,6 +200,7 @@ func buildConfigSnapshot(configFile string) configSnapshot {
 		SessionRefreshHour:     normalizedConfigRefreshHour(viper.GetInt("session_refresh_hour")),
 		AgentOrder:             agentOrder,
 		Tools:                  tools,
+		Alert:                  buildConfigAlertSnapshot(),
 	}
 }
 
@@ -177,6 +229,10 @@ func applyConfigUpdate(payload configUpdatePayload) error {
 	if err != nil {
 		return err
 	}
+	alert, err := normalizeConfigAlertUpdate(payload.Alert)
+	if err != nil {
+		return err
+	}
 
 	if shouldSetTools {
 		viper.Set("enabled_tools", normalizedTools)
@@ -199,7 +255,150 @@ func applyConfigUpdate(payload configUpdatePayload) error {
 	if shouldSetHour {
 		viper.Set("session_refresh_hour", hour)
 	}
+	applyConfigAlertUpdate(alert)
 	return nil
+}
+
+func buildConfigAlertSnapshot() configAlertSnapshot {
+	alert := buildAlertConfigFromViper(viper.GetBool("usage_alert_enabled"))
+	return configAlertSnapshot{
+		Enabled:          alert.Enabled,
+		ThresholdPercent: alert.ThresholdPct,
+		CriticalPercent:  alert.CriticalPct,
+		CooldownMinutes:  alert.CooldownMinutes,
+		QuietHours:       alert.QuietHours,
+		Timezone:         alert.Timezone,
+		Thresholds: configAlertThresholds{
+			Default:   configAlertThreshold(alert.GlobalThresholds, "default", alert.ThresholdPct),
+			FiveHours: configAlertThreshold(alert.GlobalThresholds, "5h", alert.ThresholdPct),
+			SevenDays: configAlertThreshold(alert.GlobalThresholds, "7d", alert.ThresholdPct),
+		},
+	}
+}
+
+func configAlertThreshold(thresholds map[string]float64, window string, fallback float64) float64 {
+	if value, ok := thresholds[window]; ok && value > 0 {
+		return value
+	}
+	return fallback
+}
+
+func normalizeConfigAlertUpdate(payload *configAlertUpdatePayload) (configAlertUpdate, error) {
+	if payload == nil {
+		return configAlertUpdate{}, nil
+	}
+	thresholdPercent, err := normalizeConfigAlertPercent("threshold_percent", payload.ThresholdPercent)
+	if err != nil {
+		return configAlertUpdate{}, err
+	}
+	criticalPercent, err := normalizeConfigAlertPercent("critical_percent", payload.CriticalPercent)
+	if err != nil {
+		return configAlertUpdate{}, err
+	}
+	if payload.CooldownMinutes != nil && *payload.CooldownMinutes <= 0 {
+		return configAlertUpdate{}, fmt.Errorf("invalid cooldown_minutes %d: must be a positive integer", *payload.CooldownMinutes)
+	}
+
+	var quietHours *string
+	if payload.QuietHours != nil {
+		value := strings.TrimSpace(*payload.QuietHours)
+		if err := validateAlertQuietHours(value); err != nil {
+			return configAlertUpdate{}, err
+		}
+		quietHours = &value
+	}
+
+	var timezone *string
+	if payload.Timezone != nil {
+		value := strings.TrimSpace(*payload.Timezone)
+		if value != "" {
+			if _, err := time.LoadLocation(value); err != nil {
+				return configAlertUpdate{}, fmt.Errorf("invalid timezone %q: %w", value, err)
+			}
+		}
+		timezone = &value
+	}
+
+	thresholds, err := normalizeConfigAlertThresholds(payload.Thresholds)
+	if err != nil {
+		return configAlertUpdate{}, err
+	}
+	return configAlertUpdate{
+		Enabled:          payload.Enabled,
+		ThresholdPercent: thresholdPercent,
+		CriticalPercent:  criticalPercent,
+		CooldownMinutes:  payload.CooldownMinutes,
+		QuietHours:       quietHours,
+		Timezone:         timezone,
+		Thresholds:       thresholds,
+	}, nil
+}
+
+func normalizeConfigAlertPercent(name string, value *float64) (*float64, error) {
+	if value == nil {
+		return nil, nil
+	}
+	parsed, err := parseAlertPercent(name, strconv.FormatFloat(*value, 'f', -1, 64))
+	if err != nil {
+		return nil, err
+	}
+	return &parsed, nil
+}
+
+func normalizeConfigAlertThresholds(payload *configAlertThresholdPayload) (*configAlertThresholdUpdate, error) {
+	if payload == nil {
+		return nil, nil
+	}
+	defaultThreshold, err := normalizeConfigAlertPercent("thresholds.default", payload.Default)
+	if err != nil {
+		return nil, err
+	}
+	fiveHours, err := normalizeConfigAlertPercent("thresholds.5h", payload.FiveHours)
+	if err != nil {
+		return nil, err
+	}
+	sevenDays, err := normalizeConfigAlertPercent("thresholds.7d", payload.SevenDays)
+	if err != nil {
+		return nil, err
+	}
+	return &configAlertThresholdUpdate{
+		Default:   defaultThreshold,
+		FiveHours: fiveHours,
+		SevenDays: sevenDays,
+	}, nil
+}
+
+func applyConfigAlertUpdate(alert configAlertUpdate) {
+	if alert.Enabled != nil {
+		viper.Set("usage_alert_enabled", *alert.Enabled)
+	}
+	if alert.ThresholdPercent != nil {
+		viper.Set("usage_alert_threshold_percent", *alert.ThresholdPercent)
+	}
+	if alert.CriticalPercent != nil {
+		viper.Set("usage_alert_critical_percent", *alert.CriticalPercent)
+	}
+	if alert.CooldownMinutes != nil {
+		viper.Set("usage_alert_cooldown_minutes", *alert.CooldownMinutes)
+	}
+	if alert.QuietHours != nil {
+		viper.Set("usage_alert_quiet_hours", *alert.QuietHours)
+	}
+	if alert.Timezone != nil {
+		viper.Set("usage_alert_timezone", *alert.Timezone)
+	}
+	if alert.Thresholds == nil {
+		return
+	}
+	if alert.Thresholds.Default != nil {
+		viper.Set("usage_alert_thresholds.default", *alert.Thresholds.Default)
+	}
+	if alert.Thresholds.FiveHours != nil {
+		viper.Set("usage_alert_thresholds.5h", *alert.Thresholds.FiveHours)
+	}
+	if alert.Thresholds.SevenDays != nil {
+		viper.Set("usage_alert_thresholds.7d", *alert.Thresholds.SevenDays)
+	}
 }
 
 func configToolEnabled(enabledTools []string, tool update.Tool) bool {
