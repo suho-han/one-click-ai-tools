@@ -119,19 +119,10 @@ func TestInitConfig_IgnoresNonPrefixedEnabledToolsEnv(t *testing.T) {
 }
 
 func TestInitConfigSessionRefreshDefaults(t *testing.T) {
-	tmpHome := t.TempDir()
-	oldHome := os.Getenv("HOME")
-	if err := os.Setenv("HOME", tmpHome); err != nil {
-		t.Fatalf("set HOME failed: %v", err)
-	}
+	isolateTestHome(t, t.TempDir())
 	cfgFile = ""
 	viper.Reset()
 	defer func() {
-		if oldHome == "" {
-			_ = os.Unsetenv("HOME")
-		} else {
-			_ = os.Setenv("HOME", oldHome)
-		}
 		cfgFile = ""
 		viper.Reset()
 	}()

@@ -8,10 +8,18 @@ import (
 	"testing"
 )
 
+// isolateTestHome points os.UserHomeDir at a temp dir on every platform:
+// windows reads USERPROFILE, unix reads HOME.
+func isolateTestHome(t *testing.T, dir string) {
+	t.Helper()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
+}
+
 func TestCompletionInstallCreatesUserOwnedScript_whenShellRequested(t *testing.T) {
 	// Given
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	isolateTestHome(t, home)
 	cfgPath := writeTempConfig(t)
 	viperResetForTest(t)
 
@@ -47,7 +55,7 @@ func TestCompletionInstallCreatesUserOwnedScript_whenShellRequested(t *testing.T
 func TestCompletionUninstallRemovesInstalledScriptAndProfileBlock_whenShellRequested(t *testing.T) {
 	// Given
 	home := t.TempDir()
-	t.Setenv("HOME", home)
+	isolateTestHome(t, home)
 	cfgPath := writeTempConfig(t)
 	viperResetForTest(t)
 	profilePath := filepath.Join(home, ".zshrc")
