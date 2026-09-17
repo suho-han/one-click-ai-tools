@@ -532,3 +532,24 @@ func TestApplyConfigUpdateKeepsStandaloneProviders(t *testing.T) {
 		t.Fatal("applyConfigUpdate accepted unknown provider")
 	}
 }
+
+func TestBuildConfigAlertSnapshot_InheritsGlobalDefaultForWindows_whenWindowOverridesAbsent(t *testing.T) {
+	// Given: the Swift settings payload always sends the complete alert object,
+	// so reporting the legacy percent for 5h/7d would persist it as an explicit
+	// override on save; report the inherited default instead.
+	t.Cleanup(viper.Reset)
+	viper.Reset()
+	viper.Set("usage_alert_threshold_percent", 70.0)
+	viper.Set("usage_alert_thresholds", map[string]any{"default": 65.0})
+
+	// When
+	got := buildConfigAlertSnapshot()
+
+	// Then
+	if got.Thresholds.Default != 65 {
+		t.Fatalf("Default = %v, want 65", got.Thresholds.Default)
+	}
+	if got.Thresholds.FiveHours != 65 || got.Thresholds.SevenDays != 65 {
+		t.Fatalf("5h/7d = %v/%v, want inherited default 65", got.Thresholds.FiveHours, got.Thresholds.SevenDays)
+	}
+}

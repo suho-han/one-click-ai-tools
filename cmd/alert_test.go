@@ -108,26 +108,6 @@ func TestAlertSettingsModel_AcceptsTimezoneWithoutCancelKey_whenEditingString(t 
 	}
 }
 
-func TestAlertSettingsModel_CancelsEditing_whenLowercaseQPressed(t *testing.T) {
-	// Given
-	viper.Reset()
-	t.Cleanup(viper.Reset)
-	m := newAlertSettingsModel(alertSettingsDraftFromViper())
-	m.items[1].cursor = true
-	m.items[0].cursor = false
-	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m = updated.(alertSettingsModel)
-
-	// When
-	updated, command := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
-	m = updated.(alertSettingsModel)
-
-	// Then
-	if !m.cancelled || !m.done || command == nil {
-		t.Fatalf("cancel state = cancelled:%t done:%t command:%t", m.cancelled, m.done, command != nil)
-	}
-}
-
 func TestAlertSettingsModel_EscKeepsCurrentValue_whenEditingString(t *testing.T) {
 	// Given
 	viper.Reset()
@@ -563,5 +543,57 @@ func TestAlertPriorityLabel(t *testing.T) {
 	}
 	if got := alertPriorityLabel(89, 90, 98); got != "NORMAL" {
 		t.Fatalf("expected NORMAL, got %s", got)
+	}
+}
+
+func TestAlertSettingsDraft_InheritsGlobalDefaultForWindows_whenWindowOverridesAbsent(t *testing.T) {
+	// Given: runtime evaluation falls back window -> default -> legacy percent,
+	// so the draft must display the inherited default, not the legacy percent.
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	viper.Set("usage_alert_threshold_percent", 70.0)
+	viper.Set("usage_alert_thresholds", map[string]any{"default": 65.0})
+
+	// When
+	draft := alertSettingsDraftFromViper()
+
+	// Then
+	for _, key := range []string{"threshold.default", "threshold.5h", "threshold.7d"} {
+		if got := draft.values[key]; got != "65" {
+			t.Fatalf("%s = %q, want inherited default 65", key, got)
+		}
+	}
+}
+
+func TestAlertSettingsModel_InsertsQWhileEditing_andCancelsOnlyFromNavigation(t *testing.T) {
+	// Given
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	m := newAlertSettingsModel(alertSettingsDraftFromViper())
+	for i := range m.items {
+		m.items[i].cursor = m.items[i].key == "timezone"
+	}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(alertSettingsModel)
+
+	// When: a timezone such as Pacific/Marquesas contains "q".
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	m = updated.(alertSettingsModel)
+
+	// Then
+	if m.cancelled {
+		t.Fatal("q while editing cancelled the form; want insertion")
+	}
+	if m.editingValue != "q" {
+		t.Fatalf("editingValue = %q, want q", m.editingValue)
+	}
+
+	// When editing is dismissed, plain q cancels again.
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(alertSettingsModel)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
+	m = updated.(alertSettingsModel)
+	if !m.cancelled || !m.done {
+		t.Fatalf("q from navigation = cancelled:%t done:%t, want cancel", m.cancelled, m.done)
 	}
 }
