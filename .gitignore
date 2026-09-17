@@ -19,3 +19,4 @@ macos/OctMenubar/.build/
 
 # Local agent workspace config
 .zcode/
+.codex/
