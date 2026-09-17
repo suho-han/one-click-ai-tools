@@ -55,6 +55,10 @@ func alertSettingsDraftFromViper() alertSettingsDraft {
 	if threshold <= 0 {
 		threshold = 80
 	}
+	// Runtime evaluation inherits 5h/7d windows from the global default
+	// (thresholdFor: window -> default -> legacy percent), so the draft must
+	// show the same inherited value instead of the legacy percent.
+	effectiveDefault := alertThresholdOrDefault(cfg.GlobalThresholds, "default", threshold)
 	values := map[string]string{
 		"enabled":           strconv.FormatBool(cfg.Enabled),
 		"threshold_percent": formatAlertSettingNumber(threshold),
@@ -62,9 +66,9 @@ func alertSettingsDraftFromViper() alertSettingsDraft {
 		"cooldown_minutes":  strconv.Itoa(cfg.CooldownMinutes),
 		"quiet_hours":       cfg.QuietHours,
 		"timezone":          cfg.Timezone,
-		"threshold.default": formatAlertSettingNumber(alertThresholdOrDefault(cfg.GlobalThresholds, "default", threshold)),
-		"threshold.5h":      formatAlertSettingNumber(alertThresholdOrDefault(cfg.GlobalThresholds, "5h", threshold)),
-		"threshold.7d":      formatAlertSettingNumber(alertThresholdOrDefault(cfg.GlobalThresholds, "7d", threshold)),
+		"threshold.default": formatAlertSettingNumber(effectiveDefault),
+		"threshold.5h":      formatAlertSettingNumber(alertThresholdOrDefault(cfg.GlobalThresholds, "5h", effectiveDefault)),
+		"threshold.7d":      formatAlertSettingNumber(alertThresholdOrDefault(cfg.GlobalThresholds, "7d", effectiveDefault)),
 	}
 	if cfg.CriticalPct <= 0 {
 		values["critical_percent"] = "98"
@@ -102,13 +106,20 @@ func (m alertSettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.applyWindowSize(msg.Height)
 	case tea.KeyMsg:
-		if msg.String() == "q" || msg.String() == "ctrl+c" || msg.String() == "ctrl+q" {
+		if msg.String() == "ctrl+c" || msg.String() == "ctrl+q" {
 			m.cancelled = true
 			m.done = true
 			return m, tea.Quit
 		}
 		if m.editing {
+			// Plain "q" must reach updateEdit so values like timezones can
+			// contain it; cancellation while editing stays on the ctrl keys.
 			return m.updateEdit(msg)
+		}
+		if msg.String() == "q" {
+			m.cancelled = true
+			m.done = true
+			return m, tea.Quit
 		}
 		switch msg.String() {
 		case "up":

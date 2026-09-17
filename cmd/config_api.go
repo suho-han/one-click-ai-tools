@@ -261,6 +261,11 @@ func applyConfigUpdate(payload configUpdatePayload) error {
 
 func buildConfigAlertSnapshot() configAlertSnapshot {
 	alert := buildAlertConfigFromViper(viper.GetBool("usage_alert_enabled"))
+	// Runtime evaluation inherits 5h/7d windows from the global default
+	// (thresholdFor: window -> default -> legacy percent). The Swift settings
+	// payload always sends the complete alert object, so reporting the legacy
+	// percent here would persist it as an explicit window override on save.
+	effectiveDefault := configAlertThreshold(alert.GlobalThresholds, "default", alert.ThresholdPct)
 	return configAlertSnapshot{
 		Enabled:          alert.Enabled,
 		ThresholdPercent: alert.ThresholdPct,
@@ -269,9 +274,9 @@ func buildConfigAlertSnapshot() configAlertSnapshot {
 		QuietHours:       alert.QuietHours,
 		Timezone:         alert.Timezone,
 		Thresholds: configAlertThresholds{
-			Default:   configAlertThreshold(alert.GlobalThresholds, "default", alert.ThresholdPct),
-			FiveHours: configAlertThreshold(alert.GlobalThresholds, "5h", alert.ThresholdPct),
-			SevenDays: configAlertThreshold(alert.GlobalThresholds, "7d", alert.ThresholdPct),
+			Default:   effectiveDefault,
+			FiveHours: configAlertThreshold(alert.GlobalThresholds, "5h", effectiveDefault),
+			SevenDays: configAlertThreshold(alert.GlobalThresholds, "7d", effectiveDefault),
 		},
 	}
 }
