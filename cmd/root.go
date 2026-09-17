@@ -16,8 +16,8 @@ var cfgFile string
 
 var rootCmd = &cobra.Command{
 	Use:     "oct",
-	Short:   "One-Click Tools for AI Engineers",
-	Long:    `A high-performance CLI tool to manage and update AI-related command-line tools across different platforms.`,
+	Short:   "One binary that organizes your AI coding CLIs",
+	Long:    `One binary that organizes your AI coding CLIs — update them all, watch every quota plan, schedule the maintenance.`,
 	Version: "0.1.6-beta.2",
 	CompletionOptions: cobra.CompletionOptions{
 		DisableDefaultCmd: true,
