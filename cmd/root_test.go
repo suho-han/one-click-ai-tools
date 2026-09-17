@@ -23,7 +23,7 @@ func TestRootCommand(t *testing.T) {
 	}
 
 	out := b.String()
-	if !contains(out, "A high-performance CLI tool") {
+	if !contains(out, "One binary that organizes your AI coding CLIs") {
 		t.Errorf("expected help message to contain description, got: %s", out)
 	}
 	if !contains(out, "agent-update") {
