@@ -98,13 +98,7 @@ func addCompletionProfileBlock(profilePath, sourceLine string) error {
 		body += "\n"
 	}
 	body += completionBlockStart + "\n" + sourceLine + "\n" + completionBlockEnd + "\n"
-	if err := os.MkdirAll(filepath.Dir(profilePath), 0o755); err != nil {
-		return fmt.Errorf("create shell profile directory: %w", err)
-	}
-	if err := os.WriteFile(profilePath, []byte(body), 0o644); err != nil {
-		return fmt.Errorf("write shell profile: %w", err)
-	}
-	return nil
+	return writeProfileFile(profilePath, []byte(body))
 }
 
 func removeCompletionProfileBlock(profilePath string) error {
@@ -115,9 +109,39 @@ func removeCompletionProfileBlock(profilePath string) error {
 	if err != nil {
 		return fmt.Errorf("read shell profile: %w", err)
 	}
-	body := removeManagedBlock(string(data))
-	if err := os.WriteFile(profilePath, []byte(body), 0o644); err != nil {
+	return writeProfileFile(profilePath, []byte(removeManagedBlock(string(data))))
+}
+
+// writeProfileFile replaces a shell startup file atomically: the replacement
+// is fully written to a sibling temp file before the rename, so a failed
+// write (e.g. out of space) leaves the user's existing profile intact.
+func writeProfileFile(profilePath string, body []byte) error {
+	dir := filepath.Dir(profilePath)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("create shell profile directory: %w", err)
+	}
+	tmp, err := os.CreateTemp(dir, filepath.Base(profilePath)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("create shell profile temp file: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if _, err := tmp.Write(body); err != nil {
+		tmp.Close()
 		return fmt.Errorf("write shell profile: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return fmt.Errorf("write shell profile: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("write shell profile: %w", err)
+	}
+	if err := os.Chmod(tmpName, 0o644); err != nil {
+		return fmt.Errorf("set shell profile permissions: %w", err)
+	}
+	if err := os.Rename(tmpName, profilePath); err != nil {
+		return fmt.Errorf("replace shell profile: %w", err)
 	}
 	return nil
 }

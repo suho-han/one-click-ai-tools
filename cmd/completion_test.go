@@ -91,6 +91,32 @@ func TestCompletionUninstallRemovesInstalledScriptAndProfileBlock_whenShellReque
 	}
 }
 
+func TestCompletionInstall_LeavesNoTempFilesBehind_whenProfileRewritten(t *testing.T) {
+	// Given: profiles are replaced via temp file + rename, so a completed
+	// install must not leave sibling temp files in the user's home.
+	home := t.TempDir()
+	isolateTestHome(t, home)
+	cfgPath := writeTempConfig(t)
+	viperResetForTest(t)
+
+	// When
+	var stdout, stderr bytes.Buffer
+	if code := runCLI([]string{"--config", cfgPath, "completion", "install", "zsh"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("install exit = %d, stderr: %s", code, stderr.String())
+	}
+
+	// Then
+	entries, err := os.ReadDir(home)
+	if err != nil {
+		t.Fatalf("read home: %v", err)
+	}
+	for _, entry := range entries {
+		if strings.Contains(entry.Name(), ".tmp-") {
+			t.Fatalf("temp file %q left behind in home", entry.Name())
+		}
+	}
+}
+
 func TestCompletionSourceLineQuotesPaths_whenShellUsesDifferentEscapes(t *testing.T) {
 	// Given
 	zshShell, err := parseCompletionShell("zsh")

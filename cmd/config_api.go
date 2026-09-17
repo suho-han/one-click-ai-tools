@@ -261,16 +261,31 @@ func applyConfigUpdate(payload configUpdatePayload) error {
 
 func buildConfigAlertSnapshot() configAlertSnapshot {
 	alert := buildAlertConfigFromViper(viper.GetBool("usage_alert_enabled"))
+	// Match alert evaluation's effective defaults: a config explicitly storing
+	// 0 is treated as unset, and normalizeConfigAlertUpdate rejects 0, so a
+	// raw snapshot would deadlock every menubar save until repaired by hand.
+	threshold := alert.ThresholdPct
+	if threshold <= 0 {
+		threshold = 80
+	}
+	critical := alert.CriticalPct
+	if critical <= 0 {
+		critical = 98
+	}
+	cooldown := alert.CooldownMinutes
+	if cooldown <= 0 {
+		cooldown = 360
+	}
 	// Runtime evaluation inherits 5h/7d windows from the global default
 	// (thresholdFor: window -> default -> legacy percent). The Swift settings
 	// payload always sends the complete alert object, so reporting the legacy
 	// percent here would persist it as an explicit window override on save.
-	effectiveDefault := configAlertThreshold(alert.GlobalThresholds, "default", alert.ThresholdPct)
+	effectiveDefault := configAlertThreshold(alert.GlobalThresholds, "default", threshold)
 	return configAlertSnapshot{
 		Enabled:          alert.Enabled,
-		ThresholdPercent: alert.ThresholdPct,
-		CriticalPercent:  alert.CriticalPct,
-		CooldownMinutes:  alert.CooldownMinutes,
+		ThresholdPercent: threshold,
+		CriticalPercent:  critical,
+		CooldownMinutes:  cooldown,
 		QuietHours:       alert.QuietHours,
 		Timezone:         alert.Timezone,
 		Thresholds: configAlertThresholds{
