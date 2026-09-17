@@ -1,8 +1,7 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @AppStorage(MenubarPreferences.useProviderAccentColorsKey) private var useProviderAccentColors = true
-    @State private var selectedTab: SettingsTab = .general
+    @State private var selectedTab: SettingsTab = .configuration
     @State private var lastActionFeedback: SettingsFeedback?
     @ObservedObject var configurationStore: ConfigurationStore
 
@@ -37,8 +36,6 @@ struct SettingsView: View {
 
             Group {
                 switch selectedTab {
-                case .general:
-                    SettingsGeneralTab(useProviderAccentColors: $useProviderAccentColors)
                 case .configuration:
                     SettingsConfigurationTab(
                         configDraft: $configurationStore.draft,

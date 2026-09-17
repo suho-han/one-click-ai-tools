@@ -61,12 +61,12 @@ oct usage --json     # for scripts/pipes
 
 | Step | Command | What it does |
 | --- | --- | --- |
-| Setup | `oct config` | pick tools/providers, usage display mode (interactive) |
+| Setup | `oct config` | pick tools/providers and usage display settings (interactive; notifications are separate) |
 | Update | `oct agent-update` | update every installed AI CLI (`--dry-run --explain` to preview) |
 | Watch | `oct usage` | one-shot quota snapshot (`--json`, `--compact`, `--notify`) |
 | Watch | `oct monitor` | always-on refreshing screen (`--interval`, `--once`, sort/filter) |
 | Watch | `oct menubar` | persistent macOS menu bar display |
-| Alert | `oct alert` | OS notifications on thresholds (quiet hours, snooze) |
+| Alert | `oct alert` | bare command opens arrow/key-based interactive alert setup; supports `config`, provider thresholds, `test`, and `snooze` |
 | Schedule | `oct schedule` | register agent-update / session-refresh with the OS scheduler |
 | Schedule | `oct session-refresh` | probe session/auth state without sending prompts (`--dry-run`) |
 | Diagnostics | `oct doctor` | shell PATH / bootstrap diagnostics |
@@ -95,10 +95,16 @@ oct usage --notify               # send alerts per threshold/cooldown rules
 oct monitor --interval 10s       # always-on view, 10s refresh
 oct monitor --once --sort-by used --desc --top 5 --compact
 
+# bare command: arrow/key-based interactive alert setup
+oct alert
+
+# advanced alert controls remain under oct alert
 oct alert config show
 oct alert config set enabled true
 oct alert config set threshold_percent 85
 oct alert config set quiet_hours 00:00-08:00
+oct alert config set-provider-threshold 5h 90 --provider codex
+oct alert test --provider codex --window 5h --value 91
 oct alert snooze set --duration 2h
 ```
 
@@ -136,6 +142,8 @@ These are plan/account services with no installable CLI; `oct usage` reports the
 ## Menubar helper (macOS)
 
 The Swift menubar helper can be built and installed separately.
+
+In the menubar app's Settings, General is merged into the Configuration screen. Its alert section exposes only safe global alert settings; it does not expose provider-specific thresholds or snooze controls. Use `oct alert config ...` and `oct alert snooze ...` for those advanced controls.
 
 ```bash
 oct menubar                # run the menu bar app

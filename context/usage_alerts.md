@@ -37,7 +37,14 @@ Threshold precedence:
 
 ## CLI
 
+Run `oct alert` without a subcommand for the interactive arrow/key-based alert setup.
+Use `oct config` for provider and usage-display configuration; it does not configure notifications.
+The advanced alert controls remain under `oct alert config ...`, including provider-specific thresholds, while `oct alert test ...` evaluates synthetic input and `oct alert snooze ...` manages snoozes.
+In macOS menubar Settings, common alert controls are under Configuration, where the former General tab is merged.
+
 ```bash
+oct alert
+
 oct alert config show
 
 oct alert config set enabled true

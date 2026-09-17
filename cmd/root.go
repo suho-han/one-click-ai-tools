@@ -16,9 +16,12 @@ var cfgFile string
 
 var rootCmd = &cobra.Command{
 	Use:     "oct",
-	Short:   "One-Click Tools for AI Engineers",
-	Long:    `A high-performance CLI tool to manage and update AI-related command-line tools across different platforms.`,
+	Short:   "One binary that organizes your AI coding CLIs",
+	Long:    `One binary that organizes your AI coding CLIs — update them all, watch every quota plan, schedule the maintenance.`,
 	Version: "0.1.6-beta.2",
+	CompletionOptions: cobra.CompletionOptions{
+		DisableDefaultCmd: true,
+	},
 	// Errors are reported once by runCLI/Execute on stderr; cobra must not
 	// print them (or usage) itself.
 	SilenceErrors: true,
@@ -48,14 +51,111 @@ func Execute() {
 func init() {
 	cobra.EnableCommandSorting = false
 	cobra.OnInitialize(initConfig)
+	cobra.AddTemplateFunc("commandHelpLine", commandHelpLine)
 
 	rootCmd.AddGroup(
-		&cobra.Group{ID: "core", Title: "Core Commands (frequently used)"},
-		&cobra.Group{ID: "manage", Title: "Configuration & Scheduling"},
-		&cobra.Group{ID: "maintenance", Title: "Update & Maintenance"},
+		&cobra.Group{ID: "core", Title: "⚡ Core Commands (frequently used)"},
+		&cobra.Group{ID: "manage", Title: "⚙️ Configuration & Scheduling"},
+		&cobra.Group{ID: "maintenance", Title: "🛠️ Update & Maintenance"},
+		&cobra.Group{ID: "help", Title: "🧭 Help & Shell"},
 	)
+	rootCmd.SetHelpCommand(newRootHelpCommand())
+	rootCmd.SetUsageTemplate(rootUsageTemplate)
 
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default is $HOME/.oct/config.yaml)")
+}
+
+const rootUsageTemplate = `Usage:{{if .Runnable}}
+  {{.UseLine}}{{end}}{{if .HasAvailableSubCommands}}
+  {{.CommandPath}} [command]{{end}}{{if gt (len .Aliases) 0}}
+
+Aliases:
+  {{.NameAndAliases}}{{end}}{{if .HasExample}}
+
+Examples:
+{{.Example}}{{end}}{{if .HasAvailableSubCommands}}{{$cmds := .Commands}}{{if eq (len .Groups) 0}}
+
+Available Commands:{{range $cmds}}{{if (or .IsAvailableCommand (eq .Name "help"))}}
+  {{commandHelpLine .}}{{end}}{{end}}{{else}}{{range $group := .Groups}}
+
+{{.Title}}{{range $cmds}}{{if (and (eq .GroupID $group.ID) (or .IsAvailableCommand (eq .Name "help")))}}
+  {{commandHelpLine .}}{{end}}{{end}}{{end}}{{if not .AllChildCommandsHaveGroup}}
+
+Additional Commands:{{range $cmds}}{{if (and (eq .GroupID "") (or .IsAvailableCommand (eq .Name "help")))}}
+  {{commandHelpLine .}}{{end}}{{end}}{{end}}{{end}}{{end}}{{if .HasAvailableLocalFlags}}
+
+Flags:
+{{.LocalFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasAvailableInheritedFlags}}
+
+Global Flags:
+{{.InheritedFlags.FlagUsages | trimTrailingWhitespaces}}{{end}}{{if .HasHelpSubCommands}}
+
+Additional help topics:{{range .Commands}}{{if .IsAdditionalHelpTopicCommand}}
+  {{rpad .CommandPath .CommandPathPadding}} {{.Short}}{{end}}{{end}}{{end}}{{if .HasAvailableSubCommands}}
+
+Use "{{.CommandPath}} [command] --help" for more information about a command.{{end}}
+`
+
+func commandHelpLine(cmd *cobra.Command) string {
+	emoji, description := splitHelpEmoji(cmd.Short)
+	name := fmt.Sprintf("%-*s", cmd.NamePadding(), cmd.Name())
+	if emoji == "" {
+		return fmt.Sprintf("%s %s", name, description)
+	}
+	return fmt.Sprintf("%s%s %s", emoji, name, description)
+}
+
+func splitHelpEmoji(short string) (string, string) {
+	emoji, description, ok := strings.Cut(short, " ")
+	if !ok {
+		return "", short
+	}
+	for _, r := range emoji {
+		if r > 127 {
+			return emoji, description
+		}
+	}
+	return "", short
+}
+
+func newRootHelpCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:     "help [command]",
+		GroupID: "help",
+		Short:   "❓ Help about any command",
+		Long: `Help provides help for any command in the application.
+Simply type oct help [path to command] for full details.`,
+		ValidArgsFunction: func(c *cobra.Command, args []string, toComplete string) ([]cobra.Completion, cobra.ShellCompDirective) {
+			var completions []cobra.Completion
+			cmd, _, err := c.Root().Find(args)
+			if err != nil {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			if cmd == nil {
+				cmd = c.Root()
+			}
+			for _, subCmd := range cmd.Commands() {
+				if (subCmd.IsAvailableCommand() || subCmd.Name() == "help") && strings.HasPrefix(subCmd.Name(), toComplete) {
+					completions = append(completions, cobra.CompletionWithDesc(subCmd.Name(), subCmd.Short))
+				}
+			}
+			return completions, cobra.ShellCompDirectiveNoFileComp
+		},
+		Run: func(c *cobra.Command, args []string) {
+			cmd, _, err := c.Root().Find(args)
+			if cmd == nil || err != nil {
+				c.Printf("Unknown help topic %#q\n", args)
+				cobra.CheckErr(c.Root().Usage())
+				return
+			}
+			if cmd.Context() == nil {
+				cmd.SetContext(c.Context())
+			}
+			cmd.InitDefaultHelpFlag()
+			cmd.InitDefaultVersionFlag()
+			cobra.CheckErr(cmd.Help())
+		},
+	}
 }
 
 func reorderRootCommands() {

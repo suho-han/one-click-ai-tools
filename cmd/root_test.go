@@ -23,7 +23,7 @@ func TestRootCommand(t *testing.T) {
 	}
 
 	out := b.String()
-	if !contains(out, "A high-performance CLI tool") {
+	if !contains(out, "One binary that organizes your AI coding CLIs") {
 		t.Errorf("expected help message to contain description, got: %s", out)
 	}
 	if !contains(out, "agent-update") {
@@ -37,6 +37,33 @@ func TestRootCommand(t *testing.T) {
 	}
 	if !contains(out, "menubar") {
 		t.Errorf("expected help to include menubar command, got: %s", out)
+	}
+	if !contains(out, "⚡ Core Commands") {
+		t.Errorf("expected help to include core category emoji, got: %s", out)
+	}
+	if !contains(out, "⚙️ Configuration & Scheduling") {
+		t.Errorf("expected help to include configuration category emoji, got: %s", out)
+	}
+	if !contains(out, "🛠️ Update & Maintenance") {
+		t.Errorf("expected help to include maintenance category emoji, got: %s", out)
+	}
+	if !contains(out, "🧭 Help & Shell") {
+		t.Errorf("expected help to include help category emoji, got: %s", out)
+	}
+	if !contains(out, "📊usage") {
+		t.Errorf("expected help to include usage command emoji, got: %s", out)
+	}
+	if !contains(out, "🔄agent-update") {
+		t.Errorf("expected help to include agent-update command emoji before name, got: %s", out)
+	}
+	if contains(out, "agent-update    🔄") {
+		t.Errorf("expected help to omit command-name-before-emoji order, got: %s", out)
+	}
+	if !contains(out, "🧩completion") {
+		t.Errorf("expected help to include completion command emoji, got: %s", out)
+	}
+	if !contains(out, "❓help") {
+		t.Errorf("expected help to include help command emoji, got: %s", out)
 	}
 }
 
@@ -92,19 +119,10 @@ func TestInitConfig_IgnoresNonPrefixedEnabledToolsEnv(t *testing.T) {
 }
 
 func TestInitConfigSessionRefreshDefaults(t *testing.T) {
-	tmpHome := t.TempDir()
-	oldHome := os.Getenv("HOME")
-	if err := os.Setenv("HOME", tmpHome); err != nil {
-		t.Fatalf("set HOME failed: %v", err)
-	}
+	isolateTestHome(t, t.TempDir())
 	cfgFile = ""
 	viper.Reset()
 	defer func() {
-		if oldHome == "" {
-			_ = os.Unsetenv("HOME")
-		} else {
-			_ = os.Setenv("HOME", oldHome)
-		}
 		cfgFile = ""
 		viper.Reset()
 	}()

@@ -26,7 +26,7 @@ type releaseDoctorReport struct {
 var releaseDoctorCmd = &cobra.Command{
 	Use:     "release-doctor",
 	GroupID: "maintenance",
-	Short:   "Check release preflight in one compact report",
+	Short:   "🧪 Check release preflight in one compact report",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		jsonMode, _ := cmd.Flags().GetBool("json")
 		report := collectReleaseDoctorReport(cmd.Context())

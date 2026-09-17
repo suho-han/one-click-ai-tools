@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"encoding/json"
+	"math"
+	"strconv"
 	"testing"
 
 	"github.com/spf13/viper"
@@ -179,6 +181,183 @@ func intPtr(value int) *int {
 	return &value
 }
 
+func floatPtr(value float64) *float64 {
+	return &value
+}
+
+func TestConfigSnapshot_marshalJSONIncludesSafeAlertSettings(t *testing.T) {
+	t.Cleanup(viper.Reset)
+	viper.Reset()
+	viper.Set("usage_alert_enabled", true)
+	viper.Set("usage_alert_threshold_percent", 80.0)
+	viper.Set("usage_alert_critical_percent", 98.0)
+	viper.Set("usage_alert_cooldown_minutes", 120)
+	viper.Set("usage_alert_quiet_hours", "00:00-08:00")
+	viper.Set("usage_alert_timezone", "Asia/Seoul")
+	viper.Set("usage_alert_thresholds", map[string]any{
+		"default": 80,
+		"5h":      85,
+		"7d":      90,
+	})
+	viper.Set("usage_alert_provider_thresholds", map[string]map[string]float64{"codex": {"5h": 95}})
+	viper.Set("usage_alert_state_path", "/private/state.json")
+
+	data, err := json.Marshal(buildConfigSnapshot("/tmp/oct.yaml"))
+	if err != nil {
+		t.Fatalf("marshal snapshot: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatalf("decode snapshot: %v", err)
+	}
+
+	alert, ok := decoded["alert"].(map[string]any)
+	if !ok {
+		t.Fatalf("snapshot JSON missing alert object: %s", data)
+	}
+	if got, want := alert["enabled"], true; got != want {
+		t.Fatalf("alert.enabled = %#v, want %v", got, want)
+	}
+	if got, want := alert["threshold_percent"], 80.0; got != want {
+		t.Fatalf("alert.threshold_percent = %#v, want %v", got, want)
+	}
+	thresholds, ok := alert["thresholds"].(map[string]any)
+	if !ok {
+		t.Fatalf("alert.thresholds = %#v, want object", alert["thresholds"])
+	}
+	for key, want := range map[string]float64{"default": 80, "5h": 85, "7d": 90} {
+		if got := thresholds[key]; got != want {
+			t.Fatalf("alert.thresholds.%s = %#v, want %v", key, got, want)
+		}
+	}
+	for _, forbidden := range []string{"provider_thresholds", "state_path", "snooze_state", "token", "private"} {
+		if _, ok := alert[forbidden]; ok {
+			t.Fatalf("alert JSON leaked forbidden key %q: %s", forbidden, data)
+		}
+	}
+}
+
+func TestConfigUpdatePayload_applyConfigUpdatePersistsAlertSettings(t *testing.T) {
+	t.Cleanup(viper.Reset)
+	viper.Reset()
+
+	payload, err := parseConfigUpdatePayload(`{"alert":{"enabled":true,"threshold_percent":85,"critical_percent":98,"cooldown_minutes":120,"quiet_hours":"00:00-08:00","timezone":"Asia/Seoul","thresholds":{"default":80,"5h":85,"7d":90}}}`)
+	if err != nil {
+		t.Fatalf("parseConfigUpdatePayload() error = %v", err)
+	}
+	if err := applyConfigUpdate(payload); err != nil {
+		t.Fatalf("applyConfigUpdate() error = %v", err)
+	}
+
+	if got := viper.GetBool("usage_alert_enabled"); !got {
+		t.Fatal("usage_alert_enabled = false, want true")
+	}
+	if got := viper.GetFloat64("usage_alert_threshold_percent"); got != 85 {
+		t.Fatalf("usage_alert_threshold_percent = %v, want 85", got)
+	}
+	if got := viper.GetFloat64("usage_alert_critical_percent"); got != 98 {
+		t.Fatalf("usage_alert_critical_percent = %v, want 98", got)
+	}
+	if got := viper.GetInt("usage_alert_cooldown_minutes"); got != 120 {
+		t.Fatalf("usage_alert_cooldown_minutes = %d, want 120", got)
+	}
+	if got := viper.GetString("usage_alert_quiet_hours"); got != "00:00-08:00" {
+		t.Fatalf("usage_alert_quiet_hours = %q, want 00:00-08:00", got)
+	}
+	if got := viper.GetString("usage_alert_timezone"); got != "Asia/Seoul" {
+		t.Fatalf("usage_alert_timezone = %q, want Asia/Seoul", got)
+	}
+	for key, want := range map[string]float64{"default": 80, "5h": 85, "7d": 90} {
+		if got := viper.GetFloat64("usage_alert_thresholds." + key); got != want {
+			t.Fatalf("usage_alert_thresholds.%s = %v, want %v", key, got, want)
+		}
+	}
+}
+
+func TestConfigUpdatePayload_rejectsInvalidAlertWithoutMutation(t *testing.T) {
+	invalidPayloads := map[string]string{
+		"percent":     `{"usage_display_mode":"used","alert":{"threshold_percent":101}}`,
+		"cooldown":    `{"usage_display_mode":"used","alert":{"cooldown_minutes":0}}`,
+		"quiet hours": `{"usage_display_mode":"used","alert":{"quiet_hours":"25:00-08:00"}}`,
+		"timezone":    `{"usage_display_mode":"used","alert":{"timezone":"Mars/Olympus"}}`,
+	}
+
+	for name, raw := range invalidPayloads {
+		t.Run(name, func(t *testing.T) {
+			t.Cleanup(viper.Reset)
+			viper.Reset()
+			viper.Set("usage_alert_threshold_percent", 80.0)
+			viper.Set("usage_alert_cooldown_minutes", 360)
+			viper.Set("usage_alert_quiet_hours", "")
+			viper.Set("usage_alert_timezone", "UTC")
+			viper.Set("usage_display_mode", "remaining")
+
+			payload, err := parseConfigUpdatePayload(raw)
+			if err != nil {
+				t.Fatalf("parseConfigUpdatePayload() error = %v", err)
+			}
+			if err := applyConfigUpdate(payload); err == nil {
+				t.Fatal("applyConfigUpdate() accepted invalid alert payload")
+			}
+			if got := viper.GetFloat64("usage_alert_threshold_percent"); got != 80 {
+				t.Fatalf("usage_alert_threshold_percent = %v, want unchanged 80", got)
+			}
+			if got := viper.GetInt("usage_alert_cooldown_minutes"); got != 360 {
+				t.Fatalf("usage_alert_cooldown_minutes = %d, want unchanged 360", got)
+			}
+			if got := viper.GetString("usage_alert_quiet_hours"); got != "" {
+				t.Fatalf("usage_alert_quiet_hours = %q, want unchanged empty", got)
+			}
+			if got := viper.GetString("usage_alert_timezone"); got != "UTC" {
+				t.Fatalf("usage_alert_timezone = %q, want unchanged UTC", got)
+			}
+			if got := viper.GetString("usage_display_mode"); got != "remaining" {
+				t.Fatalf("usage_display_mode = %q, want unchanged remaining", got)
+			}
+		})
+	}
+}
+
+func TestConfigUpdatePayload_rejectsNonFiniteAlertPercentWithoutMutation(t *testing.T) {
+	for _, value := range []float64{math.NaN(), math.Inf(1), math.Inf(-1)} {
+		t.Run(strconv.FormatFloat(value, 'f', -1, 64), func(t *testing.T) {
+			// Given
+			t.Cleanup(viper.Reset)
+			viper.Reset()
+			viper.Set("usage_alert_threshold_percent", 80.0)
+			viper.Set("usage_alert_critical_percent", 98.0)
+			viper.Set("usage_alert_thresholds", map[string]any{"default": 81.0, "5h": 82.0, "7d": 83.0})
+			payloads := []configUpdatePayload{
+				{Alert: &configAlertUpdatePayload{ThresholdPercent: floatPtr(value)}},
+				{Alert: &configAlertUpdatePayload{CriticalPercent: floatPtr(value)}},
+				{Alert: &configAlertUpdatePayload{Thresholds: &configAlertThresholdPayload{Default: floatPtr(value)}}},
+				{Alert: &configAlertUpdatePayload{Thresholds: &configAlertThresholdPayload{FiveHours: floatPtr(value)}}},
+				{Alert: &configAlertUpdatePayload{Thresholds: &configAlertThresholdPayload{SevenDays: floatPtr(value)}}},
+			}
+
+			// When
+			for _, payload := range payloads {
+				if err := applyConfigUpdate(payload); err == nil {
+					t.Fatalf("applyConfigUpdate accepted non-finite alert percent %v", value)
+				}
+			}
+
+			// Then
+			if got := viper.GetFloat64("usage_alert_threshold_percent"); got != 80 {
+				t.Fatalf("threshold_percent = %v, want unchanged 80", got)
+			}
+			if got := viper.GetFloat64("usage_alert_critical_percent"); got != 98 {
+				t.Fatalf("critical_percent = %v, want unchanged 98", got)
+			}
+			for key, want := range map[string]float64{"default": 81, "5h": 82, "7d": 83} {
+				if got := viper.GetFloat64("usage_alert_thresholds." + key); got != want {
+					t.Fatalf("thresholds.%s = %v, want unchanged %v", key, got, want)
+				}
+			}
+		})
+	}
+}
+
 func TestConfigSnapshotExposesMenubarRefreshInterval(t *testing.T) {
 	t.Cleanup(viper.Reset)
 	viper.Reset()
@@ -351,5 +530,51 @@ func TestApplyConfigUpdateKeepsStandaloneProviders(t *testing.T) {
 	bad := configUpdatePayload{EnabledTools: []string{"zai", "not-a-provider"}}
 	if err := applyConfigUpdate(bad); err == nil {
 		t.Fatal("applyConfigUpdate accepted unknown provider")
+	}
+}
+
+func TestBuildConfigAlertSnapshot_InheritsGlobalDefaultForWindows_whenWindowOverridesAbsent(t *testing.T) {
+	// Given: the Swift settings payload always sends the complete alert object,
+	// so reporting the legacy percent for 5h/7d would persist it as an explicit
+	// override on save; report the inherited default instead.
+	t.Cleanup(viper.Reset)
+	viper.Reset()
+	viper.Set("usage_alert_threshold_percent", 70.0)
+	viper.Set("usage_alert_thresholds", map[string]any{"default": 65.0})
+
+	// When
+	got := buildConfigAlertSnapshot()
+
+	// Then
+	if got.Thresholds.Default != 65 {
+		t.Fatalf("Default = %v, want 65", got.Thresholds.Default)
+	}
+	if got.Thresholds.FiveHours != 65 || got.Thresholds.SevenDays != 65 {
+		t.Fatalf("5h/7d = %v/%v, want inherited default 65", got.Thresholds.FiveHours, got.Thresholds.SevenDays)
+	}
+}
+
+func TestBuildConfigAlertSnapshot_NormalizesZeroScalarsToEffectiveDefaults(t *testing.T) {
+	// Given: a config explicitly storing 0 (e.g. hand-edited) — evaluation and
+	// normalizeConfigAlertUpdate treat those as unset, so the snapshot must
+	// expose the effective defaults instead of values that fail validation.
+	t.Cleanup(viper.Reset)
+	viper.Reset()
+	viper.Set("usage_alert_threshold_percent", 0.0)
+	viper.Set("usage_alert_critical_percent", 0.0)
+	viper.Set("usage_alert_cooldown_minutes", 0)
+
+	// When
+	got := buildConfigAlertSnapshot()
+
+	// Then
+	if got.ThresholdPercent != 80 {
+		t.Fatalf("ThresholdPercent = %v, want 80", got.ThresholdPercent)
+	}
+	if got.CriticalPercent != 98 {
+		t.Fatalf("CriticalPercent = %v, want 98", got.CriticalPercent)
+	}
+	if got.CooldownMinutes != 360 {
+		t.Fatalf("CooldownMinutes = %v, want 360", got.CooldownMinutes)
 	}
 }

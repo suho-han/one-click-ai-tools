@@ -66,7 +66,7 @@ var selfUpdateOpts selfUpdateOptions
 var updateCmd = &cobra.Command{
 	Use:     "update",
 	GroupID: "maintenance",
-	Short:   "Update oct package",
+	Short:   "⬆️ Update oct package",
 	Long:    `Update oct (one-click-tools) itself to the latest GitHub Release version.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return runSelfUpdate(cmd, selfUpdateOpts)
