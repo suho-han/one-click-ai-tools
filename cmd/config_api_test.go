@@ -553,3 +553,28 @@ func TestBuildConfigAlertSnapshot_InheritsGlobalDefaultForWindows_whenWindowOver
 		t.Fatalf("5h/7d = %v/%v, want inherited default 65", got.Thresholds.FiveHours, got.Thresholds.SevenDays)
 	}
 }
+
+func TestBuildConfigAlertSnapshot_NormalizesZeroScalarsToEffectiveDefaults(t *testing.T) {
+	// Given: a config explicitly storing 0 (e.g. hand-edited) — evaluation and
+	// normalizeConfigAlertUpdate treat those as unset, so the snapshot must
+	// expose the effective defaults instead of values that fail validation.
+	t.Cleanup(viper.Reset)
+	viper.Reset()
+	viper.Set("usage_alert_threshold_percent", 0.0)
+	viper.Set("usage_alert_critical_percent", 0.0)
+	viper.Set("usage_alert_cooldown_minutes", 0)
+
+	// When
+	got := buildConfigAlertSnapshot()
+
+	// Then
+	if got.ThresholdPercent != 80 {
+		t.Fatalf("ThresholdPercent = %v, want 80", got.ThresholdPercent)
+	}
+	if got.CriticalPercent != 98 {
+		t.Fatalf("CriticalPercent = %v, want 98", got.CriticalPercent)
+	}
+	if got.CooldownMinutes != 360 {
+		t.Fatalf("CooldownMinutes = %v, want 360", got.CooldownMinutes)
+	}
+}
