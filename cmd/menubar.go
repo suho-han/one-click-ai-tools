@@ -40,7 +40,7 @@ type menubarDoctorReport struct {
 var menubarCmd = &cobra.Command{
 	Use:          "menubar",
 	GroupID:      "core",
-	Short:        "Run macOS menu bar app (status item)",
+	Short:        "🖥️ Run macOS menu bar app (status item)",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if menubarDaemon {

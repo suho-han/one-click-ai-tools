@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -21,15 +22,20 @@ import (
 var alertCmd = &cobra.Command{
 	Use:     "alert",
 	GroupID: "manage",
-	Short:   "Usage alert configuration and testing",
-	Long: `Configure threshold-based OS alerts for provider usage and test the
-alert decision with synthetic values.`,
-	Example: `  oct alert config show
+	Short:   "🚨 Interactive usage alert setup and testing",
+	Long: `With no subcommand, open interactive alert setup for common global settings.
+Use oct config for provider, display, and general configuration.
+Use the subcommands below for advanced provider thresholds, alert tests, and snooze management.`,
+	Example: `  oct alert
+  oct alert config show
   oct alert config set enabled true
   oct alert config set threshold_percent 85
   oct alert config set-provider-threshold 5h 90 --provider codex
   oct alert snooze set --duration 2h
   oct alert test --provider codex --window 5h --value 91`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return runInteractiveAlert(cmd.InOrStdin(), cmd.OutOrStdout())
+	},
 }
 
 var alertConfigCmd = &cobra.Command{
@@ -328,6 +334,9 @@ func parseAlertPercent(name, val string) (float64, error) {
 	f, err := strconv.ParseFloat(strings.TrimSpace(val), 64)
 	if err != nil {
 		return 0, fmt.Errorf("invalid %s %q: %v", name, val, err)
+	}
+	if math.IsNaN(f) || math.IsInf(f, 0) {
+		return 0, fmt.Errorf("invalid %s %q: must be finite", name, val)
 	}
 	if f <= 0 || f > 100 {
 		return 0, fmt.Errorf("invalid %s %.1f: must be > 0 and <= 100", name, f)

@@ -15,16 +15,26 @@ struct HeaderView: View {
                         .foregroundStyle(.secondary)
                 }
                 Spacer()
+                if let note = snapshot.note?.trimmingCharacters(in: .whitespacesAndNewlines), !note.isEmpty {
+                    sourceInfoButton(note: note)
+                }
                 statusPill
             }
-
-            if let note = snapshot.note {
-                Text(note)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-            }
         }
+    }
+
+    private func sourceInfoButton(note: String) -> some View {
+        Button(action: {}) {
+            Image(systemName: "info.circle")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 24, height: 24)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .help(note)
+        .accessibilityLabel("Usage data source")
+        .accessibilityHint(note)
     }
 
     private var statusPill: some View {
