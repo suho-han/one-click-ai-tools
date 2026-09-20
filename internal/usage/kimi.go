@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/suho-han/one-click-ai-tools/internal/netclient"
 )
@@ -58,9 +59,11 @@ type kimiWindow struct {
 }
 
 // resolveKimiToken finds the Kimi Code bearer token.
-// Priority: KIMI_CODE_API_KEY env -> credentials/kimi-code.json under
+// Priority: KIMI_CODE_API_KEY env -> credentials/kimi-code.json, then the
+// newest credentials/kimi-code-env-<id>.json OAuth env-file under
 // KIMI_CODE_HOME, defaulting to ~/.kimi-code (the Kimi Code CLI's OAuth
-// credential; oct reads it, never refreshes it).
+// credential; oct reads it, never refreshes it — the CLI's access tokens are
+// short-lived (~15 min), so the token is only fresh shortly after a kimi run).
 func resolveKimiToken() (string, string) {
 	if key := os.Getenv("KIMI_CODE_API_KEY"); key != "" {
 		return key, "env:KIMI_CODE_API_KEY"
@@ -76,18 +79,58 @@ func resolveKimiToken() (string, string) {
 		return "", ""
 	}
 
-	data, err := os.ReadFile(filepath.Join(home, "credentials", "kimi-code.json"))
-	if err != nil {
-		return "", ""
+	credDir := filepath.Join(home, "credentials")
+	if data, err := os.ReadFile(filepath.Join(credDir, "kimi-code.json")); err == nil {
+		if token := parseKimiAccessToken(data); token != "" {
+			return token, "kimi-code.json"
+		}
 	}
 
+	// The current CLI rotates OAuth env-files (kimi-code-env-<id>.json);
+	// pick the most recently written one.
+	envFiles, _ := filepath.Glob(filepath.Join(credDir, "kimi-code-env-*.json"))
+	newest, newestTime := "", time.Time{}
+	for _, path := range envFiles {
+		if info, err := os.Stat(path); err == nil && info.ModTime().After(newestTime) {
+			newest, newestTime = path, info.ModTime()
+		}
+	}
+	if newest != "" {
+		if data, err := os.ReadFile(newest); err == nil {
+			if token := parseKimiAccessToken(data); token != "" {
+				source := "kimi-code-env-*.json"
+				if kimiTokenExpired(data) {
+					source += " (access_token expired; run kimi once to refresh)"
+				}
+				return token, source
+			}
+		}
+	}
+
+	return "", ""
+}
+
+func parseKimiAccessToken(data []byte) string {
 	var cred struct {
 		AccessToken string `json:"access_token"`
 	}
-	if err := json.Unmarshal(data, &cred); err != nil || cred.AccessToken == "" {
-		return "", ""
+	if err := json.Unmarshal(data, &cred); err != nil {
+		return ""
 	}
-	return cred.AccessToken, "kimi-code.json"
+	return cred.AccessToken
+}
+
+// kimiTokenExpired reports whether the credential file's expires_at (unix
+// seconds, the new env-file format) is in the past. Files without the field
+// count as not expired.
+func kimiTokenExpired(data []byte) bool {
+	var cred struct {
+		ExpiresAt int64 `json:"expires_at"`
+	}
+	if err := json.Unmarshal(data, &cred); err != nil || cred.ExpiresAt == 0 {
+		return false
+	}
+	return time.Now().Unix() >= cred.ExpiresAt
 }
 
 // kimiPercent converts one window's used/limit request counts to a rounded

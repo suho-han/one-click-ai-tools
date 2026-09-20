@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 const kimiUsagePayload = `{
@@ -129,6 +130,61 @@ func TestResolveKimiTokenFromDefaultHome(t *testing.T) {
 	}
 	if source != "kimi-code.json" {
 		t.Errorf("source = %q, want kimi-code.json", source)
+	}
+}
+
+func TestResolveKimiTokenFromNewestEnvFile(t *testing.T) {
+	t.Setenv("KIMI_CODE_API_KEY", "")
+	home := t.TempDir()
+	t.Setenv("KIMI_CODE_HOME", home)
+	credDir := filepath.Join(home, "credentials")
+	if err := os.MkdirAll(credDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// The current CLI rotates kimi-code-env-<id>.json files; the newest must
+	// win even when its name sorts after an older one.
+	old := filepath.Join(credDir, "kimi-code-env-aaa.json")
+	new := filepath.Join(credDir, "kimi-code-env-zzz.json")
+	if err := os.WriteFile(old, []byte(`{"access_token":"old-token","expires_at":1}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(new, []byte(`{"access_token":"new-token","expires_at":99999999999}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	past := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(old, past, past); err != nil {
+		t.Fatal(err)
+	}
+
+	token, source := resolveKimiToken()
+	if token != "new-token" {
+		t.Errorf("token = %q, want new-token (newest env-file wins)", token)
+	}
+	if source != "kimi-code-env-*.json" {
+		t.Errorf("source = %q, want kimi-code-env-*.json (valid token)", source)
+	}
+}
+
+func TestResolveKimiTokenAnnotatesExpiredEnvFile(t *testing.T) {
+	t.Setenv("KIMI_CODE_API_KEY", "")
+	home := t.TempDir()
+	t.Setenv("KIMI_CODE_HOME", home)
+	credDir := filepath.Join(home, "credentials")
+	if err := os.MkdirAll(credDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	expired := filepath.Join(credDir, "kimi-code-env-abc.json")
+	// expires_at 1 = long past.
+	if err := os.WriteFile(expired, []byte(`{"access_token":"stale-token","expires_at":1}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	token, source := resolveKimiToken()
+	if token != "stale-token" {
+		t.Errorf("token = %q, want stale-token (token still returned)", token)
+	}
+	if !strings.Contains(source, "expired") {
+		t.Errorf("source = %q, want expiry annotation", source)
 	}
 }
 
