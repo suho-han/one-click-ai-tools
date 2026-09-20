@@ -105,6 +105,7 @@ oct usage --notify               # send alerts per threshold/cooldown rules
 Script authors: the `--json` output shape is a documented stable contract —
 see [docs/usage-json-schema.md](docs/usage-json-schema.md).
 
+```bash
 oct monitor --interval 10s       # always-on view, 10s refresh
 oct monitor --once --sort-by used --desc --top 5 --compact
 

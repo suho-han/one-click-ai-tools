@@ -105,6 +105,7 @@ oct usage --notify               # 임계값 규칙에 따라 알림 발송
 스크립트 작성자용: `--json` 출력 구조는 안정적인 계약으로 문서화돼 있습니다 —
 [docs/usage-json-schema.md](docs/usage-json-schema.md) 참고.
 
+```bash
 oct monitor --interval 10s       # 10초 갱신 상시 화면
 oct monitor --once --sort-by used --desc --top 5 --compact
 
