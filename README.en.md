@@ -42,6 +42,14 @@ curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/sc
 curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | OCT_INSTALL_RUN_CONFIG=0 sh
 ```
 
+### Installation (Homebrew)
+
+```bash
+brew install suho-han/tap/oct
+```
+
+The formula tracks the latest stable GitHub Release; prereleases stay on the install.sh channel.
+
 ### First five minutes
 
 ```bash
