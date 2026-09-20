@@ -42,6 +42,14 @@ curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/sc
 curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | OCT_INSTALL_RUN_CONFIG=0 sh
 ```
 
+### 설치 (Homebrew)
+
+```bash
+brew install suho-han/tap/oct
+```
+
+Formula는 최신 stable GitHub Release를 추적합니다. prerelease는 install.sh 채널을 이용하세요.
+
 ### 처음 5분
 
 ```bash
