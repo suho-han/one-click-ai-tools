@@ -19,6 +19,7 @@ func writeFile(t *testing.T, path, content string) {
 }
 
 func TestCollectSessionTokens_AggregatesCodexAndClaudeLogs(t *testing.T) {
+	t.Setenv("CODEX_HOME", "")
 	home := t.TempDir()
 
 	// Codex: totals are cumulative per session, so the LAST token_count
@@ -26,6 +27,11 @@ func TestCollectSessionTokens_AggregatesCodexAndClaudeLogs(t *testing.T) {
 	writeFile(t, filepath.Join(home, ".codex", "sessions", "a.jsonl"),
 		`{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":100,"cached_input_tokens":50,"output_tokens":10}}}}
 {"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":200,"cache_read_input_tokens":400,"output_tokens":20}}}}
+`)
+	// Codex real-data shape: input_tokens INCLUDES cached input
+	// (24541 = 23133 miss + 1408 cached; total_tokens == input + output).
+	writeFile(t, filepath.Join(home, ".codex", "sessions", "b.jsonl"),
+		`{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":24541,"cached_input_tokens":1408,"output_tokens":5,"total_tokens":24546}}}}
 `)
 	// Codex file with no token events: counts as a file, not a session.
 	writeFile(t, filepath.Join(home, ".codex", "sessions", "empty.jsonl"),
@@ -49,14 +55,16 @@ func TestCollectSessionTokens_AggregatesCodexAndClaudeLogs(t *testing.T) {
 		t.Fatalf("CollectSessionTokens() error: %v", err)
 	}
 
-	if stats.Files != 3 {
-		t.Fatalf("files = %d, want 3 (empty codex log counts, old claude log skipped)", stats.Files)
+	if stats.Files != 4 {
+		t.Fatalf("files = %d, want 4 (empty codex log counts, old claude log skipped)", stats.Files)
 	}
-	if stats.Sessions != 2 {
-		t.Fatalf("sessions = %d, want 2", stats.Sessions)
+	if stats.Sessions != 3 {
+		t.Fatalf("sessions = %d, want 3", stats.Sessions)
 	}
-	if stats.Tokens.Input != 3700 || stats.Tokens.CacheRead != 12400 || stats.Tokens.Output != 320 {
-		t.Fatalf("tokens = %+v, want input 3700 cacheRead 12400 output 320", stats.Tokens)
+	// codex: (0 miss, 400 hit, 20 out) + (23133 miss, 1408 hit, 5 out);
+	// claude: (3500 miss, 12000 hit, 300 out).
+	if stats.Tokens.Input != 26633 || stats.Tokens.CacheRead != 13808 || stats.Tokens.Output != 325 {
+		t.Fatalf("tokens = %+v, want input 26633 cacheRead 13808 output 325", stats.Tokens)
 	}
 }
 

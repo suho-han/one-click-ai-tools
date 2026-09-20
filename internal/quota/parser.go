@@ -3,7 +3,7 @@ package quota
 import (
 	"bufio"
 	"encoding/json"
-	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -11,13 +11,25 @@ import (
 	"time"
 )
 
-// tolerateScanErr keeps oversized lines from aborting a file: a session log
-// with an unparseable megabyte-scale line still contributes its other events.
-func tolerateScanErr(err error) error {
-	if errors.Is(err, bufio.ErrTooLong) {
-		return nil
+// scanLines feeds every line of the file to handle, including lines larger
+// than any buffer cap — a session log with one giant event must still
+// contribute its other events.
+func scanLines(reader io.Reader, handle func(line []byte) error) error {
+	buffered := bufio.NewReader(reader)
+	for {
+		line, err := buffered.ReadString('\n')
+		if line != "" {
+			if handleErr := handle([]byte(line)); handleErr != nil {
+				return handleErr
+			}
+		}
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
 	}
-	return err
 }
 
 // SessionStats is the aggregate over local session logs within the window.
@@ -60,11 +72,21 @@ type claudeUsageLine struct {
 	} `json:"message"`
 }
 
+// codexSessionsDir mirrors codexHomePath in internal/usage/codex.go so
+// quota stats sees the same sessions the codex usage provider does.
+func codexSessionsDir(home string) string {
+	if custom := strings.TrimSpace(os.Getenv("CODEX_HOME")); custom != "" {
+		return filepath.Join(custom, "sessions")
+	}
+	return filepath.Join(home, ".codex", "sessions")
+}
+
 // CollectSessionTokens aggregates cache-relevant token counts from local
 // coding-tool session logs modified within the last `days` days. Sources:
 //
-//   - ~/.codex/sessions/**/*.jsonl — token_count events with cumulative
-//     totals; the last event per file is that session's total.
+//   - $CODEX_HOME/sessions (default ~/.codex/sessions)/**/*.jsonl —
+//     token_count events with cumulative totals; the last event per file
+//     is that session's total.
 //   - ~/.claude/projects/**/*.jsonl — per-message usage; all events are
 //     summed. Cache-creation tokens count as input (cache misses).
 //
@@ -77,7 +99,7 @@ func CollectSessionTokens(home string, days int, now time.Time) (SessionStats, e
 		dir     string
 		collect func(path string) (SessionTokens, bool, error)
 	}{
-		{dir: filepath.Join(home, ".codex", "sessions"), collect: collectCodexFileTokens},
+		{dir: codexSessionsDir(home), collect: collectCodexFileTokens},
 		{dir: filepath.Join(home, ".claude", "projects"), collect: collectClaudeFileTokens},
 	} {
 		err := filepath.WalkDir(source.dir, func(path string, d fs.DirEntry, err error) error {
@@ -129,24 +151,31 @@ func collectCodexFileTokens(path string) (SessionTokens, bool, error) {
 
 	var last SessionTokens
 	found := false
-	scanner := newLineScanner(file)
-	for scanner.Scan() {
+	err = scanLines(file, func(raw []byte) error {
 		var line codexTokenCountLine
-		if err := json.Unmarshal(scanner.Bytes(), &line); err != nil {
-			continue
+		if err := json.Unmarshal(raw, &line); err != nil {
+			return nil
 		}
 		if line.Type != "event_msg" || line.Payload.Type != "token_count" {
-			continue
+			return nil
 		}
 		usage := line.Payload.Info.TotalTokenUsage
+		// OpenAI-style accounting: input_tokens already includes cached
+		// input (total_tokens == input_tokens + output_tokens), so the
+		// cache-miss figure is what remains after subtracting it.
 		cacheRead := usage.CacheReadInputTokens
 		if cacheRead == 0 {
 			cacheRead = usage.CachedInputTokens
 		}
-		last = SessionTokens{Input: usage.InputTokens, CacheRead: cacheRead, Output: usage.OutputTokens}
+		missInput := usage.InputTokens - cacheRead
+		if missInput < 0 {
+			missInput = 0
+		}
+		last = SessionTokens{Input: missInput, CacheRead: cacheRead, Output: usage.OutputTokens}
 		found = true
-	}
-	return last, found, tolerateScanErr(scanner.Err())
+		return nil
+	})
+	return last, found, err
 }
 
 // collectClaudeFileTokens sums the per-message usage events (cache-creation
@@ -160,27 +189,20 @@ func collectClaudeFileTokens(path string) (SessionTokens, bool, error) {
 
 	var total SessionTokens
 	found := false
-	scanner := newLineScanner(file)
-	for scanner.Scan() {
+	err = scanLines(file, func(raw []byte) error {
 		var line claudeUsageLine
-		if err := json.Unmarshal(scanner.Bytes(), &line); err != nil {
-			continue
+		if err := json.Unmarshal(raw, &line); err != nil {
+			return nil
 		}
 		usage := line.Message.Usage
 		if usage.InputTokens == 0 && usage.CacheReadInputTokens == 0 && usage.CacheCreationInputTokens == 0 && usage.OutputTokens == 0 {
-			continue
+			return nil
 		}
 		total.Input += usage.InputTokens + usage.CacheCreationInputTokens
 		total.CacheRead += usage.CacheReadInputTokens
 		total.Output += usage.OutputTokens
 		found = true
-	}
-	return total, found, tolerateScanErr(scanner.Err())
-}
-
-func newLineScanner(reader *os.File) *bufio.Scanner {
-	scanner := bufio.NewScanner(reader)
-	// Session lines embed full conversation context and can be megabytes.
-	scanner.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
-	return scanner
+		return nil
+	})
+	return total, found, err
 }
