@@ -42,6 +42,14 @@ curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/sc
 curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | OCT_INSTALL_RUN_CONFIG=0 sh
 ```
 
+### Installation (Homebrew)
+
+```bash
+brew install suho-han/tap/oct
+```
+
+The formula tracks the latest stable GitHub Release; prereleases stay on the install.sh channel.
+
 ### First five minutes
 
 ```bash
@@ -66,6 +74,7 @@ oct usage --json     # for scripts/pipes
 | Watch | `oct usage` | one-shot quota snapshot (`--json`, `--compact`, `--notify`) |
 | Watch | `oct monitor` | always-on refreshing screen (`--interval`, `--once`, sort/filter) |
 | Watch | `oct menubar` | persistent macOS menu bar display |
+| Watch | `oct quota` | OpenCode Go quota bars with reset countdowns + cost simulator over local session tokens |
 | Alert | `oct alert` | bare command opens arrow/key-based interactive alert setup; supports `config`, provider thresholds, `test`, and `snooze` |
 | Schedule | `oct schedule` | register agent-update / session-refresh with the OS scheduler |
 | Schedule | `oct session-refresh` | probe session/auth state without sending prompts (`--dry-run`) |
@@ -91,7 +100,12 @@ oct usage                        # one-shot snapshot
 oct usage --compact              # compact summary (C-45% X-25%)
 oct usage --json                 # JSON output
 oct usage --notify               # send alerts per threshold/cooldown rules
+```
 
+Script authors: the `--json` output shape is a documented stable contract —
+see [docs/usage-json-schema.md](docs/usage-json-schema.md).
+
+```bash
 oct monitor --interval 10s       # always-on view, 10s refresh
 oct monitor --once --sort-by used --desc --top 5 --compact
 

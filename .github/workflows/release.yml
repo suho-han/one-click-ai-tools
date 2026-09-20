@@ -50,7 +50,7 @@ jobs:
         uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
-          version: latest
+          version: "~> v2"
           args: ${{ github.event_name == 'workflow_dispatch' && (inputs.release_mode == 'release' && 'release --clean' || 'release --clean --snapshot') || 'release --clean' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
