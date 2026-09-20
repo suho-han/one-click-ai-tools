@@ -54,6 +54,9 @@ var (
 	linuxCrontabRemove = func() error {
 		return exec.Command("crontab", "-r").Run()
 	}
+	launchctlList = func(label string) (bool, error) {
+		return realLaunchctlList(label)
+	}
 )
 
 func GetScheduler() (Scheduler, error) {

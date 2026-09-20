@@ -33,6 +33,14 @@ func (l *Linux) Enable(task Task, interval string, hour int) error {
 	cronExpr := cronExpression(interval, hour)
 	cronEntry := fmt.Sprintf("%s %s %s >> %s 2>&1 %s", cronExpr, shellQuote(binPath), shellQuote(cfg.Command), shellQuote(logPath), cronMarker(task))
 
+	// The list→modify→write cycle must hold the lock end to end, or two
+	// concurrent enables for different tasks can drop one entry.
+	unlock, err := lockCrontab()
+	if err != nil {
+		return fmt.Errorf("lock crontab: %w", err)
+	}
+	defer unlock()
+
 	out, err := linuxCrontabList()
 	if err != nil {
 		out = []byte{}
@@ -57,6 +65,12 @@ func (l *Linux) Enable(task Task, interval string, hour int) error {
 }
 
 func (l *Linux) Disable(task Task) error {
+	unlock, err := lockCrontab()
+	if err != nil {
+		return fmt.Errorf("lock crontab: %w", err)
+	}
+	defer unlock()
+
 	out, err := linuxCrontabList()
 	if err != nil {
 		return nil
