@@ -1,5 +1,12 @@
 # OpenCode Go Quota Monitoring & Cost Simulator — Feature Spec
 
+> **Status: implemented (2026-09-18, dev).** `oct quota show` reuses the
+> usage provider's OpenCode Go client (`internal/usage/opencode.go`) instead
+> of a duplicate `internal/quota/client.go`; session parsing and the cost
+> simulator live in `internal/quota` (parser.go / simulator.go). Pricing
+> overrides are in-code constants (`SimulatorModels`); the API endpoint is
+> overridable via `oct quota show --endpoint` / `OCT_OPENCODE_USAGE_ENDPOINT`.
+
 This document is the development spec and planning note for adding real-time
 OpenCode Go quota lookup and a cache-hit-rate-based cost simulator to
 `one-click-ai-tools` as a one-click CLI command.

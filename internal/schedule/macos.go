@@ -3,6 +3,7 @@ package schedule
 import (
 	"bytes"
 	"encoding/xml"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -148,9 +149,37 @@ func (m *MacOS) Disable(task Task) error {
 	return nil
 }
 
+// launchctlNotFoundExit is the exit status launchctl returns when the given
+// label is not loaded in the queried domain.
+const launchctlNotFoundExit = 113
+
+// realLaunchctlList reports whether the label is loaded. "Not loaded" is a
+// normal outcome (false, nil); any other launchctl failure is surfaced as an
+// error so it cannot masquerade as a disabled task.
+func realLaunchctlList(label string) (bool, error) {
+	cmd := exec.Command("launchctl", "list", label)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err == nil {
+		return true, nil
+	}
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == launchctlNotFoundExit {
+		return false, nil
+	}
+	if strings.Contains(stderr.String(), "Could not find service") {
+		return false, nil
+	}
+	return false, fmt.Errorf("launchctl list %s failed: %v, output: %s", label, err, strings.TrimSpace(stderr.String()))
+}
+
 func (m *MacOS) Status(task Task) (string, error) {
-	cmd := exec.Command("launchctl", "list", launchAgentLabel(m.LabelPrefix, task))
-	if err := cmd.Run(); err == nil {
+	loaded, err := launchctlList(launchAgentLabel(m.LabelPrefix, task))
+	if err != nil {
+		return "", err
+	}
+	if loaded {
 		return "enabled", nil
 	}
 	return "disabled", nil

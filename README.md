@@ -42,6 +42,14 @@ curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/sc
 curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | OCT_INSTALL_RUN_CONFIG=0 sh
 ```
 
+### 설치 (Homebrew)
+
+```bash
+brew install suho-han/tap/oct
+```
+
+Formula는 최신 stable GitHub Release를 추적합니다. prerelease는 install.sh 채널을 이용하세요.
+
 ### 처음 5분
 
 ```bash
@@ -66,6 +74,7 @@ oct usage --json     # 스크립트/파이프용
 | 감시 | `oct usage` | 전 프로바이더 쿼터 1회 조회 (`--json`, `--compact`, `--notify`) |
 | 감시 | `oct monitor` | 상시 갱신 화면 (`--interval`, `--once`, 정렬·필터) |
 | 감시 | `oct menubar` | macOS 메뉴바에 상시 표시 |
+| 감시 | `oct quota` | OpenCode Go 쿼터 바 + 리셋 카운트다운, 로컬 세션 토큰 기반 비용 시뮬레이터 |
 | 알림 | `oct alert` | 서브커맨드 없이 실행하면 방향키/키 입력 기반 인터랙티브 알림 설정; `config`·프로바이더 임계값·`test`·`snooze` 지원 |
 | 예약 | `oct schedule` | agent-update / session-refresh를 OS 스케줄러에 등록 |
 | 예약 | `oct session-refresh` | 프롬프트 없이 세션·인증 상태만 probe (`--dry-run`) |
@@ -91,7 +100,12 @@ oct usage                        # 1회 조회
 oct usage --compact              # C-45% X-25% 형태 요약
 oct usage --json                 # JSON 출력
 oct usage --notify               # 임계값 규칙에 따라 알림 발송
+```
 
+스크립트 작성자용: `--json` 출력 구조는 안정적인 계약으로 문서화돼 있습니다 —
+[docs/usage-json-schema.md](docs/usage-json-schema.md) 참고.
+
+```bash
 oct monitor --interval 10s       # 10초 갱신 상시 화면
 oct monitor --once --sort-by used --desc --top 5 --compact
 
