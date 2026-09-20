@@ -66,6 +66,7 @@ oct usage --json     # for scripts/pipes
 | Watch | `oct usage` | one-shot quota snapshot (`--json`, `--compact`, `--notify`) |
 | Watch | `oct monitor` | always-on refreshing screen (`--interval`, `--once`, sort/filter) |
 | Watch | `oct menubar` | persistent macOS menu bar display |
+| Watch | `oct quota` | OpenCode Go quota bars with reset countdowns + cost simulator over local session tokens |
 | Alert | `oct alert` | bare command opens arrow/key-based interactive alert setup; supports `config`, provider thresholds, `test`, and `snooze` |
 | Schedule | `oct schedule` | register agent-update / session-refresh with the OS scheduler |
 | Schedule | `oct session-refresh` | probe session/auth state without sending prompts (`--dry-run`) |
