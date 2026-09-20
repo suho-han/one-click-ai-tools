@@ -7,6 +7,7 @@ material.
 ## User Docs — how to use `oct`
 
 - [usage.md](usage.md): command reference for `update`, `agent-update`, `usage` (one-shot collection, env vars)
+- [../docs/usage-json-schema.md](../docs/usage-json-schema.md): stable JSON output contract for `oct usage --json` (for script consumers)
 - [monitoring.md](monitoring.md): always-on live view with `oct monitor` (continuous refresh, snapshots)
 - [usage_alerts.md](usage_alerts.md): threshold-based OS alert configuration and behavior rules
 - [icons.md](icons.md): provider icon mapping and `OCT_ICON_RENDERER` fallback notes

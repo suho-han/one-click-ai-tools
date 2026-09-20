@@ -91,6 +91,10 @@ oct usage                        # one-shot snapshot
 oct usage --compact              # compact summary (C-45% X-25%)
 oct usage --json                 # JSON output
 oct usage --notify               # send alerts per threshold/cooldown rules
+```
+
+Script authors: the `--json` output shape is a documented stable contract —
+see [docs/usage-json-schema.md](docs/usage-json-schema.md).
 
 oct monitor --interval 10s       # always-on view, 10s refresh
 oct monitor --once --sort-by used --desc --top 5 --compact
