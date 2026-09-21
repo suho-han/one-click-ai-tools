@@ -2,6 +2,7 @@ package usage
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"time"
@@ -35,8 +36,26 @@ func SaveSnapshot(path string, results []UsageResult, now time.Time) error {
 	return writeFileAtomic(path, b, 0644)
 }
 
+// LoadSnapshot reads a snapshot previously written by SaveSnapshot (oct
+// monitor writes one every cycle). It exists so cheap pollers -- statusbar
+// renderers, tray widgets -- can consume the snapshot instead of triggering
+// a full provider fan-out.
+func LoadSnapshot(path string) (UsageSnapshot, error) {
+	if path == "" {
+		path = DefaultSnapshotPath()
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return UsageSnapshot{}, err
+	}
+	var snapshot UsageSnapshot
+	if err := json.Unmarshal(data, &snapshot); err != nil {
+		return UsageSnapshot{}, fmt.Errorf("parse snapshot %s: %w", path, err)
+	}
+	return snapshot, nil
+}
+
 // writeFileAtomic writes via a temp file + rename so readers (menubar,
-// monitor) never observe a truncated snapshot after a crash mid-write.
 func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
 	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
 	if err != nil {

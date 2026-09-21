@@ -98,6 +98,28 @@ Primary paths:
 - `~/.config/opencode/sessions`
 - `~/.local/share/opencode/sessions`
 
+### Statusbar output modes (`--format`)
+
+`oct usage --format waybar|polybar|swiftbar` renders the same results for
+Linux/macOS statusbars (roadmap P2 cross-platform parity with the macOS-only
+menubar):
+
+- `waybar`: one-line JSON `{"text","tooltip","class"}` for a waybar
+  custom/script module; `class` is `ok|warn|error` using the shared severity
+  thresholds (percent used >= 85 warn, >= 95 crit).
+- `polybar`: one line for a polybar custom script; literal `%` is doubled and
+  per-provider tokens carry `%{F#...}` severity colors.
+- `swiftbar`: SwiftBar plugin protocol — severity-colored title line, `---`,
+  then one dropdown line per provider.
+
+All three honor `usage_display_mode` (normalized used/remaining) like the
+menubar title; `--compact` remains pinned to "remaining". Pair with
+`--from-snapshot` to render `~/.oct/state/usage-latest.json` (written by
+`oct monitor`) instead of a live fetch, so short statusbar poll intervals do
+not trigger a provider fan-out. Renderers live in
+`internal/usage/statusline.go`; `UsageSeverity` there is the shared
+classification also used by `oct monitor`.
+
 ## 4) Related docs
 
 - [monitoring.md](monitoring.md): continuous live view instead of one-shot printing (`oct monitor`)

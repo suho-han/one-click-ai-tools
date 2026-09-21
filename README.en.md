@@ -71,7 +71,7 @@ oct usage --json     # for scripts/pipes
 | --- | --- | --- |
 | Setup | `oct config` | pick tools/providers and usage display settings (interactive; notifications are separate) |
 | Update | `oct agent-update` | update every installed AI CLI (`--dry-run --explain` to preview) |
-| Watch | `oct usage` | one-shot quota snapshot (`--json`, `--compact`, `--notify`) |
+| Watch | `oct usage` | one-shot quota snapshot (`--json`, `--compact`, `--format waybar/polybar/swiftbar`, `--notify`) |
 | Watch | `oct monitor` | always-on refreshing screen (`--interval`, `--once`, sort/filter) |
 | Watch | `oct menubar` | persistent macOS menu bar display |
 | Watch | `oct quota` | OpenCode Go quota bars with reset countdowns + cost simulator over local session tokens |
@@ -104,6 +104,21 @@ oct usage --notify               # send alerts per threshold/cooldown rules
 
 Script authors: the `--json` output shape is a documented stable contract —
 see [docs/usage-json-schema.md](docs/usage-json-schema.md).
+
+Statusbar integration via `--format` (colors escalate at warn 85% / crit 95%):
+
+```bash
+oct usage --format waybar        # JSON for a waybar custom/script module (text/tooltip/class)
+oct usage --format polybar       # one line for a polybar custom script (%{F#...} colors, escaped %)
+oct usage --format swiftbar      # SwiftBar plugin protocol (title + dropdown menu)
+oct usage --format waybar --from-snapshot   # render the last oct monitor snapshot instead of fetching live
+```
+
+`--from-snapshot` reads `~/.oct/state/usage-latest.json` (written every
+`oct monitor` cycle), so a statusbar can re-run oct on a short poll interval
+without triggering a full provider fan-out. waybar/polybar/swiftbar honor the
+`usage_display_mode` setting; `--compact` stays pinned to "remaining" as
+documented.
 
 ```bash
 oct monitor --interval 10s       # always-on view, 10s refresh
