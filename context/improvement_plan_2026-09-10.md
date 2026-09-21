@@ -13,11 +13,14 @@ macro plugin (fails identically on untouched HEAD), so builds run via
 --package-path macos/OctMenubar` — 26/26 pass, plus three swift-6
 concurrency defects found and fixed during that first real compile
 (ebb7f0d). Note: `oct menubar build-helper` on this host needs the same
-DEVELOPER_DIR export. Remaining: item 4-B (helper distribution via
-release.yml darwin-assets job), item 4-C (legacy removal after its
-completion criteria), Swift-side manual UI gates (responsiveness,
-helper launch with the new helper), `config update --json`
-input-removal follow-up (two releases after 061fde4). Revised same-day
+DEVELOPER_DIR export. Item 4-B implemented 2026-09-22 (darwin-assets builds a stamped
+universal helper into both darwin tars, install.sh / `oct update` /
+verify-release-integrity.sh handle it, `oct menubar doctor` reports
+oct/helper version skew); first real-release verification still pending.
+Remaining: item 4-C (legacy removal after its completion criteria),
+Swift-side manual UI gates (responsiveness, helper launch with the new
+helper), `config update --json` input-removal follow-up (two releases
+after 061fde4). Revised same-day
 after external plan review; 13 findings are folded in below.
 
 ## 0. Corrections to the review document (found during planning investigation)
