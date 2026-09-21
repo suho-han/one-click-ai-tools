@@ -37,6 +37,20 @@ type deepseekBalanceResponse struct {
 	} `json:"balance_infos"`
 }
 
+// describeDeepseekCredential probes the single DeepSeek source: the
+// DEEPSEEK_API_KEY env var.
+func describeDeepseekCredential() CredentialStatus {
+	status := credentialStatus([]CredentialSource{{
+		Kind:     CredentialKindEnv,
+		Location: "DEEPSEEK_API_KEY",
+		Found:    credentialEnvFound("DEEPSEEK_API_KEY"),
+	}})
+	if status.Status == CredentialStatusMissing {
+		status.Note = "set DEEPSEEK_API_KEY"
+	}
+	return status
+}
+
 // FetchDeepseekUsage reports the DeepSeek account balance.
 func FetchDeepseekUsage(ctx context.Context) UsageResult {
 	result := UsageResult{

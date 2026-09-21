@@ -110,6 +110,68 @@ func resolveKimiToken() (string, string) {
 	return "", ""
 }
 
+// describeKimiCredential probes the Kimi token chain in fetch priority order:
+// KIMI_CODE_API_KEY -> credentials/kimi-code.json -> the newest rotated
+// kimi-code-env-*.json, annotating expired OAuth tokens.
+func describeKimiCredential() CredentialStatus {
+	envSource := CredentialSource{
+		Kind:     CredentialKindEnv,
+		Location: "KIMI_CODE_API_KEY",
+		Found:    credentialEnvFound("KIMI_CODE_API_KEY"),
+	}
+
+	home := os.Getenv("KIMI_CODE_HOME")
+	if home == "" {
+		home = credentialHomePath(".kimi-code")
+	}
+	credDir := ""
+	if home != "" {
+		credDir = filepath.Join(home, "credentials")
+	}
+
+	staticSource := CredentialSource{
+		Kind:     CredentialKindFile,
+		Location: filepath.Join(credDir, "kimi-code.json"),
+	}
+	rotatedSource := CredentialSource{
+		Kind:     CredentialKindFile,
+		Location: filepath.Join(credDir, "kimi-code-env-*.json"),
+		Note:     "newest rotated OAuth env-file wins",
+	}
+	if credDir != "" {
+		if path := newestKimiCredentialPath(credDir, "kimi-code.json"); path != "" {
+			staticSource.Found = credentialJSONFileFound(path, "access_token")
+		}
+		if path := newestKimiCredentialPath(credDir, "kimi-code-env-*.json"); path != "" {
+			if data, err := os.ReadFile(path); err == nil {
+				rotatedSource.Found = parseKimiAccessToken(data) != ""
+				if rotatedSource.Found && kimiTokenExpired(data) {
+					rotatedSource.Note = "access_token expired; run kimi once to refresh"
+				}
+			}
+		}
+	}
+
+	status := credentialStatus([]CredentialSource{envSource, staticSource, rotatedSource})
+	if status.Status == CredentialStatusMissing {
+		status.Note = "run 'kimi login' or set KIMI_CODE_API_KEY"
+	}
+	return status
+}
+
+// newestKimiCredentialPath picks the most recently modified file matching the
+// glob under credDir, "" when nothing matches.
+func newestKimiCredentialPath(credDir, pattern string) string {
+	candidates, _ := filepath.Glob(filepath.Join(credDir, pattern))
+	newest, newestTime := "", time.Time{}
+	for _, path := range candidates {
+		if info, err := os.Stat(path); err == nil && info.ModTime().After(newestTime) {
+			newest, newestTime = path, info.ModTime()
+		}
+	}
+	return newest
+}
+
 func parseKimiAccessToken(data []byte) string {
 	var cred struct {
 		AccessToken string `json:"access_token"`

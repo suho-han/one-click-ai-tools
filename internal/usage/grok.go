@@ -112,6 +112,56 @@ func resolveGrokToken() (string, string) {
 	return "", ""
 }
 
+// describeGrokCredential probes the SuperGrok token chain in fetch priority
+// order: GROK_OAUTH_TOKEN -> auth.json under $GROK_HOME (or ~/.grok).
+func describeGrokCredential() CredentialStatus {
+	home := os.Getenv("GROK_HOME")
+	if home == "" {
+		home = credentialHomePath(".grok")
+	}
+	authPath := filepath.Join(home, "auth.json")
+	status := credentialStatus([]CredentialSource{
+		{
+			Kind:     CredentialKindEnv,
+			Location: "GROK_OAUTH_TOKEN",
+			Found:    credentialEnvFound("GROK_OAUTH_TOKEN"),
+		},
+		{
+			Kind:     CredentialKindFile,
+			Location: authPath,
+			Found:    grokAuthFileHasToken(authPath),
+			Note:     "cached `grok login` credential (auth.x.ai scope)",
+		},
+	})
+	if status.Status == CredentialStatusMissing {
+		status.Note = "run 'grok login' or set GROK_OAUTH_TOKEN"
+	}
+	return status
+}
+
+// grokAuthFileHasToken reports whether an auth.json map file carries a
+// non-empty key under an auth.x.ai (or sign-in fallback) scope.
+func grokAuthFileHasToken(path string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	var auths map[string]struct {
+		Key string `json:"key"`
+	}
+	if json.Unmarshal(data, &auths) != nil {
+		return false
+	}
+	for _, substr := range []string{grokAuthPreferred, grokAuthFallback} {
+		for scope, auth := range auths {
+			if strings.Contains(scope, substr) && strings.TrimSpace(auth.Key) != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // FetchGrokUsage reports SuperGrok credit usage over its billing period.
 func FetchGrokUsage(ctx context.Context) UsageResult {
 	result := UsageResult{

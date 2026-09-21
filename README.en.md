@@ -78,7 +78,7 @@ oct usage --json     # for scripts/pipes
 | Alert | `oct alert` | bare command opens arrow/key-based interactive alert setup; supports `config`, provider thresholds, `test`, and `snooze` |
 | Schedule | `oct schedule` | register agent-update / session-refresh with the OS scheduler |
 | Schedule | `oct session-refresh` | probe session/auth state without sending prompts (`--dry-run`) |
-| Diagnostics | `oct doctor` | shell PATH / bootstrap diagnostics |
+| Diagnostics | `oct doctor` | shell PATH / bootstrap diagnostics; `credentials` reports each provider's credential source |
 | Diagnostics | `oct update` | update oct itself |
 | Development | `oct release-doctor` | one compact release preflight report |
 
