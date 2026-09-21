@@ -53,10 +53,53 @@ print_install_summary() {
     print_summary_row "Version: ${release_version}"
     print_summary_row "Platform: ${os_name}/${arch_name}"
     print_summary_row "Binary: ${INSTALL_DIR}/${BIN_NAME}"
+    print_summary_row "Menubar helper: ${helper_summary}"
     print_summary_row "Install config: $(install_config_status)"
     ui_line "│                                                         │"
     ui_line "├─────────────────────────────────────────────────────────╯"
     ui_line "│"
+}
+
+# install_menubar_helper installs the Swift menubar helper bundled at the
+# root of darwin release tarballs next to the oct binary (a PATH dir, so the
+# helper discovery in 'oct menubar doctor' finds it). Best-effort: a failure
+# or an older asset without the helper only notes and continues -- the
+# legacy Go menubar remains the fallback.
+install_menubar_helper() {
+    helper_installed=''
+    if [ "$os_name" != "darwin" ]; then
+        helper_summary='n/a (macOS only)'
+        return 0
+    fi
+    helper_candidate="${tmpdir}/OctMenubarApp"
+    if [ ! -f "$helper_candidate" ]; then
+        helper_summary='not bundled in this asset'
+        ui_note "Menubar helper not found in the archive; skipping (older releases do not bundle it)."
+        return 0
+    fi
+    ui_step "Installing menubar helper"
+    if ! mkdir -p "$INSTALL_DIR" 2>/dev/null; then
+        helper_summary='install failed (legacy menubar still works)'
+        ui_note "Menubar helper install failed; continuing without it."
+        return 0
+    fi
+    if command -v install >/dev/null 2>&1; then
+        if install -m 0755 "$helper_candidate" "${INSTALL_DIR}/OctMenubarApp"; then
+            helper_installed="${INSTALL_DIR}/OctMenubarApp"
+        fi
+    else
+        if cp "$helper_candidate" "${INSTALL_DIR}/OctMenubarApp" && chmod 0755 "${INSTALL_DIR}/OctMenubarApp"; then
+            helper_installed="${INSTALL_DIR}/OctMenubarApp"
+        fi
+    fi
+    if [ -n "$helper_installed" ]; then
+        helper_summary="$helper_installed"
+        ui_done "Menubar helper installed"
+    else
+        helper_summary='install failed (legacy menubar still works)'
+        ui_note "Menubar helper install failed; continuing without it."
+    fi
+    return 0
 }
 
 run_installed_config() {
@@ -223,6 +266,8 @@ else
     cp "$candidate" "${INSTALL_DIR}/${BIN_NAME}"
     chmod 0755 "${INSTALL_DIR}/${BIN_NAME}"
 fi
+
+install_menubar_helper
 
 print_install_summary
 case ":$PATH:" in
