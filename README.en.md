@@ -140,18 +140,20 @@ oct session-refresh --dry-run                                       # manual pro
 - **GitHub Copilot** (`@github/copilot`)
 - **Cursor CLI** (official `agent` install flow via `cursor.com/install`)
 - **OpenCode** (`opencode-ai`)
-- **Kimi Code** (`@moonshot-ai/kimi-code`, binary: `kimi`)
-- **Qwen Code** (`@qwen-code/qwen-code`, binary: `qwen`)
-- **MiniMax** (`mmx-cli`, binary: `mmx`)
+- **Kimi Code** (`@moonshot-ai/kimi-code`, binary: `kimi`) — (experimental)
+- **Qwen Code** (`@qwen-code/qwen-code`, binary: `qwen`) — (experimental)
+- **MiniMax** (`mmx-cli`, binary: `mmx`) — (experimental)
 
 ### Standalone usage providers (usage-only, no CLI managed)
 
 These are plan/account services with no installable CLI; `oct usage` reports them only when listed in `agent_order` or `enabled_tools` (e.g. `oct config set tools zai`).
 
-- **Z.ai (GLM Coding Plan)** — `ZAI_API_KEY` / `ZHIPU_API_KEY`, or an OpenCode `zai-coding-plan` login
-- **DeepSeek** — `DEEPSEEK_API_KEY`
+- **Z.ai (GLM Coding Plan)** — `ZAI_API_KEY` / `ZHIPU_API_KEY`, or an OpenCode `zai-coding-plan` login — (experimental)
+- **DeepSeek** — `DEEPSEEK_API_KEY` — (experimental)
 - **OpenRouter** — `OPENROUTER_API_KEY`
-- **Grok (xAI SuperGrok)** — `grok login` credential or `GROK_OAUTH_TOKEN`
+- **Grok (xAI SuperGrok)** — `grok login` credential or `GROK_OAUTH_TOKEN` — (experimental)
+
+`(experimental)` marks usage integrations whose live API responses have not been verified against a real subscription yet (verified live: Codex, Claude, Command Code, OpenCode, Antigravity, OpenRouter).
 
 ## Menubar helper (macOS)
 

@@ -23,9 +23,9 @@ Supported agents:
 - GitHub Copilot (`@github/copilot`)
 - Cursor (`cursor-agent`)
 - OpenCode (`opencode-ai`)
-- Kimi Code (`@moonshot-ai/kimi-code`, binary: `kimi`)
-- Qwen Code (`@qwen-code/qwen-code`, binary: `qwen`)
-- MiniMax (`mmx-cli`, binary: `mmx`)
+- Kimi Code (`@moonshot-ai/kimi-code`, binary: `kimi`) (experimental)
+- Qwen Code (`@qwen-code/qwen-code`, binary: `qwen`) (experimental)
+- MiniMax (`mmx-cli`, binary: `mmx`) (experimental)
 
 Default behavior:
 - macOS: `brew update/upgrade`, npm-based updates, then fallback paths when needed
@@ -53,10 +53,11 @@ Notes:
 - Claude Code falls back to parsing `claude --print /usage` for 5h/weekly quota when the OAuth API reports no utilization.
 - Antigravity parses quota from `agy --print /usage` without reading tokens or keychain data directly.
 - Command Code reads 5h/7d/monthly buckets from the billing API using `COMMAND_CODE_API_KEY` or `~/.commandcode/auth.json`.
-- Kimi Code reads weekly + 5-hour request windows from `api.kimi.com/coding/v1/usages` (`KIMI_CODE_API_KEY` or `~/.kimi-code/credentials/kimi-code.json`).
+- Kimi Code reads weekly + 5-hour request windows from `api.kimi.com/coding/v1/usages` (`KIMI_CODE_API_KEY`, `~/.kimi-code/credentials/kimi-code.json`, or the rotated `kimi-code-env-*.json` files the current CLI writes; access tokens expire after ~15 minutes and are only refreshed by the kimi CLI itself).
 - Qwen Code has no public usage API; oct counts today's local token-usage records (`~/.qwen/**/usage/token-usage-*.jsonl`) against `qwen_daily_limit` (default 100, this machine only).
 - MiniMax plan quota (5h + weekly) comes from `POST /v1/coding_plan/remains` (`MINIMAX_CODING_API_KEY` or `MINIMAX_API_KEY`; `MINIMAX_REGION=cn` switches to the mainland host).
 - Standalone providers (`zai`, `deepseek`, `openrouter`, `grok`) have no CLI behind them and are fetched only when listed in `agent_order` or `enabled_tools`.
+- `(experimental)` marks providers whose response fields were written from community sources and not yet confirmed against a live subscription (2026-09-20: live-verified = codex, claude, commandcode, opencode, antigravity, openrouter; kimi auth path verified, schema pending quota reset).
 - Legacy config values `gemini` and `gemini-cli` are still accepted, but they normalize internally to `agy`.
 
 ### Key environment variables
