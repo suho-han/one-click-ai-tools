@@ -297,36 +297,10 @@ func isTruthyEnv(v string) bool {
 	}
 }
 
+// usageSeverity delegates to the shared internal/usage classification so
+// monitor rows and statusline renderers can never disagree on thresholds.
 func usageSeverity(r usage.UsageResult) string {
-	status := strings.ToLower(strings.TrimSpace(r.Status))
-	switch status {
-	case "error":
-		return "CRIT"
-	case "warn":
-		return "WARN"
-	}
-	if !strings.EqualFold(r.Unit, "percent") {
-		return "UNKNOWN"
-	}
-	maxV := -1.0
-	if v, ok := strconvParseSafe(r.Used); ok {
-		maxV = v
-	}
-	for _, raw := range r.Buckets {
-		if v, ok := strconvParseSafe(raw); ok && v > maxV {
-			maxV = v
-		}
-	}
-	if maxV < 0 {
-		return "UNKNOWN"
-	}
-	if maxV >= 95 {
-		return "CRIT"
-	}
-	if maxV >= 85 {
-		return "WARN"
-	}
-	return "OK"
+	return usage.UsageSeverity(r)
 }
 
 func sortMonitorResults(results []usage.UsageResult, sortBy string, desc bool) []usage.UsageResult {

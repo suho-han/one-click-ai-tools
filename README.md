@@ -71,7 +71,7 @@ oct usage --json     # 스크립트/파이프용
 | --- | --- | --- |
 | 설정 | `oct config` | 도구·프로바이더 선택, 사용량 표시 모드 등 일반 설정 (인터랙티브; 알림 설정은 다루지 않음) |
 | 업데이트 | `oct agent-update` | 설치된 AI CLI 전부 업데이트 (`--dry-run --explain` 사전 점검) |
-| 감시 | `oct usage` | 전 프로바이더 쿼터 1회 조회 (`--json`, `--compact`, `--notify`) |
+| 감시 | `oct usage` | 전 프로바이더 쿼터 1회 조회 (`--json`, `--compact`, `--format waybar/polybar/swiftbar`, `--notify`) |
 | 감시 | `oct monitor` | 상시 갱신 화면 (`--interval`, `--once`, 정렬·필터) |
 | 감시 | `oct menubar` | macOS 메뉴바에 상시 표시 |
 | 감시 | `oct quota` | OpenCode Go 쿼터 바 + 리셋 카운트다운, 로컬 세션 토큰 기반 비용 시뮬레이터 |
@@ -104,6 +104,20 @@ oct usage --notify               # 임계값 규칙에 따라 알림 발송
 
 스크립트 작성자용: `--json` 출력 구조는 안정적인 계약으로 문서화돼 있습니다 —
 [docs/usage-json-schema.md](docs/usage-json-schema.md) 참고.
+
+리눅스/macOS 상태바 연동용 `--format` 모드 (심각도에 따라 warn 85% / crit 95% 색상):
+
+```bash
+oct usage --format waybar        # waybar custom/script 모듈용 JSON (text/tooltip/class)
+oct usage --format polybar       # polybar custom script용 한 줄 (%{F#...} 색상, % 이스케이프)
+oct usage --format swiftbar      # SwiftBar 플러그인 프로토콜 (타이틀 + 드롭다운 메뉴)
+oct usage --format waybar --from-snapshot   # 라이브 fetch 대신 마지막 oct monitor 스냅샷 사용
+```
+
+`--from-snapshot`은 `~/.oct/state/usage-latest.json`(`oct monitor`가 매 사이클
+기록)을 읽으므로, 상태바가 짧은 폴링 간격으로 재실행해도 프로바이더 전체
+fan-out이 발생하지 않습니다. waybar/polybar/swiftbar는 `usage_display_mode`
+설정을 따르고, `--compact`는 문서화된 대로 항상 remaining 기준입니다.
 
 ```bash
 oct monitor --interval 10s       # 10초 갱신 상시 화면

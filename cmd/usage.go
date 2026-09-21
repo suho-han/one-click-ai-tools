@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -80,8 +81,37 @@ type switchProviderMsg struct{}
 
 var usageFetcher = usage.GetUsage
 
-func shouldAutoJSONFallback(jsonMode bool, compactMode bool, isTTY bool) bool {
-	return !jsonMode && !compactMode && !isTTY
+// statuslineFormats are the statusbar-oriented output modes of --format.
+// json/compact stay separate flags for back-compat but are accepted here too.
+var statuslineFormats = map[string]bool{
+	"waybar":   true,
+	"polybar":  true,
+	"swiftbar": true,
+	"json":     true,
+	"compact":  true,
+}
+
+func shouldAutoJSONFallback(jsonMode bool, compactMode bool, format string, isTTY bool) bool {
+	return !jsonMode && !compactMode && format == "" && !isTTY
+}
+
+// resolveUsageOutputMode merges the back-compat bool flags with --format.
+// An explicit --format wins; documented so scripts can pass both safely.
+func resolveUsageOutputMode(jsonMode, compactMode bool, format string) (string, error) {
+	format = strings.ToLower(strings.TrimSpace(format))
+	if format == "" {
+		if jsonMode {
+			return "json", nil
+		}
+		if compactMode {
+			return "compact", nil
+		}
+		return "", nil
+	}
+	if !statuslineFormats[format] {
+		return "", fmt.Errorf("invalid --format %q (want json, compact, waybar, polybar, or swiftbar)", format)
+	}
+	return format, nil
 }
 
 func usageOrderedTools() []update.Tool {
@@ -150,6 +180,17 @@ Legacy aliases 'gemini' and 'gemini-cli' still map to 'agy' for compatibility.`,
 		jsonMode, _ := cmd.Flags().GetBool("json")
 		compactMode, _ := cmd.Flags().GetBool("compact")
 		notifyMode, _ := cmd.Flags().GetBool("notify")
+		format, _ := cmd.Flags().GetString("format")
+		fromSnapshot, _ := cmd.Flags().GetBool("from-snapshot")
+		snapshotPath, _ := cmd.Flags().GetString("snapshot-path")
+
+		outputMode, err := resolveUsageOutputMode(jsonMode, compactMode, format)
+		if err != nil {
+			return err
+		}
+		if fromSnapshot && outputMode == "" {
+			return fmt.Errorf("--from-snapshot requires an explicit --format (waybar, polybar, swiftbar, json, or compact)")
+		}
 
 		isTTY := false
 		if fi, err := os.Stdout.Stat(); err == nil {
@@ -157,25 +198,27 @@ Legacy aliases 'gemini' and 'gemini-cli' still map to 'agy' for compatibility.`,
 		}
 
 		// Auto-fallback for non-TTY environments (CI, pipes, cron, tool runners)
-		if shouldAutoJSONFallback(jsonMode, compactMode, isTTY) {
-			jsonMode = true
+		if shouldAutoJSONFallback(jsonMode, compactMode, outputMode, isTTY) {
+			outputMode = "json"
 			fmt.Fprintln(os.Stderr, "[oct] non-TTY detected -> switching to --json (pretty output)")
 		}
 
-		if jsonMode || compactMode {
-			results, err := usageFetcher(cmd.Context())
-			if err != nil {
-				return fmt.Errorf("fetch usage: %w", err)
+		if outputMode != "" {
+			var results []usage.UsageResult
+			if fromSnapshot {
+				snapshot, err := usage.LoadSnapshot(snapshotPath)
+				if err != nil {
+					return fmt.Errorf("load snapshot (run 'oct monitor' to produce one): %w", err)
+				}
+				results = snapshot.Results
+			} else {
+				results, err = usageFetcher(cmd.Context())
+				if err != nil {
+					return fmt.Errorf("fetch usage: %w", err)
+				}
+				maybeSendUsageAlerts(cmd, results, notifyMode)
 			}
-			maybeSendUsageAlerts(cmd, results, notifyMode)
-			if compactMode {
-				usage.RenderCompactRemaining(os.Stdout, results)
-				return nil
-			}
-			if err := usage.PrintJSON(results); err != nil {
-				return fmt.Errorf("print usage json: %w", err)
-			}
-			return nil
+			return printUsageOutputMode(cmd, outputMode, results)
 		}
 
 		selectedTools := usageOrderedTools()
@@ -214,9 +257,36 @@ Legacy aliases 'gemini' and 'gemini-cli' still map to 'agy' for compatibility.`,
 	},
 }
 
+// printUsageOutputMode renders one structured output mode. The display mode
+// for statusline formats comes from usage_display_mode (normalized), matching
+// the menubar title; --compact stays pinned to "remaining" per its contract.
+func printUsageOutputMode(cmd *cobra.Command, outputMode string, results []usage.UsageResult) error {
+	switch outputMode {
+	case "compact":
+		usage.RenderCompactRemaining(os.Stdout, results)
+		return nil
+	case "json":
+		if err := usage.PrintJSON(results); err != nil {
+			return fmt.Errorf("print usage json: %w", err)
+		}
+		return nil
+	case "waybar":
+		return usage.RenderWaybarJSON(os.Stdout, results, viper.GetString("usage_display_mode"))
+	case "polybar":
+		return usage.RenderPolybarLine(os.Stdout, results, viper.GetString("usage_display_mode"))
+	case "swiftbar":
+		return usage.RenderSwiftBar(os.Stdout, results, viper.GetString("usage_display_mode"))
+	default:
+		return fmt.Errorf("unsupported usage output mode %q", outputMode)
+	}
+}
+
 func init() {
 	rootCmd.AddCommand(usageCmd)
 	usageCmd.Flags().Bool("json", false, "Output in JSON format")
 	usageCmd.Flags().Bool("compact", false, "Output compact remaining usage (C-45% X-25%)")
 	usageCmd.Flags().Bool("notify", false, "Send usage alerts based on threshold/cooldown rules")
+	usageCmd.Flags().String("format", "", "Structured output mode: json, compact, waybar, polybar, or swiftbar (overrides --json/--compact; statusline formats honor usage_display_mode)")
+	usageCmd.Flags().Bool("from-snapshot", false, "Render from the last 'oct monitor' snapshot instead of fetching live (requires --format)")
+	usageCmd.Flags().String("snapshot-path", "", "Snapshot file for --from-snapshot (default ~/.oct/state/usage-latest.json)")
 }
