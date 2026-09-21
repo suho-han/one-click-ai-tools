@@ -3,6 +3,7 @@ package usage
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -32,6 +33,13 @@ const kimiUsageURL = "https://api.kimi.com/coding/v1/usages"
 
 // kimiUsageEndpoint allows overriding the API URL for testing.
 var kimiUsageEndpoint = kimiUsageURL
+
+// errKimiNoUsageData marks a 200 response whose parsed payload carries no
+// usage windows. Kimi is known to return an empty payload while the current
+// billing window has nothing recorded yet (schema confirmation still
+// pending), so it means "authenticated, nothing to report" — a warning, not
+// a fetch error.
+var errKimiNoUsageData = errors.New("no usage data in response")
 
 type kimiUsageResponse struct {
 	Usage    kimiWindowDetail `json:"usage"`
@@ -244,6 +252,17 @@ func FetchKimiUsage(ctx context.Context) UsageResult {
 
 	resp, err := fetchKimiUsage(ctx, endpoint, token)
 	if err != nil {
+		if errors.Is(err, errKimiNoUsageData) {
+			// Authenticated and reachable, but the billing window has no
+			// usage yet — degrade to warn instead of an alarming error.
+			result.Status = "warn"
+			result.Used = "n/a"
+			result.Message = "Kimi API returned no usage data (window may not have started yet)"
+			if osDebugEnabled() {
+				result.SourceDetail = fmt.Sprintf("auth_source=%s endpoint=%s empty_payload=true", source, endpoint)
+			}
+			return result
+		}
 		result.Status = "error"
 		result.Used = "n/a"
 		result.Message = fmt.Sprintf("API error: %v", err)
@@ -320,7 +339,7 @@ func fetchKimiUsage(ctx context.Context, endpoint, token string) (*kimiUsageResp
 	}
 
 	if strings.TrimSpace(usageResp.Usage.Used) == "" && len(usageResp.Limits) == 0 {
-		return nil, fmt.Errorf("empty usage data in response")
+		return nil, errKimiNoUsageData
 	}
 
 	return &usageResp, nil

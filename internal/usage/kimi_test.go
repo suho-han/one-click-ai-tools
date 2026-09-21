@@ -249,3 +249,27 @@ func TestFetchKimiUsageExpiredEnvFileShortCircuits(t *testing.T) {
 		t.Errorf("source detail = %q, want expired=true", result.SourceDetail)
 	}
 }
+
+func TestFetchKimiUsageEmptyPayloadIsWarn(t *testing.T) {
+	t.Setenv("KIMI_CODE_API_KEY", "test-token")
+	t.Setenv("KIMI_CODE_HOME", t.TempDir())
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"usage": {}, "limits": [], "planName": "Moderato"}`))
+	}))
+	defer server.Close()
+
+	orig := kimiUsageEndpoint
+	kimiUsageEndpoint = server.URL
+	t.Cleanup(func() { kimiUsageEndpoint = orig })
+
+	result := FetchKimiUsage(t.Context())
+	if result.Status != "warn" {
+		t.Fatalf("status = %q, want warn for an authenticated empty payload", result.Status)
+	}
+	if !strings.Contains(result.Message, "no usage data") {
+		t.Errorf("message = %q, want no-usage-data wording", result.Message)
+	}
+	if strings.Contains(result.Message, "HTTP") {
+		t.Errorf("message = %q, want no HTTP-error framing", result.Message)
+	}
+}
