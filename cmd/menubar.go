@@ -35,6 +35,13 @@ type menubarDoctorReport struct {
 	HelperProject string   `json:"helper_project,omitempty"`
 	Searched      []string `json:"searched"`
 	LaunchMode    string   `json:"launch_mode"`
+	// OctVersion / HelperVersion surface version skew between the binary and
+	// the installed Swift helper (the helper is stamped at release build
+	// time). Skew matters: an old helper shells out to `oct usage --json`
+	// and can misparse a newer schema.
+	OctVersion    string `json:"oct_version,omitempty"`
+	HelperVersion string `json:"helper_version,omitempty"`
+	VersionSkew   bool   `json:"version_skew"`
 }
 
 var menubarCmd = &cobra.Command{
@@ -78,6 +85,15 @@ var menubarDoctorCmd = &cobra.Command{
 		}
 		if report.LaunchMode == "legacy-fallback" {
 			fmt.Fprintln(cmd.OutOrStdout(), "- note: no Swift helper was found, so the menubar runs the legacy systray UI. The Swift helper is the canonical path: build it with 'oct menubar build-helper' and install it with 'oct menubar install-helper'.")
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "- oct version: %s\n", report.OctVersion)
+		if report.HelperVersion != "" {
+			fmt.Fprintf(cmd.OutOrStdout(), "- helper version: %s\n", report.HelperVersion)
+			if report.VersionSkew {
+				fmt.Fprintln(cmd.OutOrStdout(), "- note: helper version differs from oct; re-run 'oct menubar install-helper' (or 'oct update') so they match.")
+			}
+		} else if report.HelperPath != "" {
+			fmt.Fprintln(cmd.OutOrStdout(), "- helper version: unknown")
 		}
 		if report.HelperProject != "" {
 			fmt.Fprintf(cmd.OutOrStdout(), "- helper project: %s\n", report.HelperProject)
@@ -174,6 +190,11 @@ func collectMenubarDoctorReport() (menubarDoctorReport, error) {
 			projectDir = helperLaunch.ProjectDir
 		}
 	}
+	octVersion := strings.TrimPrefix(strings.TrimSpace(rootCmd.Version), "v")
+	helperVersion := ""
+	if helperPath != "" && launchMode == "swift-helper" {
+		helperVersion = probeMenubarHelperVersion(helperPath)
+	}
 	return menubarDoctorReport{
 		GOOS:          runtime.GOOS,
 		ExecPath:      execPath,
@@ -182,6 +203,9 @@ func collectMenubarDoctorReport() (menubarDoctorReport, error) {
 		HelperProject: projectDir,
 		Searched:      dedupeStrings(searched),
 		LaunchMode:    launchMode,
+		OctVersion:    octVersion,
+		HelperVersion: helperVersion,
+		VersionSkew:   helperVersion != "" && helperVersion != octVersion,
 	}, nil
 }
 

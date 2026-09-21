@@ -171,7 +171,7 @@ oct session-refresh --dry-run                                       # 토큰 소
 
 ## 메뉴바 헬퍼 (macOS)
 
-Swift menubar helper를 따로 빌드/설치할 수 있습니다.
+macOS 릴리즈 tarball(`oct` 설치 스크립트, `oct update`)에는 Swift menubar helper가 함께 들어 있어 `oct`와 같은 디렉터리(기본 `~/.local/bin`)에 자동 설치됩니다. 소스에서 직접 빌드할 수도 있습니다.
 
 메뉴바 앱의 Settings에서는 General 설정이 Configuration 화면으로 합쳐집니다. 이 화면의 알림 항목은 안전한 전역 알림 설정만 노출하며, 프로바이더별 임계값이나 snooze 제어는 노출하지 않습니다. 그런 고급 설정은 `oct alert config ...`와 `oct alert snooze ...`를 사용하세요.
 

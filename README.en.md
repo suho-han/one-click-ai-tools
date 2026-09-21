@@ -172,7 +172,7 @@ These are plan/account services with no installable CLI; `oct usage` reports the
 
 ## Menubar helper (macOS)
 
-The Swift menubar helper can be built and installed separately.
+macOS release tarballs bundle the Swift menubar helper: the install script and `oct update` install it next to `oct` (default `~/.local/bin`). You can still build it from source yourself.
 
 In the menubar app's Settings, General is merged into the Configuration screen. Its alert section exposes only safe global alert settings; it does not expose provider-specific thresholds or snooze controls. Use `oct alert config ...` and `oct alert snooze ...` for those advanced controls.
 
