@@ -101,11 +101,41 @@ func statuslineMode(mode string) string {
 	return NormalizeDisplayMode(mode)
 }
 
+// statuslineResults filters the fetch down to what earns a slot on a
+// glanceable statusbar: providers with a usable percentage, plus failures
+// (CRIT severity) even when they carry no number — a 401 is actionable and
+// must stay visible. What gets dropped is the warn-status "nothing to show"
+// tail: unconfigured tools, empty billing windows, local-only estimates
+// (the "?" tokens). The full `oct usage` table and the menubar keep every
+// row; only the statusline formats hide them.
+func statuslineResults(results []UsageResult, mode string) (included []UsageResult, skipped int) {
+	mode = statuslineMode(mode)
+	included = make([]UsageResult, 0, len(results))
+	for _, result := range results {
+		if compactValueForMode(result, mode) != "?" || UsageSeverity(result) == "CRIT" {
+			included = append(included, result)
+			continue
+		}
+		skipped++
+	}
+	return included, skipped
+}
+
+// statuslineHiddenLabel renders the trailing note about dropped providers;
+// "" when nothing was hidden.
+func statuslineHiddenLabel(skipped int) string {
+	if skipped == 0 {
+		return ""
+	}
+	return fmt.Sprintf("(%d provider(s) hidden — not configured or no data yet)", skipped)
+}
+
 // RenderWaybarJSON writes a one-line waybar custom-module JSON object:
 // {"text": "...", "tooltip": "...", "class": "ok|warn|error"}. Point waybar's
-// custom/script module at `oct usage --format waybar`.
+// custom/script module at `oct usage --format waybar`. Providers without a
+// usable value are hidden from the text and tooltip.
 func RenderWaybarJSON(w io.Writer, results []UsageResult, mode string) error {
-	mode = statuslineMode(mode)
+	results, skipped := statuslineResults(results, mode)
 	text := CompactTitle(results, mode)
 	if strings.TrimSpace(text) == "" {
 		text = "-"
@@ -116,6 +146,12 @@ func RenderWaybarJSON(w io.Writer, results []UsageResult, mode string) error {
 			tooltip.WriteByte('\n')
 		}
 		tooltip.WriteString(statuslineProviderLine(result, mode))
+	}
+	if hidden := statuslineHiddenLabel(skipped); hidden != "" {
+		if tooltip.Len() > 0 {
+			tooltip.WriteByte('\n')
+		}
+		tooltip.WriteString(hidden)
 	}
 	payload := struct {
 		Text    string `json:"text"`
@@ -136,9 +172,10 @@ func RenderWaybarJSON(w io.Writer, results []UsageResult, mode string) error {
 
 // RenderPolybarLine writes a one-line polybar custom-script payload: the
 // compact title with each token colored by its severity. Literal "%" is
-// doubled (polybar format escaping) and ANSI is never emitted.
+// doubled (polybar format escaping) and ANSI is never emitted. Providers
+// without a usable value are hidden.
 func RenderPolybarLine(w io.Writer, results []UsageResult, mode string) error {
-	mode = statuslineMode(mode)
+	results, _ = statuslineResults(results, mode)
 	var b strings.Builder
 	for _, result := range results {
 		token := compactProviderLabel(result.Provider) + "-" + compactValueForMode(result, mode)
@@ -166,9 +203,10 @@ func polybarEscape(s string) string {
 
 // RenderSwiftBar writes the SwiftBar plugin protocol: the first line is the
 // menu-bar title (with a severity color param), "---" separates it from the
-// per-provider dropdown lines, each colored by its own severity.
+// per-provider dropdown lines, each colored by its own severity. Providers
+// without a usable value are hidden from the title and dropdown.
 func RenderSwiftBar(w io.Writer, results []UsageResult, mode string) error {
-	mode = statuslineMode(mode)
+	results, skipped := statuslineResults(results, mode)
 	title := CompactTitle(results, mode)
 	if strings.TrimSpace(title) == "" {
 		title = "oct"
@@ -182,6 +220,11 @@ func RenderSwiftBar(w io.Writer, results []UsageResult, mode string) error {
 	for _, result := range results {
 		line := statuslineProviderLine(result, mode)
 		if _, err := fmt.Fprintf(w, "%s | color=%s\n", line, severityColor(statuslineClassFor(result))); err != nil {
+			return err
+		}
+	}
+	if hidden := statuslineHiddenLabel(skipped); hidden != "" {
+		if _, err := fmt.Fprintln(w, hidden); err != nil {
 			return err
 		}
 	}

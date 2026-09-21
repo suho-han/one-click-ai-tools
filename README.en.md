@@ -120,6 +120,10 @@ without triggering a full provider fan-out. waybar/polybar/swiftbar honor the
 `usage_display_mode` setting; `--compact` stays pinned to "remaining" as
 documented.
 
+Statusline formats hide providers with no usable value (unconfigured, no data
+— the "?" tokens) while keeping real failures (401s) visible; the tooltip's
+last line counts what was hidden.
+
 ```bash
 oct monitor --interval 10s       # always-on view, 10s refresh
 oct monitor --once --sort-by used --desc --top 5 --compact

@@ -119,6 +119,9 @@ oct usage --format waybar --from-snapshot   # 라이브 fetch 대신 마지막 o
 fan-out이 발생하지 않습니다. waybar/polybar/swiftbar는 `usage_display_mode`
 설정을 따르고, `--compact`는 문서화된 대로 항상 remaining 기준입니다.
 
+statusline 포맷은 값 없는 프로바이더(미구성·데이터 없음 — `?` 토큰)는 숨기고
+실패(401 등)는 유지합니다. 숨겨진 개수는 툴팁 마지막 줄에 표시됩니다.
+
 ```bash
 oct monitor --interval 10s       # 10초 갱신 상시 화면
 oct monitor --once --sort-by used --desc --top 5 --compact
