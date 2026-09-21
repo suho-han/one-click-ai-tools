@@ -113,10 +113,13 @@ menubar):
   then one dropdown line per provider.
 
 All three honor `usage_display_mode` (normalized used/remaining) like the
-menubar title; `--compact` remains pinned to "remaining". Pair with
-`--from-snapshot` to render `~/.oct/state/usage-latest.json` (written by
-`oct monitor`) instead of a live fetch, so short statusbar poll intervals do
-not trigger a provider fan-out. Renderers live in
+menubar title; `--compact` remains pinned to "remaining". Providers without a
+usable value (unconfigured tools, empty billing windows, local-only estimates
+— the "?" tokens) are hidden from statusline output, while real failures
+(e.g. HTTP 401s) stay visible; the waybar tooltip / swiftbar dropdown end
+with a count of the hidden providers. Pair with `--from-snapshot` to render
+`~/.oct/state/usage-latest.json` (written by `oct monitor`) instead of a live
+fetch, so short statusbar poll intervals do not trigger a provider fan-out. Renderers live in
 `internal/usage/statusline.go`; `UsageSeverity` there is the shared
 classification also used by `oct monitor`.
 

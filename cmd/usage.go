@@ -286,7 +286,7 @@ func init() {
 	usageCmd.Flags().Bool("json", false, "Output in JSON format")
 	usageCmd.Flags().Bool("compact", false, "Output compact remaining usage (C-45% X-25%)")
 	usageCmd.Flags().Bool("notify", false, "Send usage alerts based on threshold/cooldown rules")
-	usageCmd.Flags().String("format", "", "Structured output mode: json, compact, waybar, polybar, or swiftbar (overrides --json/--compact; statusline formats honor usage_display_mode)")
+	usageCmd.Flags().String("format", "", "Structured output mode: json, compact, waybar, polybar, or swiftbar (overrides --json/--compact; statusline formats honor usage_display_mode and hide providers without data)")
 	usageCmd.Flags().Bool("from-snapshot", false, "Render from the last 'oct monitor' snapshot instead of fetching live (requires --format)")
 	usageCmd.Flags().String("snapshot-path", "", "Snapshot file for --from-snapshot (default ~/.oct/state/usage-latest.json)")
 }

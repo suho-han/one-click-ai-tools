@@ -254,3 +254,97 @@ func TestLoadSnapshotErrorsOnMissingOrCorruptFile(t *testing.T) {
 		t.Fatalf("corrupt snapshot err = %v, want parse error", err)
 	}
 }
+
+func TestStatuslineFiltersUnconfiguredProviders(t *testing.T) {
+	usable := UsageResult{Provider: "codex", Status: "ok", Unit: "percent", Used: "80.0", Buckets: map[string]string{"7d": "55.0"}}
+	// cursor/qwen/minimax-shaped rows: warn status, no usable percentage.
+	noAuth := UsageResult{Provider: "cursor-agent", Status: "warn", Unit: "sessions", Used: "0", Message: "No Cursor auth token found"}
+	emptyWindow := UsageResult{Provider: "kimi", Status: "warn", Unit: "percent", Message: "Kimi API returned no usage data"}
+	// A hard failure carries no number either but must stay visible.
+	authError := UsageResult{Provider: "copilot", Status: "error", Unit: "requests", Used: "n/a", Message: "Invalid API Token (HTTP 401)"}
+	results := []UsageResult{usable, noAuth, emptyWindow, authError}
+
+	var buf bytes.Buffer
+	if err := RenderWaybarJSON(&buf, results, DisplayModeUsed); err != nil {
+		t.Fatalf("RenderWaybarJSON: %v", err)
+	}
+	var payload struct {
+		Text    string `json:"text"`
+		Tooltip string `json:"tooltip"`
+		Class   string `json:"class"`
+	}
+	if err := json.Unmarshal(buf.Bytes(), &payload); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	// codex's compact value comes from the 7d bucket (55); copilot stays as
+	// the visible "?"-token error.
+	if payload.Text != "X-55% P-?" {
+		t.Fatalf("text = %q, want usable + error tokens only", payload.Text)
+	}
+	if strings.Contains(payload.Tooltip, "cursor-agent") || strings.Contains(payload.Tooltip, "kimi") {
+		t.Fatalf("tooltip = %q, want no-data providers hidden", payload.Tooltip)
+	}
+	if !strings.Contains(payload.Tooltip, "[error] copilot") {
+		t.Fatalf("tooltip = %q, want the actionable error kept", payload.Tooltip)
+	}
+	if !strings.Contains(payload.Tooltip, "2 provider(s) hidden") {
+		t.Fatalf("tooltip = %q, want hidden-provider note", payload.Tooltip)
+	}
+	// The informational warns must not escalate the bar; the real error must.
+	if payload.Class != "error" {
+		t.Fatalf("class = %q, want error (auth failure kept)", payload.Class)
+	}
+
+	// Without the failure, only the usable provider remains and class is ok.
+	buf.Reset()
+	if err := RenderWaybarJSON(&buf, []UsageResult{usable, noAuth, emptyWindow}, DisplayModeUsed); err != nil {
+		t.Fatalf("RenderWaybarJSON: %v", err)
+	}
+	payload = struct {
+		Text    string `json:"text"`
+		Tooltip string `json:"tooltip"`
+		Class   string `json:"class"`
+	}{}
+	if err := json.Unmarshal(buf.Bytes(), &payload); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if payload.Text != "X-55%" || payload.Class != "ok" {
+		t.Fatalf("text/class = %q/%q, want clean ok bar", payload.Text, payload.Class)
+	}
+	if !strings.Contains(payload.Tooltip, "2 provider(s) hidden") {
+		t.Fatalf("tooltip = %q, want hidden-provider note", payload.Tooltip)
+	}
+}
+
+func TestRenderSwiftBarHidesNoDataProviders(t *testing.T) {
+	var buf bytes.Buffer
+	results := []UsageResult{
+		{Provider: "codex", Status: "ok", Unit: "percent", Used: "55.0", Buckets: map[string]string{"7d": "55.0"}},
+		{Provider: "minimax", Status: "warn", Unit: "percent", Message: "No data: MiniMax API token not found"},
+	}
+	if err := RenderSwiftBar(&buf, results, DisplayModeUsed); err != nil {
+		t.Fatalf("RenderSwiftBar: %v", err)
+	}
+	out := buf.String()
+	if strings.Contains(out, "minimax") {
+		t.Fatalf("swiftbar output = %q, want minimax hidden", out)
+	}
+	if !strings.Contains(out, "1 provider(s) hidden") {
+		t.Fatalf("swiftbar output = %q, want hidden-provider note", out)
+	}
+}
+
+func TestRenderPolybarHidesNoDataProviders(t *testing.T) {
+	var buf bytes.Buffer
+	results := []UsageResult{
+		{Provider: "codex", Status: "ok", Unit: "percent", Used: "55.0", Buckets: map[string]string{"7d": "55.0"}},
+		{Provider: "qwen", Status: "warn", Unit: "percent", Message: "No data"},
+	}
+	if err := RenderPolybarLine(&buf, results, DisplayModeUsed); err != nil {
+		t.Fatalf("RenderPolybarLine: %v", err)
+	}
+	out := strings.TrimSpace(buf.String())
+	if out != `X-55%%` {
+		t.Fatalf("polybar output = %q, want only the usable token", out)
+	}
+}
