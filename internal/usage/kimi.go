@@ -64,9 +64,11 @@ type kimiWindow struct {
 // KIMI_CODE_HOME, defaulting to ~/.kimi-code (the Kimi Code CLI's OAuth
 // credential; oct reads it, never refreshes it — the CLI's access tokens are
 // short-lived (~15 min), so the token is only fresh shortly after a kimi run).
-func resolveKimiToken() (string, string) {
+// The third return reports whether the chosen token's expires_at has passed,
+// so the fetch can short-circuit instead of spending a doomed API call.
+func resolveKimiToken() (token, source string, expired bool) {
 	if key := os.Getenv("KIMI_CODE_API_KEY"); key != "" {
-		return key, "env:KIMI_CODE_API_KEY"
+		return key, "env:KIMI_CODE_API_KEY", false
 	}
 
 	home := os.Getenv("KIMI_CODE_HOME")
@@ -76,13 +78,13 @@ func resolveKimiToken() (string, string) {
 		}
 	}
 	if home == "" {
-		return "", ""
+		return "", "", false
 	}
 
 	credDir := filepath.Join(home, "credentials")
 	if data, err := os.ReadFile(filepath.Join(credDir, "kimi-code.json")); err == nil {
 		if token := parseKimiAccessToken(data); token != "" {
-			return token, "kimi-code.json"
+			return token, "kimi-code.json", false
 		}
 	}
 
@@ -99,15 +101,16 @@ func resolveKimiToken() (string, string) {
 		if data, err := os.ReadFile(newest); err == nil {
 			if token := parseKimiAccessToken(data); token != "" {
 				source := "kimi-code-env-*.json"
-				if kimiTokenExpired(data) {
+				expired := kimiTokenExpired(data)
+				if expired {
 					source += " (access_token expired; run kimi once to refresh)"
 				}
-				return token, source
+				return token, source, expired
 			}
 		}
 	}
 
-	return "", ""
+	return "", "", false
 }
 
 // describeKimiCredential probes the Kimi token chain in fetch priority order:
@@ -219,11 +222,20 @@ func FetchKimiUsage(ctx context.Context) UsageResult {
 		Message:  "No data: Kimi Code token not found (run 'kimi login' or set KIMI_CODE_API_KEY)",
 	}
 
-	token, source := resolveKimiToken()
+	token, source, expired := resolveKimiToken()
 	if token == "" {
 		return result
 	}
 	result.SourceDetail = fmt.Sprintf("auth_source=%s", source)
+
+	// An expired OAuth env-file can only produce a 401; short-circuit with
+	// the actionable fix instead of surfacing the API's raw error body.
+	if expired {
+		result.Used = "n/a"
+		result.Message = "Kimi Code OAuth token expired; run 'kimi' once to refresh it, or set KIMI_CODE_API_KEY"
+		result.SourceDetail = fmt.Sprintf("auth_source=%s expired=true", source)
+		return result
+	}
 
 	endpoint := os.Getenv("OCT_KIMI_USAGE_ENDPOINT")
 	if endpoint == "" {

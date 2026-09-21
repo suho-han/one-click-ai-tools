@@ -88,7 +88,7 @@ func TestResolveKimiTokenFromCredentialFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	token, source := resolveKimiToken()
+	token, source, _ := resolveKimiToken()
 	if token != "cli-token" {
 		t.Errorf("token = %q, want cli-token", token)
 	}
@@ -101,7 +101,7 @@ func TestResolveKimiTokenPrefersEnv(t *testing.T) {
 	t.Setenv("KIMI_CODE_API_KEY", "env-token")
 	t.Setenv("KIMI_CODE_HOME", t.TempDir())
 
-	token, source := resolveKimiToken()
+	token, source, _ := resolveKimiToken()
 	if token != "env-token" || source != "env:KIMI_CODE_API_KEY" {
 		t.Errorf("token/source = %q/%q, want env-token/env:KIMI_CODE_API_KEY", token, source)
 	}
@@ -124,7 +124,7 @@ func TestResolveKimiTokenFromDefaultHome(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	token, source := resolveKimiToken()
+	token, source, _ := resolveKimiToken()
 	if token != "home-token" {
 		t.Errorf("token = %q, want home-token (default home appends .kimi-code)", token)
 	}
@@ -156,7 +156,7 @@ func TestResolveKimiTokenFromNewestEnvFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	token, source := resolveKimiToken()
+	token, source, _ := resolveKimiToken()
 	if token != "new-token" {
 		t.Errorf("token = %q, want new-token (newest env-file wins)", token)
 	}
@@ -179,12 +179,15 @@ func TestResolveKimiTokenAnnotatesExpiredEnvFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	token, source := resolveKimiToken()
+	token, source, isExpired := resolveKimiToken()
 	if token != "stale-token" {
 		t.Errorf("token = %q, want stale-token (token still returned)", token)
 	}
 	if !strings.Contains(source, "expired") {
 		t.Errorf("source = %q, want expiry annotation", source)
+	}
+	if !isExpired {
+		t.Errorf("isExpired = false, want true for expires_at in the past")
 	}
 }
 
@@ -207,5 +210,42 @@ func TestFetchKimiUsageHTTPError(t *testing.T) {
 	}
 	if !strings.Contains(result.Message, "401") {
 		t.Errorf("message = %q, want 401 excerpt", result.Message)
+	}
+}
+
+func TestFetchKimiUsageExpiredEnvFileShortCircuits(t *testing.T) {
+	t.Setenv("KIMI_CODE_API_KEY", "")
+	home := t.TempDir()
+	t.Setenv("KIMI_CODE_HOME", home)
+	credDir := filepath.Join(home, "credentials")
+	if err := os.MkdirAll(credDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// The rotated env-file's OAuth token is short-lived (~15 min); a stale
+	// one must not be spent on an API call.
+	if err := os.WriteFile(filepath.Join(credDir, "kimi-code-env-abc.json"), []byte(`{"access_token":"stale","expires_at":1}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	called := false
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer server.Close()
+	t.Setenv("OCT_KIMI_USAGE_ENDPOINT", server.URL)
+
+	result := FetchKimiUsage(t.Context())
+	if called {
+		t.Fatalf("API was called with an expired token; want a local short-circuit")
+	}
+	if result.Status != "warn" {
+		t.Fatalf("status = %q, want warn", result.Status)
+	}
+	if !strings.Contains(result.Message, "expired") || !strings.Contains(result.Message, "kimi") {
+		t.Errorf("message = %q, want actionable refresh guidance", result.Message)
+	}
+	if !strings.Contains(result.SourceDetail, "expired=true") {
+		t.Errorf("source detail = %q, want expired=true", result.SourceDetail)
 	}
 }
