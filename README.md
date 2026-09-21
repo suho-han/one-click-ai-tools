@@ -140,18 +140,20 @@ oct session-refresh --dry-run                                       # 토큰 소
 - **GitHub Copilot** (`@github/copilot`)
 - **Cursor CLI** (공식 `agent` 설치 흐름, `cursor.com/install`)
 - **OpenCode** (`opencode-ai`)
-- **Kimi Code** (`@moonshot-ai/kimi-code`, binary: `kimi`)
-- **Qwen Code** (`@qwen-code/qwen-code`, binary: `qwen`)
-- **MiniMax** (`mmx-cli`, binary: `mmx`)
+- **Kimi Code** (`@moonshot-ai/kimi-code`, binary: `kimi`) — (experimental)
+- **Qwen Code** (`@qwen-code/qwen-code`, binary: `qwen`) — (experimental)
+- **MiniMax** (`mmx-cli`, binary: `mmx`) — (experimental)
 
 ### 사용량 전용 프로바이더 (설치 대상 아님, opt-in)
 
 설치/업데이트 대상 CLI는 아니지만 사용량 조회만 지원합니다. `agent_order` 또는 `enabled_tools`에 이름을 넣으면 표에 나타납니다 (예: `oct config set tools zai`).
 
-- **Z.ai (GLM Coding Plan)** — `ZAI_API_KEY` / `ZHIPU_API_KEY`, 또는 opencode `zai-coding-plan` 로그인
-- **DeepSeek** — `DEEPSEEK_API_KEY`
+- **Z.ai (GLM Coding Plan)** — `ZAI_API_KEY` / `ZHIPU_API_KEY`, 또는 opencode `zai-coding-plan` 로그인 — (experimental)
+- **DeepSeek** — `DEEPSEEK_API_KEY` — (experimental)
 - **OpenRouter** — `OPENROUTER_API_KEY`
-- **Grok (xAI SuperGrok)** — `grok login` 자격증명 또는 `GROK_OAUTH_TOKEN`
+- **Grok (xAI SuperGrok)** — `grok login` 자격증명 또는 `GROK_OAUTH_TOKEN` — (experimental)
+
+`(experimental)`는 실구독 API 응답에 대한 라이브 검증이 아직 안 된 통합이라는 뜻입니다 (라이브 검증 완료: Codex, Claude, Command Code, OpenCode, Antigravity, OpenRouter).
 
 ## 메뉴바 헬퍼 (macOS)
 

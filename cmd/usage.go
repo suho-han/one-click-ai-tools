@@ -131,15 +131,19 @@ To properly fetch usage, ensure you are authenticated:
   - Copilot: Configure your token via 'oct config'
   - OpenCode: Reads usage from local session logs first (no API token)
   - Codex:   Automatically reads from local session logs
-  - Kimi Code: Run 'kimi login' or set KIMI_CODE_API_KEY
-  - Qwen Code: Counts local usage records; daily cap is configurable (qwen_daily_limit)
-  - MiniMax:  Set MINIMAX_CODING_API_KEY (or MINIMAX_API_KEY)
+  - Kimi Code: Run 'kimi login' or set KIMI_CODE_API_KEY (experimental)
+  - Qwen Code: Counts local usage records; daily cap is configurable (qwen_daily_limit) (experimental)
+  - MiniMax:  Set MINIMAX_CODING_API_KEY (or MINIMAX_API_KEY) (experimental)
 
 Standalone providers (fetched only when listed in agent_order or enabled_tools):
-  - Z.ai (GLM):   Set ZAI_API_KEY / ZHIPU_API_KEY, or sign in via 'opencode auth login'
-  - DeepSeek:     Set DEEPSEEK_API_KEY
+  - Z.ai (GLM):   Set ZAI_API_KEY / ZHIPU_API_KEY, or sign in via 'opencode auth login' (experimental)
+  - DeepSeek:     Set DEEPSEEK_API_KEY (experimental)
   - OpenRouter:   Set OPENROUTER_API_KEY (spending-limit tracking)
-  - Grok (xAI):   Run 'grok login' or set GROK_OAUTH_TOKEN
+  - Grok (xAI):   Run 'grok login' or set GROK_OAUTH_TOKEN (experimental)
+
+(experimental) = live API responses not yet verified against a real
+subscription; field shapes may still change. Verified live: codex, claude,
+commandcode, opencode, antigravity, openrouter.
 
 Legacy aliases 'gemini' and 'gemini-cli' still map to 'agy' for compatibility.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
