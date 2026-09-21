@@ -223,8 +223,11 @@ func statuslineProviderLine(result UsageResult, mode string) string {
 	}
 	class := statuslineClassFor(result)
 	line := fmt.Sprintf("[%s] %s · %s", class, name, metrics)
+	// 96 rather than the menubar's tighter budget: these lines are tooltip /
+	// dropdown rows where the actionable tail of an error message ("...check
+	// your credentials using 'oct config'") is the whole point.
 	if msg := strings.TrimSpace(result.Message); msg != "" && class != "ok" {
-		line += " · " + truncateText(msg, 48)
+		line += " · " + truncateText(msg, 96)
 	}
 	return line
 }
