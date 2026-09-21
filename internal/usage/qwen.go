@@ -40,6 +40,29 @@ func resolveQwenHome() string {
 	return filepath.Join(home, ".qwen")
 }
 
+// describeQwenCredential reports the local-only estimation path: Qwen has no
+// public quota API, so oct reads the CLI's token-usage JSONL logs and no
+// secret is involved.
+func describeQwenCredential() CredentialStatus {
+	home := resolveQwenHome()
+	logsPresent := false
+	if home != "" {
+		if _, _, anyRecord := collectQwenUsage(home, time.Now()); anyRecord {
+			logsPresent = true
+		}
+	}
+	return CredentialStatus{
+		Status: CredentialStatusInfo,
+		Sources: []CredentialSource{{
+			Kind:     CredentialKindLocal,
+			Location: filepath.Join(home, "...", "usage", qwenUsageFilePattern),
+			Found:    logsPresent,
+			Note:     "token-usage JSONL logs; no API credential (plan label comes from record authType)",
+		}},
+		Note: "local estimate, this machine only",
+	}
+}
+
 // qwenUsageRecord is the subset of a token-usage JSONL line oct reads. Field
 // names other than apiDurationMs are read defensively: the CLI's design doc
 // promises a local date, auth type, and token counters but only pins the

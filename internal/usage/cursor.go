@@ -97,6 +97,51 @@ func fetchCursorCustomEndpoint(ctx context.Context, endpoint string) UsageResult
 	return parsed
 }
 
+// describeCursorCredential probes the Cursor chain in fetch priority order:
+// a custom endpoint override, the local auth.json token, then the workspace
+// storage local-count fallback (which needs no credential at all).
+func describeCursorCredential() CredentialStatus {
+	sources := []CredentialSource{
+		{
+			Kind:     CredentialKindEnv,
+			Location: "OCT_CURSOR_USAGE_URL",
+			Found:    credentialEnvFound("OCT_CURSOR_USAGE_URL"),
+			Note:     "custom usage endpoint takes priority when set",
+		},
+		{
+			Kind:     CredentialKindEnv,
+			Location: "CURSOR_API_KEY",
+			Found:    credentialEnvFound("CURSOR_API_KEY"),
+			Note:     "Bearer token for the custom endpoint only",
+		},
+	}
+	home, _ := os.UserHomeDir()
+	authPaths := cursorAuthPaths(home)
+	authPathLabels := make([]string, 0, len(authPaths))
+	for _, path := range authPaths {
+		authPathLabels = append(authPathLabels, path)
+	}
+	sources = append(sources, CredentialSource{
+		Kind:     CredentialKindFile,
+		Location: strings.Join(authPathLabels, " | "),
+		Found:    readCursorAuthToken() != "",
+	})
+
+	count, _ := countCursorWorkspaceStorage()
+	sources = append(sources, CredentialSource{
+		Kind:     CredentialKindLocal,
+		Location: strings.Join(cursorWorkspaceStorageRoots(), " | "),
+		Found:    count > 0,
+		Note:     "local session-count fallback needs no credential",
+	})
+
+	status := credentialStatus(sources)
+	if status.Status == CredentialStatusMissing {
+		status.Note = "run 'cursor-agent' once to log in, or point OCT_CURSOR_USAGE_URL at a usage endpoint"
+	}
+	return status
+}
+
 func readCursorAuthToken() string {
 	home, _ := os.UserHomeDir()
 	for _, path := range cursorAuthPaths(home) {
@@ -324,8 +369,9 @@ func parseCursorUsageResponse(body []byte) (UsageResult, error) {
 	return result, nil
 }
 
-func countCursorWorkspaceStorage() (int, []string) {
-	var paths []string
+// cursorWorkspaceStorageRoots lists the workspace-storage roots the local
+// fallback scans, in GOOS-dependent priority order.
+func cursorWorkspaceStorageRoots() []string {
 	var roots []string
 	home, _ := os.UserHomeDir()
 
@@ -339,6 +385,12 @@ func countCursorWorkspaceStorage() (int, []string) {
 	default:
 		roots = append(roots, filepath.Join(home, ".config", "Cursor", "User", "workspaceStorage"))
 	}
+	return roots
+}
+
+func countCursorWorkspaceStorage() (int, []string) {
+	var paths []string
+	roots := cursorWorkspaceStorageRoots()
 
 	count := 0
 	for _, root := range roots {

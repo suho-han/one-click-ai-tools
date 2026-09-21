@@ -255,6 +255,45 @@ func addCodexBackendWindow(buckets map[string]string, resets map[string]string, 
 	}
 }
 
+// describeCodexCredential probes the Codex auth chain: auth.json under
+// $CODEX_HOME (or ~/.codex), then the local session-log fallback that needs
+// no credential.
+func describeCodexCredential() CredentialStatus {
+	home, _ := codexHomePath()
+	authPath := ""
+	authFound := false
+	if home != "" {
+		authPath = filepath.Join(home, "auth.json")
+		_, authFound = readCodexBackendAuth()
+	}
+	sessionsPath := ""
+	sessionsFound := false
+	if home != "" {
+		sessionsPath = filepath.Join(home, "sessions")
+		if logs, err := collectCodexLogFiles(sessionsPath); err == nil {
+			sessionsFound = len(logs) > 0
+		}
+	}
+	status := credentialStatus([]CredentialSource{
+		{
+			Kind:     CredentialKindFile,
+			Location: authPath,
+			Found:    authFound,
+			Note:     "tokens.access_token written by `codex login`",
+		},
+		{
+			Kind:     CredentialKindLocal,
+			Location: sessionsPath,
+			Found:    sessionsFound,
+			Note:     "local session-log estimate needs no credential",
+		},
+	})
+	if status.Status == CredentialStatusMissing {
+		status.Note = "run 'codex login' to write ~/.codex/auth.json"
+	}
+	return status
+}
+
 func codexHomePath() (string, bool) {
 	home := strings.TrimSpace(os.Getenv("CODEX_HOME"))
 	if home != "" {

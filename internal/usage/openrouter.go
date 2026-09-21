@@ -47,6 +47,20 @@ func formatUSD(v float64) string {
 	return strconv.FormatFloat(v, 'f', 2, 64)
 }
 
+// describeOpenRouterCredential probes the single OpenRouter source: the
+// OPENROUTER_API_KEY env var.
+func describeOpenRouterCredential() CredentialStatus {
+	status := credentialStatus([]CredentialSource{{
+		Kind:     CredentialKindEnv,
+		Location: "OPENROUTER_API_KEY",
+		Found:    credentialEnvFound("OPENROUTER_API_KEY"),
+	}})
+	if status.Status == CredentialStatusMissing {
+		status.Note = "set OPENROUTER_API_KEY"
+	}
+	return status
+}
+
 // FetchOpenRouterUsage reports OpenRouter key spend against its spending limit.
 func FetchOpenRouterUsage(ctx context.Context) UsageResult {
 	result := UsageResult{

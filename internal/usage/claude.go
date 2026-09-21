@@ -32,6 +32,43 @@ type claudeOAuthToken struct {
 	RateLimitTier         string   `json:"rateLimitTier"`
 }
 
+// describeClaudeCredential probes the Claude token chain in fetch priority
+// order: macOS keychain -> ~/.claude/.credentials.json -> CLAUDE_API_TOKEN,
+// with the `claude` CLI noted as the usage fallback when no token is found.
+// The keychain probe discards output so the secret is never captured.
+func describeClaudeCredential() CredentialStatus {
+	credsFile := credentialHomePath(".claude", ".credentials.json")
+	sources := []CredentialSource{
+		{
+			Kind:     CredentialKindKeychain,
+			Location: `security: "Claude Code-credentials"`,
+			Found:    credentialCommandPresent("security", "find-generic-password", "-s", "Claude Code-credentials", "-w"),
+		},
+		{
+			Kind:     CredentialKindFile,
+			Location: credsFile,
+			Found:    credsFile != "" && credentialJSONFileFound(credsFile, "access_token"),
+		},
+		{
+			Kind:     CredentialKindEnv,
+			Location: "CLAUDE_API_TOKEN",
+			Found:    credentialEnvFound("CLAUDE_API_TOKEN"),
+		},
+	}
+	if credentialBinaryPresent("claude") {
+		sources = append(sources, CredentialSource{
+			Kind:     CredentialKindCLI,
+			Location: "claude --print /usage",
+			Note:     "fallback when no OAuth token is available",
+		})
+	}
+	status := credentialStatus(sources)
+	if status.Status == CredentialStatusMissing {
+		status.Note = "run 'claude' once to log in, or set CLAUDE_API_TOKEN"
+	}
+	return status
+}
+
 func FetchClaudeUsage(ctx context.Context) UsageResult {
 	home, _ := os.UserHomeDir()
 	credsFile := filepath.Join(home, ".claude", ".credentials.json")

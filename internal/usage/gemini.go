@@ -26,6 +26,22 @@ func baseAntigravityUsageResult() UsageResult {
 
 var antigravityUsageCommandOutput = commandOutput
 
+// describeAntigravityCredential reports the agy CLI delegation: oct never
+// holds Antigravity credentials, the `agy` binary manages them itself, so the
+// meaningful check is only whether that binary is reachable.
+func describeAntigravityCredential() CredentialStatus {
+	found := credentialBinaryPresent("agy")
+	status := credentialStatus([]CredentialSource{{
+		Kind:     CredentialKindCLI,
+		Location: "agy (credentials managed by the agy CLI)",
+		Found:    found,
+	}})
+	if !found {
+		status.Note = "install the agy CLI; oct delegates `agy --print /usage`"
+	}
+	return status
+}
+
 func FetchAntigravityUsage(ctx context.Context) UsageResult {
 	result := withPlanDetection(ctx, baseAntigravityUsageResult(), detectAntigravityPlan)
 	if cliResult, ok := fetchAntigravityCLIUsage(ctx, result); ok {

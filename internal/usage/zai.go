@@ -129,6 +129,48 @@ func resolveZaiCredentialFromOpenCode() (token, base, source string) {
 	return "", "", ""
 }
 
+// describeZaiCredential probes the Z.ai token chain in fetch priority order:
+// ZAI_API_KEY -> ZHIPU_API_KEY -> ANTHROPIC_AUTH_TOKEN (only when
+// ANTHROPIC_BASE_URL points at Z.ai/Zhipu) -> OpenCode auth.json entries.
+func describeZaiCredential() CredentialStatus {
+	anthropicSource := CredentialSource{
+		Kind:     CredentialKindEnv,
+		Location: "ANTHROPIC_AUTH_TOKEN",
+		Found:    false,
+		Note:     "only used when ANTHROPIC_BASE_URL points at a Z.ai/Zhipu host",
+	}
+	if credentialEnvFound("ANTHROPIC_AUTH_TOKEN") && zaiBaseFromHost(os.Getenv("ANTHROPIC_BASE_URL")) != "" {
+		anthropicSource.Found = true
+	}
+
+	authPath := credentialHomePath(".local", "share", "opencode", "auth.json")
+	sources := []CredentialSource{
+		{
+			Kind:     CredentialKindEnv,
+			Location: "ZAI_API_KEY",
+			Found:    credentialEnvFound("ZAI_API_KEY"),
+		},
+		{
+			Kind:     CredentialKindEnv,
+			Location: "ZHIPU_API_KEY",
+			Found:    credentialEnvFound("ZHIPU_API_KEY"),
+			Note:     "China platform (open.bigmodel.cn)",
+		},
+		anthropicSource,
+		{
+			Kind:     CredentialKindFile,
+			Location: authPath,
+			Found:    authPath != "" && credentialJSONEntryKeyPresent(authPath, "zai-coding-plan", "zai", "zhipu"),
+			Note:     "entries written by `opencode auth login`",
+		},
+	}
+	status := credentialStatus(sources)
+	if status.Status == CredentialStatusMissing {
+		status.Note = "set ZAI_API_KEY/ZHIPU_API_KEY or run 'opencode auth login'"
+	}
+	return status
+}
+
 // zaiBucketFor maps a limits[] entry type to an oct bucket label; ok=false for
 // unrecognized types (surfaced via SourceDetail debug instead of guessing).
 // WEEK is tested before TOKEN because weekly limits are token-typed too.

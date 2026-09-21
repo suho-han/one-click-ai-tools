@@ -78,7 +78,7 @@ oct usage --json     # 스크립트/파이프용
 | 알림 | `oct alert` | 서브커맨드 없이 실행하면 방향키/키 입력 기반 인터랙티브 알림 설정; `config`·프로바이더 임계값·`test`·`snooze` 지원 |
 | 예약 | `oct schedule` | agent-update / session-refresh를 OS 스케줄러에 등록 |
 | 예약 | `oct session-refresh` | 프롬프트 없이 세션·인증 상태만 probe (`--dry-run`) |
-| 진단 | `oct doctor` | shell PATH / bootstrap 진단 |
+| 진단 | `oct doctor` | shell PATH / bootstrap 진단, `credentials`로 프로바이더별 자격증명 소스 진단 |
 | 진단 | `oct update` | oct 자체 업데이트 |
 | 개발 | `oct release-doctor` | 릴리스 전 점검 한 번에 보기 |
 
