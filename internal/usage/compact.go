@@ -3,6 +3,7 @@ package usage
 import (
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 )
 
@@ -11,22 +12,21 @@ func RenderCompactRemaining(w io.Writer, results []UsageResult) {
 }
 
 // CompactRemainingTitle renders the "P-NN%" compact title used by
-// `oct usage --compact`. It is intentionally always "remaining" regardless of
-// the usage_display_mode setting -- that's the documented contract of the
-// --compact flag ("Output compact remaining usage").
+// `oct usage --compact`. It is intentionally always "remaining" -- the
+// documented contract of the --compact flag ("Output compact remaining
+// usage").
 func CompactRemainingTitle(results []UsageResult) string {
-	return CompactTitle(results, DisplayModeRemaining)
+	return CompactTitle(results)
 }
 
-// CompactTitle renders the same "P-NN%" compact title for the given display
-// mode. It backs both CompactRemainingTitle (always "remaining") and the
-// menubar's compact title mode, which honors the user's usage_display_mode
-// setting so the status-bar title never disagrees with the popover/dropdown
-// body below it.
-func CompactTitle(results []UsageResult, mode string) string {
+// CompactTitle renders the "P-NN%" compact title (always remaining usage).
+// It backs both CompactRemainingTitle and the menubar's compact title mode,
+// so the status-bar title never disagrees with the popover/dropdown body
+// below it.
+func CompactTitle(results []UsageResult) string {
 	parts := make([]string, 0, len(results))
 	for _, result := range results {
-		parts = append(parts, compactProviderLabel(result.Provider)+"-"+compactValueForMode(result, mode))
+		parts = append(parts, compactProviderLabel(result.Provider)+"-"+compactValue(result))
 	}
 	return strings.Join(parts, " ")
 }
@@ -52,7 +52,7 @@ func compactProviderLabel(provider string) string {
 	return strings.ToUpper(string([]rune(p)[0]))
 }
 
-func compactValueForMode(r UsageResult, mode string) string {
+func compactValue(r UsageResult) string {
 	// "quota" (e.g. Copilot) is always a pre-computed used-percentage even
 	// when r.Unit is a count unit like "AIC", not "percent" -- check it
 	// before the percent-unit gate below, matching usageSummaryDisplay's
@@ -60,7 +60,7 @@ func compactValueForMode(r UsageResult, mode string) string {
 	// usage` table and the Swift menubar show a real number for the exact
 	// same data.
 	if quota := strings.TrimSpace(r.Buckets["quota"]); quota != "" {
-		if label, ok := PercentLabelForMode(quota, mode); ok {
+		if label, ok := PercentLabel(quota); ok {
 			return label
 		}
 	}
@@ -68,11 +68,11 @@ func compactValueForMode(r UsageResult, mode string) string {
 		return "?"
 	}
 	if raw, ok := compactUsageMetric(r); ok {
-		if label, ok := PercentLabelForMode(raw, mode); ok {
+		if label, ok := PercentLabel(raw); ok {
 			return label
 		}
 	}
-	if label, ok := PercentLabelForMode(r.Used, mode); ok {
+	if label, ok := PercentLabel(r.Used); ok {
 		return label
 	}
 	return "?"
@@ -92,10 +92,30 @@ func compactUsageMetric(r UsageResult) (string, bool) {
 			return value, true
 		}
 	}
-	if modelParts := modelBucketDisplays(r, DisplayModeUsed); len(modelParts) > 0 {
-		fields := strings.Fields(modelParts[0])
-		if len(fields) > 0 {
-			return fields[len(fields)-1], true
+	// Fall back to the first per-model bucket's raw (used) value; PercentLabel
+	// applies the remaining inversion.
+	if raw, ok := firstModelBucketValue(r); ok {
+		return raw, true
+	}
+	return "", false
+}
+
+// firstModelBucketValue returns the raw stored value of the first "model:*"
+// bucket (sorted by key), matching modelBucketDisplays' ordering.
+func firstModelBucketValue(r UsageResult) (string, bool) {
+	keys := make([]string, 0, len(r.Buckets))
+	for key := range r.Buckets {
+		if strings.HasPrefix(key, "model:") {
+			keys = append(keys, key)
+		}
+	}
+	if len(keys) == 0 {
+		return "", false
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		if value := strings.TrimSpace(r.Buckets[key]); value != "" {
+			return value, true
 		}
 	}
 	return "", false

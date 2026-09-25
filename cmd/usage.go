@@ -165,6 +165,11 @@ To properly fetch usage, ensure you are authenticated:
   - Qwen Code: Counts local usage records; daily cap is configurable (qwen_daily_limit) (experimental)
   - MiniMax:  Set MINIMAX_CODING_API_KEY (or MINIMAX_API_KEY) (experimental)
 
+Extra accounts (codex, kimi, qwen, grok) get their own <provider>:<name>
+row below the provider row:
+  oct config account add kimi work ~/.kimi-code-work
+  KIMI_CODE_HOME=~/.kimi-code-work kimi login   (log that account in first)
+
 Standalone providers (fetched only when listed in agent_order or enabled_tools):
   - Z.ai (GLM):   Set ZAI_API_KEY / ZHIPU_API_KEY, or sign in via 'opencode auth login' (experimental)
   - DeepSeek:     Set DEEPSEEK_API_KEY (experimental)
@@ -257,9 +262,9 @@ Legacy aliases 'gemini' and 'gemini-cli' still map to 'agy' for compatibility.`,
 	},
 }
 
-// printUsageOutputMode renders one structured output mode. The display mode
-// for statusline formats comes from usage_display_mode (normalized), matching
-// the menubar title; --compact stays pinned to "remaining" per its contract.
+// printUsageOutputMode renders one structured output mode. All statusline
+// surfaces show remaining usage; --compact stays pinned to "remaining" per
+// its contract.
 func printUsageOutputMode(cmd *cobra.Command, outputMode string, results []usage.UsageResult) error {
 	switch outputMode {
 	case "compact":
@@ -271,11 +276,11 @@ func printUsageOutputMode(cmd *cobra.Command, outputMode string, results []usage
 		}
 		return nil
 	case "waybar":
-		return usage.RenderWaybarJSON(os.Stdout, results, viper.GetString("usage_display_mode"))
+		return usage.RenderWaybarJSON(os.Stdout, results)
 	case "polybar":
-		return usage.RenderPolybarLine(os.Stdout, results, viper.GetString("usage_display_mode"))
+		return usage.RenderPolybarLine(os.Stdout, results)
 	case "swiftbar":
-		return usage.RenderSwiftBar(os.Stdout, results, viper.GetString("usage_display_mode"))
+		return usage.RenderSwiftBar(os.Stdout, results)
 	default:
 		return fmt.Errorf("unsupported usage output mode %q", outputMode)
 	}
@@ -286,7 +291,7 @@ func init() {
 	usageCmd.Flags().Bool("json", false, "Output in JSON format")
 	usageCmd.Flags().Bool("compact", false, "Output compact remaining usage (C-45% X-25%)")
 	usageCmd.Flags().Bool("notify", false, "Send usage alerts based on threshold/cooldown rules")
-	usageCmd.Flags().String("format", "", "Structured output mode: json, compact, waybar, polybar, or swiftbar (overrides --json/--compact; statusline formats honor usage_display_mode and hide providers without data)")
+	usageCmd.Flags().String("format", "", "Structured output mode: json, compact, waybar, polybar, or swiftbar (overrides --json/--compact; statusline formats show remaining usage and hide providers without data)")
 	usageCmd.Flags().Bool("from-snapshot", false, "Render from the last 'oct monitor' snapshot instead of fetching live (requires --format)")
 	usageCmd.Flags().String("snapshot-path", "", "Snapshot file for --from-snapshot (default ~/.oct/state/usage-latest.json)")
 }

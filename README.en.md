@@ -116,9 +116,8 @@ oct usage --format waybar --from-snapshot   # render the last oct monitor snapsh
 
 `--from-snapshot` reads `~/.oct/state/usage-latest.json` (written every
 `oct monitor` cycle), so a statusbar can re-run oct on a short poll interval
-without triggering a full provider fan-out. waybar/polybar/swiftbar honor the
-`usage_display_mode` setting; `--compact` stays pinned to "remaining" as
-documented.
+without triggering a full provider fan-out. waybar/polybar/swiftbar and
+`--compact` all show remaining quota.
 
 Statusline formats hide providers with no usable value (unconfigured, no data
 — the "?" tokens) while keeping real failures (401s) visible; the tooltip's

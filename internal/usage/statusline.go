@@ -94,13 +94,6 @@ func severityColor(class string) string {
 	}
 }
 
-// statuslineMode normalizes the display mode; statusline surfaces honor
-// usage_display_mode the way the menubar title does (only --compact pins
-// "remaining").
-func statuslineMode(mode string) string {
-	return NormalizeDisplayMode(mode)
-}
-
 // statuslineResults filters the fetch down to what earns a slot on a
 // glanceable statusbar: providers with a usable percentage, plus failures
 // (CRIT severity) even when they carry no number — a 401 is actionable and
@@ -108,11 +101,10 @@ func statuslineMode(mode string) string {
 // tail: unconfigured tools, empty billing windows, local-only estimates
 // (the "?" tokens). The full `oct usage` table and the menubar keep every
 // row; only the statusline formats hide them.
-func statuslineResults(results []UsageResult, mode string) (included []UsageResult, skipped int) {
-	mode = statuslineMode(mode)
+func statuslineResults(results []UsageResult) (included []UsageResult, skipped int) {
 	included = make([]UsageResult, 0, len(results))
 	for _, result := range results {
-		if compactValueForMode(result, mode) != "?" || UsageSeverity(result) == "CRIT" {
+		if compactValue(result) != "?" || UsageSeverity(result) == "CRIT" {
 			included = append(included, result)
 			continue
 		}
@@ -134,9 +126,9 @@ func statuslineHiddenLabel(skipped int) string {
 // {"text": "...", "tooltip": "...", "class": "ok|warn|error"}. Point waybar's
 // custom/script module at `oct usage --format waybar`. Providers without a
 // usable value are hidden from the text and tooltip.
-func RenderWaybarJSON(w io.Writer, results []UsageResult, mode string) error {
-	results, skipped := statuslineResults(results, mode)
-	text := CompactTitle(results, mode)
+func RenderWaybarJSON(w io.Writer, results []UsageResult) error {
+	results, skipped := statuslineResults(results)
+	text := CompactTitle(results)
 	if strings.TrimSpace(text) == "" {
 		text = "-"
 	}
@@ -145,7 +137,7 @@ func RenderWaybarJSON(w io.Writer, results []UsageResult, mode string) error {
 		if i > 0 {
 			tooltip.WriteByte('\n')
 		}
-		tooltip.WriteString(statuslineProviderLine(result, mode))
+		tooltip.WriteString(statuslineProviderLine(result))
 	}
 	if hidden := statuslineHiddenLabel(skipped); hidden != "" {
 		if tooltip.Len() > 0 {
@@ -174,11 +166,11 @@ func RenderWaybarJSON(w io.Writer, results []UsageResult, mode string) error {
 // compact title with each token colored by its severity. Literal "%" is
 // doubled (polybar format escaping) and ANSI is never emitted. Providers
 // without a usable value are hidden.
-func RenderPolybarLine(w io.Writer, results []UsageResult, mode string) error {
-	results, _ = statuslineResults(results, mode)
+func RenderPolybarLine(w io.Writer, results []UsageResult) error {
+	results, _ = statuslineResults(results)
 	var b strings.Builder
 	for _, result := range results {
-		token := compactProviderLabel(result.Provider) + "-" + compactValueForMode(result, mode)
+		token := compactProviderLabel(result.Provider) + "-" + compactValue(result)
 		if b.Len() > 0 {
 			b.WriteByte(' ')
 		}
@@ -205,9 +197,9 @@ func polybarEscape(s string) string {
 // menu-bar title (with a severity color param), "---" separates it from the
 // per-provider dropdown lines, each colored by its own severity. Providers
 // without a usable value are hidden from the title and dropdown.
-func RenderSwiftBar(w io.Writer, results []UsageResult, mode string) error {
-	results, skipped := statuslineResults(results, mode)
-	title := CompactTitle(results, mode)
+func RenderSwiftBar(w io.Writer, results []UsageResult) error {
+	results, skipped := statuslineResults(results)
+	title := CompactTitle(results)
 	if strings.TrimSpace(title) == "" {
 		title = "oct"
 	}
@@ -218,7 +210,7 @@ func RenderSwiftBar(w io.Writer, results []UsageResult, mode string) error {
 		return err
 	}
 	for _, result := range results {
-		line := statuslineProviderLine(result, mode)
+		line := statuslineProviderLine(result)
 		if _, err := fmt.Fprintf(w, "%s | color=%s\n", line, severityColor(statuslineClassFor(result))); err != nil {
 			return err
 		}
@@ -247,7 +239,7 @@ func statuslineClassFor(result UsageResult) string {
 // statuslineProviderLine renders the "[status] name (plan) · 5h x · 7d y ·
 // 1m z" dropdown line, mirroring the menubar's provider line so the same
 // result reads the same across statusbar surfaces.
-func statuslineProviderLine(result UsageResult, mode string) string {
+func statuslineProviderLine(result UsageResult) string {
 	name := strings.TrimSpace(result.Provider)
 	if name == "" {
 		name = "Unknown"
@@ -255,12 +247,12 @@ func statuslineProviderLine(result UsageResult, mode string) string {
 	if plan := strings.TrimSpace(result.Plan); plan != "" && !strings.EqualFold(plan, "unknown") {
 		name += " (" + plan + ")"
 	}
-	five := statuslineBucket(result, "5h", mode)
-	seven := statuslineBucket(result, "7d", mode)
-	month := statuslineBucket(result, "1m", mode)
+	five := statuslineBucket(result, "5h")
+	seven := statuslineBucket(result, "7d")
+	month := statuslineBucket(result, "1m")
 	metrics := fmt.Sprintf("5h %s · 7d %s · 1m %s", five, seven, month)
 	if five == "-" && seven == "-" && month == "-" {
-		if fallback, ok := FallbackMetricsSummary(result, mode); ok {
+		if fallback, ok := FallbackMetricsSummary(result); ok {
 			metrics = fallback
 		}
 	}
@@ -276,17 +268,15 @@ func statuslineProviderLine(result UsageResult, mode string) string {
 }
 
 // statuslineBucket resolves a bucket's display value with the same
-// used/remaining inversion as `oct monitor`'s bucketVal.
-func statuslineBucket(result UsageResult, key, mode string) string {
+// used -> remaining inversion as `oct monitor`'s bucketVal.
+func statuslineBucket(result UsageResult, key string) string {
 	v := strings.TrimSpace(result.Buckets[key])
 	if v == "" {
 		return "-"
 	}
 	if strings.EqualFold(result.Unit, "percent") {
-		if mode == DisplayModeRemaining {
-			if rem, ok := RemainingFromUsedPercent(v); ok {
-				v = rem
-			}
+		if rem, ok := RemainingFromUsedPercent(v); ok {
+			v = rem
 		}
 		v += "%"
 	}

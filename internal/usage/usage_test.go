@@ -206,12 +206,7 @@ func TestProviderDisplayLabel_IconCapability(t *testing.T) {
 	}
 }
 
-func TestRenderTableRespectsRemainingModeForPercentBuckets(t *testing.T) {
-	oldMode := viper.GetString("usage_display_mode")
-	t.Cleanup(func() {
-		viper.Set("usage_display_mode", oldMode)
-	})
-	viper.Set("usage_display_mode", "remaining")
+func TestRenderTableShowsRemainingForPercentBuckets(t *testing.T) {
 	t.Setenv("OCT_NO_ICONS", "1")
 
 	var buf bytes.Buffer
@@ -230,11 +225,11 @@ func TestRenderTableRespectsRemainingModeForPercentBuckets(t *testing.T) {
 	}
 }
 
-func TestUsageSummaryDisplayRespectsModeForQuotaBucket(t *testing.T) {
-	// Copilot-style result: percent-toggle doesn't apply to r.Used/r.Unit
+func TestUsageSummaryDisplayInvertsQuotaBucket(t *testing.T) {
+	// Copilot-style result: percent inversion doesn't apply to r.Used/r.Unit
 	// (a raw AIC count), but the pre-computed "quota" bucket is still a
-	// used-percentage and must honor usage_display_mode like every other
-	// percent bucket instead of always being labeled "used".
+	// used-percentage and must be inverted like every other percent bucket
+	// instead of being labeled "used".
 	r := UsageResult{
 		Provider: "copilot",
 		Used:     "117",
@@ -243,11 +238,8 @@ func TestUsageSummaryDisplayRespectsModeForQuotaBucket(t *testing.T) {
 		Buckets:  map[string]string{"quota": "58.3"},
 	}
 
-	if got, want := usageSummaryDisplay(r, DisplayModeUsed), "117/200 AIC (58.3% used)"; got != want {
-		t.Fatalf("usageSummaryDisplay(used) = %q, want %q", got, want)
-	}
-	if got, want := usageSummaryDisplay(r, DisplayModeRemaining), "117/200 AIC (41.7% left)"; got != want {
-		t.Fatalf("usageSummaryDisplay(remaining) = %q, want %q", got, want)
+	if got, want := usageSummaryDisplay(r), "117/200 AIC (41.7% left)"; got != want {
+		t.Fatalf("usageSummaryDisplay = %q, want %q", got, want)
 	}
 }
 
@@ -268,11 +260,8 @@ func TestCompactTitleHandlesQuotaBucketDespiteNonPercentUnit(t *testing.T) {
 		Buckets:  map[string]string{"quota": "58.3"},
 	}
 
-	if got, want := CompactTitle([]UsageResult{r}, DisplayModeUsed), "P-58%"; got != want {
-		t.Fatalf("CompactTitle(used) = %q, want %q", got, want)
-	}
-	if got, want := CompactTitle([]UsageResult{r}, DisplayModeRemaining), "P-42%"; got != want {
-		t.Fatalf("CompactTitle(remaining) = %q, want %q", got, want)
+	if got, want := CompactTitle([]UsageResult{r}), "P-42%"; got != want {
+		t.Fatalf("CompactTitle = %q, want %q", got, want)
 	}
 }
 

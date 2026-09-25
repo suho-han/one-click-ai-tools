@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 	"github.com/suho-han/one-click-ai-tools/internal/usage"
 )
 
@@ -92,15 +91,10 @@ func printMonitorScreen(results []usage.UsageResult, now time.Time, compact bool
 	}
 	msgWidth := monitorMessageWidth(width)
 
-	mode := usage.NormalizeDisplayMode(viper.GetString("usage_display_mode"))
-	// The "used"/"limit" column header names the mode currently filling it,
-	// since bucketVal/usageRemaining below invert the numbers to "remaining"
-	// without any other marker in this fixed-width layout (unlike the
-	// `oct usage` table's "% left" suffix).
-	usedColumnLabel := "used"
-	if mode == usage.DisplayModeRemaining {
-		usedColumnLabel = "remaining"
-	}
+	// All surfaces show remaining usage; the "remaining" column header names
+	// the inverted numbers below (unlike the `oct usage` table, which also
+	// appends a "% left" suffix).
+	usedColumnLabel := "remaining"
 
 	if interactive {
 		fmt.Print("\033[H\033[2J") // clear screen
@@ -114,15 +108,13 @@ func printMonitorScreen(results []usage.UsageResult, now time.Time, compact bool
 	}
 
 	for _, r := range results {
-		five := bucketVal(r, "5h", mode)
-		seven := bucketVal(r, "7d", mode)
-		month := bucketVal(r, "1m", mode)
+		five := bucketVal(r, "5h")
+		seven := bucketVal(r, "7d")
+		month := bucketVal(r, "1m")
 		sev := colorizeSeverityLabel(usageSeverity(r))
 		u := r.Used
-		if mode == usage.DisplayModeRemaining {
-			if rem, ok := usageRemaining(r.Used, r.Unit); ok {
-				u = rem
-			}
+		if rem, ok := usageRemaining(r.Used, r.Unit); ok {
+			u = rem
 		}
 		msg := truncateMonitorText(r.Message, msgWidth)
 		statusLabel := colorizeMonitorStatus(r.Status)
@@ -359,17 +351,15 @@ func usageRemaining(raw string, unit string) (string, bool) {
 // columns and the legacy menubar's provider line/details. It intentionally
 // omits the "% left" label that usage.BucketValue adds for the card-style
 // `oct usage` table -- these are narrow, column-aligned surfaces where an
-// extra label would break alignment -- but applies the identical used/
+// extra label would break alignment -- but applies the identical used ->
 // remaining inversion so the underlying numbers never disagree with it.
-func bucketVal(r usage.UsageResult, key, mode string) string {
+func bucketVal(r usage.UsageResult, key string) string {
 	v := "-"
 	if x, ok := r.Buckets[key]; ok && x != "" {
 		v = x
 	}
-	if mode == usage.DisplayModeRemaining {
-		if rem, ok := usageRemaining(v, r.Unit); ok {
-			v = rem
-		}
+	if rem, ok := usageRemaining(v, r.Unit); ok {
+		v = rem
 	}
 	if strings.EqualFold(r.Unit, "percent") && v != "-" {
 		v += "%"
