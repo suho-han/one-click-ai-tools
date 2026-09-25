@@ -3,12 +3,14 @@ package usage
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/suho-han/one-click-ai-tools/internal/netclient"
 )
@@ -31,6 +33,13 @@ const kimiUsageURL = "https://api.kimi.com/coding/v1/usages"
 
 // kimiUsageEndpoint allows overriding the API URL for testing.
 var kimiUsageEndpoint = kimiUsageURL
+
+// errKimiNoUsageData marks a 200 response whose parsed payload carries no
+// usage windows. Kimi is known to return an empty payload while the current
+// billing window has nothing recorded yet (schema confirmation still
+// pending), so it means "authenticated, nothing to report" — a warning, not
+// a fetch error.
+var errKimiNoUsageData = errors.New("no usage data in response")
 
 type kimiUsageResponse struct {
 	Usage    kimiWindowDetail `json:"usage"`
@@ -58,12 +67,16 @@ type kimiWindow struct {
 }
 
 // resolveKimiToken finds the Kimi Code bearer token.
-// Priority: KIMI_CODE_API_KEY env -> credentials/kimi-code.json under
+// Priority: KIMI_CODE_API_KEY env -> credentials/kimi-code.json, then the
+// newest credentials/kimi-code-env-<id>.json OAuth env-file under
 // KIMI_CODE_HOME, defaulting to ~/.kimi-code (the Kimi Code CLI's OAuth
-// credential; oct reads it, never refreshes it).
-func resolveKimiToken() (string, string) {
+// credential; oct reads it, never refreshes it — the CLI's access tokens are
+// short-lived (~15 min), so the token is only fresh shortly after a kimi run).
+// The third return reports whether the chosen token's expires_at has passed,
+// so the fetch can short-circuit instead of spending a doomed API call.
+func resolveKimiToken() (token, source string, expired bool) {
 	if key := os.Getenv("KIMI_CODE_API_KEY"); key != "" {
-		return key, "env:KIMI_CODE_API_KEY"
+		return key, "env:KIMI_CODE_API_KEY", false
 	}
 
 	home := os.Getenv("KIMI_CODE_HOME")
@@ -73,21 +86,144 @@ func resolveKimiToken() (string, string) {
 		}
 	}
 	if home == "" {
-		return "", ""
+		return "", "", false
 	}
 
-	data, err := os.ReadFile(filepath.Join(home, "credentials", "kimi-code.json"))
-	if err != nil {
-		return "", ""
+	return kimiTokenFromCredentials(filepath.Join(home, "credentials"))
+}
+
+// resolveKimiTokenForHome resolves the token for an explicit credential home
+// (a kimi:<name> account row). Unlike the default row, the global
+// KIMI_CODE_API_KEY env is deliberately skipped so two rows can never report
+// the same account.
+func resolveKimiTokenForHome(home string) (token, source string, expired bool) {
+	if strings.TrimSpace(home) == "" {
+		return resolveKimiToken()
+	}
+	return kimiTokenFromCredentials(filepath.Join(home, "credentials"))
+}
+
+// kimiTokenFromCredentials reads the static credential file, falling back to
+// the newest rotated OAuth env-file, under one credentials directory.
+func kimiTokenFromCredentials(credDir string) (token, source string, expired bool) {
+	if data, err := os.ReadFile(filepath.Join(credDir, "kimi-code.json")); err == nil {
+		if token := parseKimiAccessToken(data); token != "" {
+			return token, "kimi-code.json", false
+		}
 	}
 
+	// The current CLI rotates OAuth env-files (kimi-code-env-<id>.json);
+	// pick the most recently written one.
+	if newest := newestKimiCredentialPath(credDir, "kimi-code-env-*.json"); newest != "" {
+		if data, err := os.ReadFile(newest); err == nil {
+			if token := parseKimiAccessToken(data); token != "" {
+				source := "kimi-code-env-*.json"
+				expired := kimiTokenExpired(data)
+				if expired {
+					source += " (access_token expired; run kimi once to refresh)"
+				}
+				return token, source, expired
+			}
+		}
+	}
+
+	return "", "", false
+}
+
+// describeKimiCredential probes the Kimi token chain in fetch priority order:
+// KIMI_CODE_API_KEY -> credentials/kimi-code.json -> the newest rotated
+// kimi-code-env-*.json, annotating expired OAuth tokens.
+func describeKimiCredential() CredentialStatus {
+	return describeKimiCredentialForHome("")
+}
+
+// describeKimiCredentialForHome probes one credential home; an explicit home
+// (kimi:<name> account row) skips the global env source.
+func describeKimiCredentialForHome(home string) CredentialStatus {
+	resolved := strings.TrimSpace(home)
+	sources := make([]CredentialSource, 0, 3)
+	if resolved == "" {
+		sources = append(sources, CredentialSource{
+			Kind:     CredentialKindEnv,
+			Location: "KIMI_CODE_API_KEY",
+			Found:    credentialEnvFound("KIMI_CODE_API_KEY"),
+		})
+		home = os.Getenv("KIMI_CODE_HOME")
+		if home == "" {
+			home = credentialHomePath(".kimi-code")
+		}
+	}
+
+	credDir := ""
+	if home != "" {
+		credDir = filepath.Join(home, "credentials")
+	}
+
+	staticSource := CredentialSource{
+		Kind:     CredentialKindFile,
+		Location: filepath.Join(credDir, "kimi-code.json"),
+	}
+	rotatedSource := CredentialSource{
+		Kind:     CredentialKindFile,
+		Location: filepath.Join(credDir, "kimi-code-env-*.json"),
+		Note:     "newest rotated OAuth env-file wins",
+	}
+	if credDir != "" {
+		if path := newestKimiCredentialPath(credDir, "kimi-code.json"); path != "" {
+			staticSource.Found = credentialJSONFileFound(path, "access_token")
+		}
+		if path := newestKimiCredentialPath(credDir, "kimi-code-env-*.json"); path != "" {
+			if data, err := os.ReadFile(path); err == nil {
+				rotatedSource.Found = parseKimiAccessToken(data) != ""
+				if rotatedSource.Found && kimiTokenExpired(data) {
+					rotatedSource.Note = "access_token expired; run kimi once to refresh"
+				}
+			}
+		}
+	}
+	sources = append(sources, staticSource, rotatedSource)
+
+	status := credentialStatus(sources)
+	if status.Status == CredentialStatusMissing {
+		status.Note = "run 'kimi login' or set KIMI_CODE_API_KEY"
+	}
+	return status
+}
+
+// newestKimiCredentialPath picks the most recently modified file matching the
+// glob under credDir, "" when nothing matches.
+func newestKimiCredentialPath(credDir, pattern string) string {
+	candidates, _ := filepath.Glob(filepath.Join(credDir, pattern))
+	newest, newestTime := "", time.Time{}
+	for _, path := range candidates {
+		if info, err := os.Stat(path); err == nil && info.ModTime().After(newestTime) {
+			newest, newestTime = path, info.ModTime()
+		}
+	}
+	return newest
+}
+
+func parseKimiAccessToken(data []byte) string {
 	var cred struct {
 		AccessToken string `json:"access_token"`
 	}
-	if err := json.Unmarshal(data, &cred); err != nil || cred.AccessToken == "" {
-		return "", ""
+	if err := json.Unmarshal(data, &cred); err != nil {
+		return ""
 	}
-	return cred.AccessToken, "kimi-code.json"
+	return cred.AccessToken
+}
+
+// kimiTokenExpired reports whether the credential file's expires_at (unix
+// seconds, the new env-file format) is in the past. Files without the field
+// count as not expired.
+func kimiTokenExpired(data []byte) bool {
+	var cred struct {
+		ExpiresAt int64 `json:"expires_at"`
+	}
+	if err := json.Unmarshal(data, &cred); err != nil || cred.ExpiresAt == 0 {
+		return false
+	}
+	return time.Now().Unix() >= cred.ExpiresAt
 }
 
 // kimiPercent converts one window's used/limit request counts to a rounded
@@ -105,8 +241,15 @@ func kimiPercent(used, limit string) string {
 // request windows, normalized to percentages). Problems travel in the
 // UsageResult, never as an error.
 func FetchKimiUsage(ctx context.Context) UsageResult {
+	return fetchKimiUsageForHome(ctx, "", "kimi")
+}
+
+// fetchKimiUsageForHome is FetchKimiUsage for one credential home; an empty
+// home resolves the default token chain, a kimi:<name> account row passes its
+// configured directory.
+func fetchKimiUsageForHome(ctx context.Context, home string, provider string) UsageResult {
 	result := UsageResult{
-		Provider: "kimi",
+		Provider: provider,
 		Period:   "5h/7d",
 		Unit:     "percent",
 		Source:   "remote",
@@ -114,11 +257,20 @@ func FetchKimiUsage(ctx context.Context) UsageResult {
 		Message:  "No data: Kimi Code token not found (run 'kimi login' or set KIMI_CODE_API_KEY)",
 	}
 
-	token, source := resolveKimiToken()
+	token, source, expired := resolveKimiTokenForHome(home)
 	if token == "" {
 		return result
 	}
 	result.SourceDetail = fmt.Sprintf("auth_source=%s", source)
+
+	// An expired OAuth env-file can only produce a 401; short-circuit with
+	// the actionable fix instead of surfacing the API's raw error body.
+	if expired {
+		result.Used = "n/a"
+		result.Message = "Kimi Code OAuth token expired; run 'kimi' once to refresh it, or set KIMI_CODE_API_KEY"
+		result.SourceDetail = fmt.Sprintf("auth_source=%s expired=true", source)
+		return result
+	}
 
 	endpoint := os.Getenv("OCT_KIMI_USAGE_ENDPOINT")
 	if endpoint == "" {
@@ -127,6 +279,17 @@ func FetchKimiUsage(ctx context.Context) UsageResult {
 
 	resp, err := fetchKimiUsage(ctx, endpoint, token)
 	if err != nil {
+		if errors.Is(err, errKimiNoUsageData) {
+			// Authenticated and reachable, but the billing window has no
+			// usage yet — degrade to warn instead of an alarming error.
+			result.Status = "warn"
+			result.Used = "n/a"
+			result.Message = "Kimi API returned no usage data (window may not have started yet)"
+			if osDebugEnabled() {
+				result.SourceDetail = fmt.Sprintf("auth_source=%s endpoint=%s empty_payload=true", source, endpoint)
+			}
+			return result
+		}
 		result.Status = "error"
 		result.Used = "n/a"
 		result.Message = fmt.Sprintf("API error: %v", err)
@@ -203,7 +366,7 @@ func fetchKimiUsage(ctx context.Context, endpoint, token string) (*kimiUsageResp
 	}
 
 	if strings.TrimSpace(usageResp.Usage.Used) == "" && len(usageResp.Limits) == 0 {
-		return nil, fmt.Errorf("empty usage data in response")
+		return nil, errKimiNoUsageData
 	}
 
 	return &usageResp, nil

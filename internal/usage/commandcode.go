@@ -240,6 +240,32 @@ func fetchCommandCodeJSON(ctx context.Context, apiKey, endpoint string, params m
 	return netclient.DefaultClient.GetJSON(callCtx, reqURL, headers, target)
 }
 
+// describeCommandCodeCredential probes the Command Code key chain in fetch
+// priority order: COMMAND_CODE_API_KEY -> ~/.commandcode/<auth file>.
+func describeCommandCodeCredential() CredentialStatus {
+	authPath := ""
+	if home := credentialHomePath(".commandcode"); home != "" {
+		authPath = filepath.Join(home, commandCodeAuthFileName())
+	}
+	status := credentialStatus([]CredentialSource{
+		{
+			Kind:     CredentialKindEnv,
+			Location: "COMMAND_CODE_API_KEY",
+			Found:    credentialEnvFound("COMMAND_CODE_API_KEY"),
+		},
+		{
+			Kind:     CredentialKindFile,
+			Location: authPath,
+			Found:    authPath != "" && credentialJSONFileFound(authPath, "apiKey"),
+			Note:     "file name follows COMMANDCODE_API_ENV (auth/auth.local/auth.staging)",
+		},
+	})
+	if status.Status == CredentialStatusMissing {
+		status.Note = "run 'commandcode login' or set COMMAND_CODE_API_KEY"
+	}
+	return status
+}
+
 func resolveCommandCodeAPIKey() (string, string) {
 	if key := strings.TrimSpace(os.Getenv("COMMAND_CODE_API_KEY")); key != "" {
 		return key, "env:COMMAND_CODE_API_KEY"

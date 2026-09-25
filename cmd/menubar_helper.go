@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"io"
@@ -99,6 +100,10 @@ func menubarHelperCandidates(env map[string]string, execPath string, workingDir 
 		for i := 0; i < 6; i++ {
 			appendCandidate(filepath.Join(cursor, "OctMenubarApp"))
 			appendCandidate(filepath.Join(cursor, "macos", "OctMenubar", ".build", "debug", "OctMenubarApp"))
+			// Release-config builds (used by the release workflow) land in
+			// .build/release; checked after debug so dev worktrees keep
+			// preferring the freshly-built debug helper.
+			appendCandidate(filepath.Join(cursor, "macos", "OctMenubar", ".build", "release", "OctMenubarApp"))
 			parent := filepath.Dir(cursor)
 			if parent == cursor {
 				break
@@ -352,6 +357,38 @@ func installMenubarHelper(projectDir string) (string, error) {
 		return "", err
 	}
 	return dst, nil
+}
+
+// menubarHelperVersionMarker is the literal BuildVersion.swift embeds in the
+// helper binary; doctor scans for it instead of executing the helper.
+const menubarHelperVersionMarker = "oct-menubar-helper-version="
+
+// probeMenubarHelperVersion extracts the helper's stamped build version by
+// scanning the binary for menubarHelperVersionMarker. It deliberately never
+// executes the helper: running an older helper with --version would launch
+// its status item (pre-version helpers do not parse arguments) and hang
+// until a probe timeout, flashing a menubar icon at the user. Returns ""
+// when the file is unreadable or predates version stamping.
+// Package var so tests can stub the scan.
+var probeMenubarHelperVersion = func(helperPath string) string {
+	data, err := os.ReadFile(helperPath)
+	if err != nil {
+		return ""
+	}
+	idx := bytes.Index(data, []byte(menubarHelperVersionMarker))
+	if idx < 0 {
+		return ""
+	}
+	start := idx + len(menubarHelperVersionMarker)
+	end := start
+	for end < len(data) && data[end] >= 0x21 && data[end] <= 0x7e { // printable ASCII run
+		end++
+	}
+	version := string(data[start:end])
+	if version == "" {
+		return ""
+	}
+	return strings.TrimPrefix(version, "v")
 }
 
 func copyExecutableFile(src, dst string) error {

@@ -40,6 +40,38 @@ func resolveQwenHome() string {
 	return filepath.Join(home, ".qwen")
 }
 
+// describeQwenCredential reports the local-only estimation path: Qwen has no
+// public quota API, so oct reads the CLI's token-usage JSONL logs and no
+// secret is involved.
+func describeQwenCredential() CredentialStatus {
+	return describeQwenCredentialForHome("")
+}
+
+// describeQwenCredentialForHome probes one Qwen home directory; an explicit
+// home (qwen:<name> account row) replaces $QWEN_HOME/~/.qwen.
+func describeQwenCredentialForHome(home string) CredentialStatus {
+	resolved := strings.TrimSpace(home)
+	if resolved == "" {
+		resolved = resolveQwenHome()
+	}
+	logsPresent := false
+	if resolved != "" {
+		if _, _, anyRecord := collectQwenUsage(resolved, time.Now()); anyRecord {
+			logsPresent = true
+		}
+	}
+	return CredentialStatus{
+		Status: CredentialStatusInfo,
+		Sources: []CredentialSource{{
+			Kind:     CredentialKindLocal,
+			Location: filepath.Join(resolved, "...", "usage", qwenUsageFilePattern),
+			Found:    logsPresent,
+			Note:     "token-usage JSONL logs; no API credential (plan label comes from record authType)",
+		}},
+		Note: "local estimate, this machine only",
+	}
+}
+
 // qwenUsageRecord is the subset of a token-usage JSONL line oct reads. Field
 // names other than apiDurationMs are read defensively: the CLI's design doc
 // promises a local date, auth type, and token counters but only pins the
@@ -168,9 +200,19 @@ func collectQwenUsage(qwenHome string, now time.Time) (int, string, bool) {
 // remaining-mode display, compact output, and threshold alerts treat it like
 // the percent-unit providers; the raw count stays in the message.
 func FetchQwenUsage(ctx context.Context) UsageResult {
-	qwenHome := resolveQwenHome()
+	return fetchQwenUsageForHome(ctx, "", "qwen")
+}
+
+// fetchQwenUsageForHome is FetchQwenUsage for one Qwen home directory; an
+// empty home resolves $QWEN_HOME/~/.qwen, a qwen:<name> account row passes
+// its own directory. The daily limit stays a global setting.
+func fetchQwenUsageForHome(ctx context.Context, home string, provider string) UsageResult {
+	qwenHome := strings.TrimSpace(home)
+	if qwenHome == "" {
+		qwenHome = resolveQwenHome()
+	}
 	result := UsageResult{
-		Provider: "qwen",
+		Provider: provider,
 		Period:   "1d",
 		Unit:     "percent",
 		Source:   "local",

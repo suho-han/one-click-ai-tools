@@ -75,6 +75,35 @@ func resolveMinimaxToken() (string, string) {
 	return "", ""
 }
 
+// describeMinimaxCredential probes the MiniMax token chain: the dedicated
+// coding key first, then the general key, with the region env noted.
+func describeMinimaxCredential() CredentialStatus {
+	status := credentialStatus([]CredentialSource{
+		{
+			Kind:     CredentialKindEnv,
+			Location: "MINIMAX_CODING_API_KEY",
+			Found:    credentialEnvFound("MINIMAX_CODING_API_KEY"),
+		},
+		{
+			Kind:     CredentialKindEnv,
+			Location: "MINIMAX_API_KEY",
+			Found:    credentialEnvFound("MINIMAX_API_KEY"),
+		},
+	})
+	if credentialEnvFound("MINIMAX_REGION") {
+		status.Sources = append(status.Sources, CredentialSource{
+			Kind:     CredentialKindEnv,
+			Location: "MINIMAX_REGION",
+			Found:    true,
+			Note:     "cn/china selects the mainland host",
+		})
+	}
+	if status.Status == CredentialStatusMissing {
+		status.Note = "set MINIMAX_CODING_API_KEY or MINIMAX_API_KEY"
+	}
+	return status
+}
+
 // minimaxBaseURL picks the plan API host: mainland China when MINIMAX_REGION
 // is "cn"/"china", global otherwise.
 func minimaxBaseURL() string {

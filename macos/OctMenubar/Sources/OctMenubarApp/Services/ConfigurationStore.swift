@@ -18,11 +18,19 @@ final class ConfigurationStore: ObservableObject {
     /// the most recently started load may publish its result.
     private var loadGeneration = 0
 
-    init(service: OctCLIService = OctCLIService()) {
+    init(service: OctCLIService = OctCLIService(), snapshot: ConfigurationSnapshot? = nil) {
         self.service = service
+        self.snapshot = snapshot
     }
 
     var isRevertAvailable: Bool { snapshot != nil }
+
+    /// True while the edited draft differs from the last loaded snapshot;
+    /// drives the pinned save bar at the bottom of the settings window.
+    var hasUnsavedChanges: Bool {
+        guard let draft, let snapshot else { return false }
+        return draft != ConfigurationDraft(snapshot: snapshot)
+    }
 
     /// Silent re-read used when surfaces open (popover, settings window).
     /// Keeps the last known configuration on failure.

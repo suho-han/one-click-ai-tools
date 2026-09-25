@@ -71,14 +71,13 @@ oct usage --json     # 스크립트/파이프용
 | --- | --- | --- |
 | 설정 | `oct config` | 도구·프로바이더 선택, 사용량 표시 모드 등 일반 설정 (인터랙티브; 알림 설정은 다루지 않음) |
 | 업데이트 | `oct agent-update` | 설치된 AI CLI 전부 업데이트 (`--dry-run --explain` 사전 점검) |
-| 감시 | `oct usage` | 전 프로바이더 쿼터 1회 조회 (`--json`, `--compact`, `--notify`) |
+| 감시 | `oct usage` | 전 프로바이더 쿼터 1회 조회 (`--json`, `--compact`, `--format waybar/polybar/swiftbar`, `--notify`) |
 | 감시 | `oct monitor` | 상시 갱신 화면 (`--interval`, `--once`, 정렬·필터) |
 | 감시 | `oct menubar` | macOS 메뉴바에 상시 표시 |
-| 감시 | `oct quota` | OpenCode Go 쿼터 바 + 리셋 카운트다운, 로컬 세션 토큰 기반 비용 시뮬레이터 |
 | 알림 | `oct alert` | 서브커맨드 없이 실행하면 방향키/키 입력 기반 인터랙티브 알림 설정; `config`·프로바이더 임계값·`test`·`snooze` 지원 |
 | 예약 | `oct schedule` | agent-update / session-refresh를 OS 스케줄러에 등록 |
 | 예약 | `oct session-refresh` | 프롬프트 없이 세션·인증 상태만 probe (`--dry-run`) |
-| 진단 | `oct doctor` | shell PATH / bootstrap 진단 |
+| 진단 | `oct doctor` | shell PATH / bootstrap 진단, `credentials`로 프로바이더별 자격증명 소스 진단 |
 | 진단 | `oct update` | oct 자체 업데이트 |
 | 개발 | `oct release-doctor` | 릴리스 전 점검 한 번에 보기 |
 
@@ -104,6 +103,23 @@ oct usage --notify               # 임계값 규칙에 따라 알림 발송
 
 스크립트 작성자용: `--json` 출력 구조는 안정적인 계약으로 문서화돼 있습니다 —
 [docs/usage-json-schema.md](docs/usage-json-schema.md) 참고.
+
+리눅스/macOS 상태바 연동용 `--format` 모드 (심각도에 따라 warn 85% / crit 95% 색상):
+
+```bash
+oct usage --format waybar        # waybar custom/script 모듈용 JSON (text/tooltip/class)
+oct usage --format polybar       # polybar custom script용 한 줄 (%{F#...} 색상, % 이스케이프)
+oct usage --format swiftbar      # SwiftBar 플러그인 프로토콜 (타이틀 + 드롭다운 메뉴)
+oct usage --format waybar --from-snapshot   # 라이브 fetch 대신 마지막 oct monitor 스냅샷 사용
+```
+
+`--from-snapshot`은 `~/.oct/state/usage-latest.json`(`oct monitor`가 매 사이클
+기록)을 읽으므로, 상태바가 짧은 폴링 간격으로 재실행해도 프로바이더 전체
+fan-out이 발생하지 않습니다. waybar/polybar/swiftbar와 `--compact`는 모두
+remaining 기준으로 표시합니다.
+
+statusline 포맷은 값 없는 프로바이더(미구성·데이터 없음 — `?` 토큰)는 숨기고
+실패(401 등)는 유지합니다. 숨겨진 개수는 툴팁 마지막 줄에 표시됩니다.
 
 ```bash
 oct monitor --interval 10s       # 10초 갱신 상시 화면
@@ -140,22 +156,42 @@ oct session-refresh --dry-run                                       # 토큰 소
 - **GitHub Copilot** (`@github/copilot`)
 - **Cursor CLI** (공식 `agent` 설치 흐름, `cursor.com/install`)
 - **OpenCode** (`opencode-ai`)
-- **Kimi Code** (`@moonshot-ai/kimi-code`, binary: `kimi`)
-- **Qwen Code** (`@qwen-code/qwen-code`, binary: `qwen`)
-- **MiniMax** (`mmx-cli`, binary: `mmx`)
+- **Kimi Code** (`@moonshot-ai/kimi-code`, binary: `kimi`) — (experimental)
+- **Qwen Code** (`@qwen-code/qwen-code`, binary: `qwen`) — (experimental)
+- **MiniMax** (`mmx-cli`, binary: `mmx`) — (experimental)
 
 ### 사용량 전용 프로바이더 (설치 대상 아님, opt-in)
 
 설치/업데이트 대상 CLI는 아니지만 사용량 조회만 지원합니다. `agent_order` 또는 `enabled_tools`에 이름을 넣으면 표에 나타납니다 (예: `oct config set tools zai`).
 
-- **Z.ai (GLM Coding Plan)** — `ZAI_API_KEY` / `ZHIPU_API_KEY`, 또는 opencode `zai-coding-plan` 로그인
-- **DeepSeek** — `DEEPSEEK_API_KEY`
+- **Z.ai (GLM Coding Plan)** — `ZAI_API_KEY` / `ZHIPU_API_KEY`, 또는 opencode `zai-coding-plan` 로그인 — (experimental)
+- **DeepSeek** — `DEEPSEEK_API_KEY` — (experimental)
 - **OpenRouter** — `OPENROUTER_API_KEY`
-- **Grok (xAI SuperGrok)** — `grok login` 자격증명 또는 `GROK_OAUTH_TOKEN`
+- **Grok (xAI SuperGrok)** — `grok login` 자격증명 또는 `GROK_OAUTH_TOKEN` — (experimental)
+
+`(experimental)`는 실구독 API 응답에 대한 라이브 검증이 아직 안 된 통합이라는 뜻입니다 (라이브 검증 완료: Codex, Claude, Command Code, OpenCode, Antigravity, OpenRouter).
+
+### 멀티 계정 (codex, kimi, qwen, grok)
+
+계정이 여러 개면 각각의 자격증명 디렉터리를 등록해서 사용량을 함께 볼 수 있습니다.
+
+가장 간단한 방법은 대화형 화면입니다. codex 행 아래의 **"➕ Add codex account…"** 항목을 고르면 브라우저 로그인이 바로 열리고, 로그인이 끝나면 계정 이메일에서 이름을 자동 만들어 등록합니다(예: `hansuho36@...` → `codex:han***o36`, 홈은 `~/.codex-hansuho36`) — 입력 없이 로그인만 하면 됩니다.
+
+계정이 등록되면 codex 행 아래에 **"Manage existing accounts (N)"** 행이 나타납니다. Enter로 펼치면 마스킹된 계정 이름(`codex:han***o36`)이 표시되고, 계정 행에서 다시 Enter를 누르면 **🔄 Reconnect**(토큰 재로그인)와 **❌ Disconnect**(oct 설정에서만 제거; 저장된 자격증명 파일은 유지) 액션이 나타납니다.
+
+```bash
+oct config                                              # ➕ Add codex account… → 이름 입력 → 로그인
+oct config account add codex work                       # CLI: 이름만 쓰면 ~/.codex-work로 자동 파생
+oct config account add kimi personal ~/.kimi-code-alt   # 경로를 직접 지정할 수도 있음
+oct config account list                                 # 등록 목록 확인
+oct config account remove codex work                    # 등록 해제
+```
+
+등록하면 `oct usage` 표에서 해당 프로바이더 행 바로 아래에 `codex:work`, `kimi:personal` 같은 행이 생기고, 컴팩트/스테이터스라인 표기는 `XW`, `KP`처럼 별칭 첫 글자가 붙습니다. 계정 행은 기본 행이 표시될 때 함께 표시되며, `oct alert config set-provider-threshold ... --provider codex:work`처럼 알림 대상으로도 쓸 수 있습니다.
 
 ## 메뉴바 헬퍼 (macOS)
 
-Swift menubar helper를 따로 빌드/설치할 수 있습니다.
+macOS 릴리즈 tarball(`oct` 설치 스크립트, `oct update`)에는 Swift menubar helper가 함께 들어 있어 `oct`와 같은 디렉터리(기본 `~/.local/bin`)에 자동 설치됩니다. 소스에서 직접 빌드할 수도 있습니다.
 
 메뉴바 앱의 Settings에서는 General 설정이 Configuration 화면으로 합쳐집니다. 이 화면의 알림 항목은 안전한 전역 알림 설정만 노출하며, 프로바이더별 임계값이나 snooze 제어는 노출하지 않습니다. 그런 고급 설정은 `oct alert config ...`와 `oct alert snooze ...`를 사용하세요.
 

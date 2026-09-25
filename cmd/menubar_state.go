@@ -23,7 +23,7 @@ type menubarSnapshot struct {
 }
 
 func menubarOverviewTitle() string {
-	return "Usage Overview"
+	return "One Click AI Tools"
 }
 
 func menubarProviderSectionTitle(count int) string {
@@ -44,7 +44,7 @@ func buildMenubarLoadingSnapshot(toolNames []string) menubarSnapshot {
 		})
 	}
 	return menubarSnapshot{
-		Title:           menubarTitle("oct", nil, ""), // mode unused: menubarTitle short-circuits when results is empty
+		Title:           menubarTitle("oct", nil), // short-circuits when results is empty
 		Tooltip:         "one-click-tools menubar loading",
 		SummaryLine:     fmt.Sprintf("Loading usage for %d provider(s)…", len(toolNames)),
 		UpdatedLine:     "Last refresh: -",
@@ -55,18 +55,13 @@ func buildMenubarLoadingSnapshot(toolNames []string) menubarSnapshot {
 }
 
 func buildMenubarUsageSnapshot(results []usage.UsageResult, now time.Time) menubarSnapshot {
-	// Resolve the display mode once and thread it into both the title and the
-	// provider lines/details below, so the status-bar title and the dropdown
-	// body always agree -- see usage_display_mode in AGENTS.md.
-	mode := usage.NormalizeDisplayMode(viper.GetString("usage_display_mode"))
-
 	okCount, warnCount, errCount := 0, 0, 0
 	lines := make([]string, 0, len(results))
 	details := make([][]string, 0, len(results))
 	severity := "ok"
 	for _, result := range results {
-		lines = append(lines, menubarProviderLine(result, mode))
-		details = append(details, menubarProviderDetails(result, mode))
+		lines = append(lines, menubarProviderLine(result))
+		details = append(details, menubarProviderDetails(result))
 		switch classifyMenubarStatus(result.Status) {
 		case "ok":
 			okCount++
@@ -82,7 +77,7 @@ func buildMenubarUsageSnapshot(results []usage.UsageResult, now time.Time) menub
 	}
 
 	return menubarSnapshot{
-		Title:           menubarTitle(menubarTitleForSeverity(severity), results, mode),
+		Title:           menubarTitle(menubarTitleForSeverity(severity), results),
 		Tooltip:         fmt.Sprintf("%d provider(s): %d ok, %d warn, %d error", len(results), okCount, warnCount, errCount),
 		SummaryLine:     fmt.Sprintf("%d providers · %d ok · %d warn · %d error", len(results), okCount, warnCount, errCount),
 		UpdatedLine:     "Last refresh: " + menubarTimeLabel(now),
@@ -108,7 +103,7 @@ func buildMenubarErrorSnapshot(toolNames []string, now time.Time, err error) men
 		msg = err.Error()
 	}
 	return menubarSnapshot{
-		Title:           menubarTitle("oct", nil, ""), // mode unused: menubarTitle short-circuits when results is empty
+		Title:           menubarTitle("oct", nil), // short-circuits when results is empty
 		Tooltip:         "menubar refresh failed",
 		SummaryLine:     "Refresh failed · " + truncateMenubarText(msg, 48),
 		UpdatedLine:     "Last refresh: " + menubarTimeLabel(now),
@@ -122,17 +117,17 @@ func menubarTitleForSeverity(severity string) string {
 	return "oct"
 }
 
-func menubarTitle(fallback string, results []usage.UsageResult, mode string) string {
+func menubarTitle(fallback string, results []usage.UsageResult) string {
 	if normalizedMenubarTitleMode(viper.GetString("menubar_title_mode")) != "compact" || len(results) == 0 {
 		return fallback
 	}
-	if title := strings.TrimSpace(usage.CompactTitle(results, mode)); title != "" {
+	if title := strings.TrimSpace(usage.CompactTitle(results)); title != "" {
 		return title
 	}
 	return fallback
 }
 
-func menubarProviderLine(result usage.UsageResult, mode string) string {
+func menubarProviderLine(result usage.UsageResult) string {
 	provider := strings.TrimSpace(result.Provider)
 	if provider == "" {
 		provider = lookupToolName(result.Provider)
@@ -143,7 +138,7 @@ func menubarProviderLine(result usage.UsageResult, mode string) string {
 	if plan := strings.TrimSpace(result.Plan); plan != "" && !strings.EqualFold(plan, "unknown") {
 		provider += " (" + plan + ")"
 	}
-	metrics := menubarMetricsSummary(result, mode)
+	metrics := menubarMetricsSummary(result)
 	status := classifyMenubarStatus(result.Status)
 	line := fmt.Sprintf("[%s] %s · %s", status, provider, metrics)
 	if msg := strings.TrimSpace(result.Message); msg != "" && status != "ok" {
@@ -158,19 +153,19 @@ func menubarProviderLine(result usage.UsageResult, mode string) string {
 // Copilot/Antigravity would show three dashes in the dropdown body directly
 // under a compact title that (via usage.CompactTitle) already has a real
 // number for the same result.
-func menubarMetricsSummary(result usage.UsageResult, mode string) string {
-	five := bucketVal(result, "5h", mode)
-	seven := bucketVal(result, "7d", mode)
-	month := bucketVal(result, "1m", mode)
+func menubarMetricsSummary(result usage.UsageResult) string {
+	five := bucketVal(result, "5h")
+	seven := bucketVal(result, "7d")
+	month := bucketVal(result, "1m")
 	if five == "-" && seven == "-" && month == "-" {
-		if fallback, ok := usage.FallbackMetricsSummary(result, mode); ok {
+		if fallback, ok := usage.FallbackMetricsSummary(result); ok {
 			return fallback
 		}
 	}
 	return fmt.Sprintf("5h %s · 7d %s · 1m %s", five, seven, month)
 }
 
-func menubarProviderDetails(result usage.UsageResult, mode string) []string {
+func menubarProviderDetails(result usage.UsageResult) []string {
 	provider := strings.TrimSpace(result.Provider)
 	if provider == "" {
 		provider = lookupToolName(result.Provider)
@@ -183,12 +178,12 @@ func menubarProviderDetails(result usage.UsageResult, mode string) []string {
 		"Provider: " + provider,
 		"Status: " + classifyMenubarStatus(result.Status),
 	}
-	five := bucketVal(result, "5h", mode)
-	seven := bucketVal(result, "7d", mode)
-	month := bucketVal(result, "1m", mode)
+	five := bucketVal(result, "5h")
+	seven := bucketVal(result, "7d")
+	month := bucketVal(result, "1m")
 	if five != "-" || seven != "-" || month != "-" {
 		details = append(details, "5h: "+five, "7d: "+seven, "1m: "+month)
-	} else if fallback, ok := usage.FallbackMetricsSummary(result, mode); ok {
+	} else if fallback, ok := usage.FallbackMetricsSummary(result); ok {
 		details = append(details, "Usage: "+fallback)
 	}
 	if plan := strings.TrimSpace(result.Plan); plan != "" {

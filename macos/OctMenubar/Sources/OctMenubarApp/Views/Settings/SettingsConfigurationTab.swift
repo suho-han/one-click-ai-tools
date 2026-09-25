@@ -5,13 +5,9 @@ struct SettingsConfigurationTab: View {
     @Binding var configDraft: ConfigurationDraft?
 
     let isLoading: Bool
-    let isSaving: Bool
-    let isRevertAvailable: Bool
     let feedback: SettingsFeedback?
     let onDraftChange: () -> Void
     let onLoad: () -> Void
-    let onSave: () -> Void
-    let onRevert: () -> Void
 
     var body: some View {
         ScrollView(.vertical) {
@@ -51,10 +47,9 @@ struct SettingsConfigurationTab: View {
         } else {
             providerSection
             appearanceSection
-            usageSection
+            displaySection
             alertSection
             sessionRefreshSection
-            saveActions
         }
     }
 
@@ -117,20 +112,13 @@ struct SettingsConfigurationTab: View {
         }
     }
 
-    private var usageSection: some View {
+    private var displaySection: some View {
         SettingsSectionCard(
             title: "Usage display",
             systemImage: "chart.bar",
-            description: "Choose how cards display usage. The menu bar can show remaining quota directly."
+            description: "Cards and menu bar always show remaining quota."
         ) {
             VStack(alignment: .leading, spacing: 8) {
-                Picker("Usage display mode", selection: usageModeBinding) {
-                    ForEach(UsageDisplayMode.allCases) { mode in
-                        Text(mode.label).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-
                 Picker("Menu bar display", selection: menubarTitleModeBinding) {
                     ForEach(MenubarTitleMode.allCases) { mode in
                         Text(mode.label).tag(mode)
@@ -222,39 +210,6 @@ struct SettingsConfigurationTab: View {
                 }
             }
         }
-    }
-
-    private var saveActions: some View {
-        HStack(spacing: 8) {
-            Button(action: onSave) {
-                Label("Save changes", systemImage: "checkmark.circle")
-            }
-            .buttonStyle(.borderedProminent)
-            .disabled(isSaving || !(configDraft?.hasEnabledTool ?? false))
-
-            Button(action: onRevert) {
-                Label("Revert", systemImage: "arrow.uturn.backward")
-            }
-            .buttonStyle(.bordered)
-            .disabled(isSaving || !isRevertAvailable)
-
-            if isSaving {
-                ProgressView()
-                    .controlSize(.small)
-            }
-
-            Spacer(minLength: 0)
-        }
-    }
-
-    private var usageModeBinding: Binding<UsageDisplayMode> {
-        Binding(
-            get: { configDraft?.usageDisplayMode ?? .remaining },
-            set: {
-                configDraft?.usageDisplayMode = $0
-                onDraftChange()
-            }
-        )
     }
 
     private var menubarTitleModeBinding: Binding<MenubarTitleMode> {

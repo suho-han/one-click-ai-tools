@@ -15,7 +15,7 @@ struct UsageSnapshot: Equatable {
     static let placeholder = UsageSnapshot(
         statusItemTitle: "oct",
         statusItemAccessibilityLabel: "oct usage loading",
-        title: "Usage Overview",
+        title: "One Click AI Tools",
         summaryLine: "Loading usage…",
         lastRefreshLabel: "-",
         nextRefreshLabel: "pending",
@@ -32,7 +32,7 @@ struct UsageSnapshot: Equatable {
         UsageSnapshot(
             statusItemTitle: "oct",
             statusItemAccessibilityLabel: "oct usage refresh failed",
-            title: "Usage Overview",
+            title: "One Click AI Tools",
             summaryLine: "Refresh failed",
             lastRefreshLabel: "-",
             nextRefreshLabel: "pending",
@@ -42,6 +42,13 @@ struct UsageSnapshot: Equatable {
             ],
             note: "Check oct path or run Refresh now after fixing the CLI location."
         )
+    }
+
+    /// True while the popover is still showing the launch placeholder and no
+    /// real refresh has landed yet. Computed rather than stored so the
+    /// placeholder stays a plain fixed value (and Codable/Equatable untouched).
+    var isPlaceholder: Bool {
+        self == Self.placeholder
     }
 }
 
@@ -90,14 +97,17 @@ struct ProviderCard: Equatable, Identifiable {
         return provider.first.map { String($0).uppercased() } ?? "?"
     }
 
-    // metrics[0].value is already resolved for the configured usage display
-    // mode (see UsageSnapshot.visibleMetrics), so this only reformats it as a
+    // metrics[0] is already resolved for the configured usage display mode
+    // (see UsageSnapshot.visibleMetrics), so this only reformats it as a
     // rounded compact percentage -- it must NOT re-invert used/remaining, or
     // "remaining" mode would double-invert back to a used value while still
     // labeled "remaining" (the exact bug this file fixes).
     var compactMetricValue: String {
         guard let metric = metrics.first else {
             return "?"
+        }
+        if let percent = metric.percent {
+            return "\(Int(percent.rounded()))%"
         }
         let raw = metric.value
             .replacingOccurrences(of: "% left", with: "")
@@ -146,6 +156,19 @@ struct ProviderCard: Equatable, Identifiable {
 struct UsageMetric: Equatable {
     let label: String
     let value: String
+    /// Displayed percentage (0...100) driving the pill's bar width; nil for
+    /// non-percent buckets (request counts), which render as text-only pills.
+    var percent: Double?
+    /// Formatted time until the window resets, nil when the provider does
+    /// not publish a reset time for this bucket.
+    var resetsIn: String?
+
+    init(label: String, value: String, percent: Double? = nil, resetsIn: String? = nil) {
+        self.label = label
+        self.value = value
+        self.percent = percent
+        self.resetsIn = resetsIn
+    }
 }
 
 enum ProviderStatus: String, Decodable, Equatable {
@@ -192,6 +215,7 @@ struct UsageResponse: Decodable, Equatable {
         let used: String
         let unit: String
         let buckets: [String: String]?
+        let bucketResets: [String: String]?
         let message: String?
 
         enum CodingKeys: String, CodingKey {
@@ -202,6 +226,7 @@ struct UsageResponse: Decodable, Equatable {
             case used
             case unit
             case buckets
+            case bucketResets = "bucket_resets"
             case message
         }
     }
@@ -216,8 +241,8 @@ extension UsageSnapshot {
         refreshDate: Date,
         refreshInterval: TimeInterval,
         titleMode: MenubarTitleMode = .oct,
-        usageDisplayMode: UsageDisplayMode = .remaining,
-        timeZone: TimeZone = .autoupdatingCurrent
+        timeZone: TimeZone = .autoupdatingCurrent,
+        now: Date = Date()
     ) -> UsageSnapshot {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
@@ -230,17 +255,17 @@ extension UsageSnapshot {
                 plan: normalizedPlan(result.plan),
                 planSource: normalizedPlanSource(result.planSource),
                 status: effectiveStatus(for: result),
-                metrics: visibleMetrics(for: result.provider, unit: result.unit, buckets: result.buckets, mode: usageDisplayMode),
+                metrics: visibleMetrics(for: result.provider, unit: result.unit, buckets: result.buckets, resets: result.bucketResets, now: now),
                 message: composedMessage(for: result)
             )
         }
         let summary = projectedSummary(for: providers)
         let status = aggregateStatus(summary: summary)
-        let statusItem = statusItemPresentation(for: status, providers: providers, titleMode: titleMode, usageDisplayMode: usageDisplayMode)
+        let statusItem = statusItemPresentation(for: status, providers: providers, titleMode: titleMode)
         return UsageSnapshot(
             statusItemTitle: statusItem.title,
             statusItemAccessibilityLabel: statusItem.accessibilityLabel,
-            title: "Usage Overview",
+            title: "One Click AI Tools",
             summaryLine: "\(summary.total) providers · \(summary.ok) ok · \(summary.warn) warn · \(summary.error) error",
             lastRefreshLabel: formatter.string(from: refreshDate),
             nextRefreshLabel: formatter.string(from: refreshDate.addingTimeInterval(refreshInterval)),
@@ -272,8 +297,7 @@ extension UsageSnapshot {
     private static func statusItemPresentation(
         for status: ProviderStatus,
         providers: [ProviderCard],
-        titleMode: MenubarTitleMode,
-        usageDisplayMode: UsageDisplayMode
+        titleMode: MenubarTitleMode
     ) -> (title: String, accessibilityLabel: String) {
         guard titleMode == .compact else {
             return ("oct", "oct usage \(status.rawValue)")
@@ -284,8 +308,7 @@ extension UsageSnapshot {
             return ("oct", "oct usage unavailable")
         }
         let accessibilityParts = providers.map(\.compactAccessibilityLabel)
-        let prefix = usageDisplayMode == .remaining ? "Remaining usage" : "Used"
-        return (title, "\(prefix): \(accessibilityParts.joined(separator: ", "))")
+        return (title, "Remaining usage: \(accessibilityParts.joined(separator: ", "))")
     }
 
     private static func classifyStatus(_ raw: String) -> String {
@@ -332,12 +355,18 @@ extension UsageSnapshot {
         message.hasPrefix("partial:") || message.contains("partial data")
     }
 
-    // visibleMetrics resolves each bucket's value for `mode` here, once, so
+    // visibleMetrics resolves each bucket's remaining value here, once, so
     // every consumer (the popover card strip and the compact status-item
     // title, via ProviderCard.compactMetricValue) reads an already-correct
     // number instead of re-deriving used/remaining itself. That mirrors
     // internal/usage.BucketValue on the Go side -- see AGENTS.md.
-    private static func visibleMetrics(for provider: String, unit: String?, buckets: [String: String]?, mode: UsageDisplayMode) -> [UsageMetric] {
+    private static func visibleMetrics(
+        for provider: String,
+        unit: String?,
+        buckets: [String: String]?,
+        resets: [String: String]?,
+        now: Date
+    ) -> [UsageMetric] {
         guard let buckets else {
             return []
         }
@@ -355,7 +384,7 @@ extension UsageSnapshot {
             guard let raw = visibleMetricValue(buckets[label]) else {
                 return nil
             }
-            return UsageMetric(label: label, value: displayValue(raw: raw, isPercent: isPercent, mode: mode))
+            return metric(label: label, raw: raw, isPercent: isPercent, reset: resets?[label], now: now)
         }
         if !timeMetrics.isEmpty {
             return timeMetrics
@@ -367,7 +396,7 @@ extension UsageSnapshot {
         // table's fallback so the popover doesn't render zero metrics for
         // providers that don't key their buckets by time window.
         if let quota = visibleMetricValue(buckets["quota"]) {
-            return [UsageMetric(label: "quota", value: displayValue(raw: quota, isPercent: true, mode: mode))]
+            return [metric(label: "quota", raw: quota, isPercent: true, reset: resets?["quota"], now: now)]
         }
 
         let modelKeys = buckets.keys.filter { $0.hasPrefix("model:") }.sorted()
@@ -376,29 +405,33 @@ extension UsageSnapshot {
                 return nil
             }
             let label = String(key.dropFirst("model:".count))
-            return UsageMetric(label: label.isEmpty ? "model" : label, value: displayValue(raw: raw, isPercent: isPercent, mode: mode))
+            return metric(label: label.isEmpty ? "model" : label, raw: raw, isPercent: isPercent, reset: resets?[key], now: now)
         }
     }
 
-    // displayValue applies the same used/remaining convention as the Go
-    // table: "used" mode passes the raw string through unmodified (just adds
-    // "%"), "remaining" mode always reformats to one decimal place with a
-    // "% left" suffix. Non-percent buckets (request/session counts) are
-    // never inverted -- there's no valid "remaining" reading for a bare count.
-    private static func displayValue(raw: String, isPercent: Bool, mode: UsageDisplayMode) -> String {
+    // metric resolves one bucket into a pill: `value` is the remaining text
+    // shown next to the bar ("94.0%", or the untouched value for non-percent
+    // buckets), `percent` drives the bar width, and `resetsIn` is the
+    // formatted reset countdown when the provider publishes a reset time.
+    // The used -> remaining inversion mirrors internal/usage.BucketValue on
+    // the Go side -- see AGENTS.md.
+    private static func metric(label: String, raw: String, isPercent: Bool, reset: String?, now: Date) -> UsageMetric {
+        let countdown = ResetCountdown.label(until: reset, now: now)
         guard isPercent else {
-            return raw
+            return UsageMetric(label: label, value: raw, resetsIn: countdown)
         }
-        switch mode {
-        case .used:
-            return raw + "%"
-        case .remaining:
-            guard let used = Double(raw) else {
-                return raw + "%"
-            }
-            let remaining = min(max(100 - used, 0), 100)
-            return String(format: "%.1f%% left", remaining)
+        guard let used = Double(raw) else {
+            return UsageMetric(label: label, value: raw + "%", resetsIn: countdown)
         }
+        let remaining = Self.roundedPercent(min(max(100 - used, 0), 100))
+        return UsageMetric(label: label, value: String(format: "%.1f%%", remaining), percent: remaining, resetsIn: countdown)
+    }
+
+    /// Percent is stored at the same one-decimal precision the pill text
+    /// displays ("%.1f") so Equatable comparisons don't trip over float
+    /// noise like 100 - 73.3 == 26.700000000000003.
+    private static func roundedPercent(_ value: Double) -> Double {
+        (value * 10).rounded() / 10
     }
 
     private static func visibleMetricValue(_ raw: String?) -> String? {
@@ -440,5 +473,68 @@ enum DurationFormatter {
             return "\(minutes)m"
         }
         return "\(seconds)s"
+    }
+}
+
+// ResetCountdown formats the time remaining until a usage window resets,
+// mirroring internal/usage.compactDuration and parseBucketResetTime on the
+// Go side: the two most significant non-zero units ("2d 4h" / "3h 12m" /
+// "5m" / "<1m"), parsed from RFC3339 timestamps or unix epoch
+// seconds/milliseconds. Expired or unparseable resets yield nil so the pill
+// simply omits the countdown.
+enum ResetCountdown {
+    static func label(until raw: String?, now: Date) -> String? {
+        guard let date = parseResetTime(raw) else {
+            return nil
+        }
+        return text(for: date.timeIntervalSince(now))
+    }
+
+    static func text(for remaining: TimeInterval) -> String? {
+        guard remaining > 0 else {
+            return nil
+        }
+        let minutes = Int((remaining / 60).rounded(.down))
+        if minutes < 1 {
+            return "<1m"
+        }
+        let days = minutes / (24 * 60)
+        let hours = (minutes % (24 * 60)) / 60
+        let mins = minutes % 60
+        if days > 0 && hours > 0 {
+            return "\(days)d \(hours)h"
+        }
+        if days > 0 {
+            return "\(days)d"
+        }
+        if hours > 0 && mins > 0 {
+            return "\(hours)h \(mins)m"
+        }
+        if hours > 0 {
+            return "\(hours)h"
+        }
+        return "\(mins)m"
+    }
+
+    static func parseResetTime(_ raw: String?) -> Date? {
+        guard let raw = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty else {
+            return nil
+        }
+        // Unix epoch seconds or milliseconds (threshold mirrors Go's
+        // parseBucketResetTime); scientific notation is rejected to keep
+        // parity with Go's integer-only parse.
+        if let sec = Double(raw), sec > 0, !raw.lowercased().contains("e") {
+            if sec > 10_000_000_000 {
+                return Date(timeIntervalSince1970: sec / 1000)
+            }
+            return Date(timeIntervalSince1970: sec)
+        }
+        let withFractions = ISO8601DateFormatter()
+        withFractions.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = withFractions.date(from: raw) {
+            return date
+        }
+        let plain = ISO8601DateFormatter()
+        return plain.date(from: raw)
     }
 }

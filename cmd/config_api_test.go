@@ -13,7 +13,6 @@ import (
 func TestBuildConfigSnapshot_enablesAllToolsWhenEnabledToolsUnset(t *testing.T) {
 	t.Cleanup(viper.Reset)
 	viper.Reset()
-	viper.Set("usage_display_mode", "remaining")
 	viper.Set("menubar_title_mode", "compact")
 	viper.Set("session_refresh_enabled", true)
 	viper.Set("session_refresh_interval", "weekly")
@@ -24,9 +23,6 @@ func TestBuildConfigSnapshot_enablesAllToolsWhenEnabledToolsUnset(t *testing.T) 
 
 	if got.ConfigFile != "/tmp/oct.yaml" {
 		t.Fatalf("ConfigFile = %q, want /tmp/oct.yaml", got.ConfigFile)
-	}
-	if got.UsageDisplayMode != "remaining" {
-		t.Fatalf("UsageDisplayMode = %q, want remaining", got.UsageDisplayMode)
 	}
 	if got.MenubarTitleMode != "compact" {
 		t.Fatalf("MenubarTitleMode = %q, want compact", got.MenubarTitleMode)
@@ -62,7 +58,6 @@ func TestConfigUpdatePayload_applyConfigUpdatePersistsValidValues(t *testing.T) 
 
 	payload := configUpdatePayload{
 		EnabledTools:           []string{"codex", "claude-code"},
-		UsageDisplayMode:       "used",
 		MenubarTitleMode:       "compact",
 		SessionRefreshEnabled:  boolPtr(true),
 		SessionRefreshInterval: "weekly",
@@ -77,9 +72,6 @@ func TestConfigUpdatePayload_applyConfigUpdatePersistsValidValues(t *testing.T) 
 	gotTools := viper.GetStringSlice("enabled_tools")
 	if len(gotTools) != 2 || gotTools[0] != "codex" || gotTools[1] != "claude" {
 		t.Fatalf("enabled_tools = %v, want [codex claude]", gotTools)
-	}
-	if got := viper.GetString("usage_display_mode"); got != "used" {
-		t.Fatalf("usage_display_mode = %q, want used", got)
 	}
 	if got := viper.GetString("menubar_title_mode"); got != "compact" {
 		t.Fatalf("menubar_title_mode = %q, want compact", got)
@@ -103,14 +95,12 @@ func TestConfigUpdatePayload_rejectsInvalidPayloadWithoutMutation(t *testing.T) 
 	t.Cleanup(viper.Reset)
 	viper.Reset()
 	viper.Set("enabled_tools", []string{"codex"})
-	viper.Set("usage_display_mode", "remaining")
 	viper.Set("session_refresh_enabled", false)
 	viper.Set("session_refresh_interval", "daily")
 	viper.Set("session_refresh_hour", 9)
 
 	payload := configUpdatePayload{
 		EnabledTools:           []string{"not-a-provider"},
-		UsageDisplayMode:       "spent",
 		SessionRefreshEnabled:  boolPtr(true),
 		SessionRefreshInterval: "monthly",
 		SessionRefreshHour:     intPtr(24),
@@ -122,9 +112,6 @@ func TestConfigUpdatePayload_rejectsInvalidPayloadWithoutMutation(t *testing.T) 
 
 	if got := viper.GetStringSlice("enabled_tools"); len(got) != 1 || got[0] != "codex" {
 		t.Fatalf("enabled_tools mutated to %v, want [codex]", got)
-	}
-	if got := viper.GetString("usage_display_mode"); got != "remaining" {
-		t.Fatalf("usage_display_mode mutated to %q, want remaining", got)
 	}
 	if viper.GetBool("session_refresh_enabled") {
 		t.Fatal("session_refresh_enabled mutated to true, want false")
@@ -141,7 +128,6 @@ func TestConfigSnapshot_marshalJSONUsesMachineReadableShape(t *testing.T) {
 	t.Cleanup(viper.Reset)
 	viper.Reset()
 	viper.Set("enabled_tools", []string{"codex"})
-	viper.Set("usage_display_mode", "used")
 	viper.Set("menubar_title_mode", "oct")
 	viper.Set("session_refresh_interval", "daily")
 	viper.Set("session_refresh_hour", 5)
@@ -154,7 +140,6 @@ func TestConfigSnapshot_marshalJSONUsesMachineReadableShape(t *testing.T) {
 
 	var decoded struct {
 		ConfigFile             string `json:"config_file"`
-		UsageDisplayMode       string `json:"usage_display_mode"`
 		MenubarTitleMode       string `json:"menubar_title_mode"`
 		SessionRefreshInterval string `json:"session_refresh_interval"`
 		Tools                  []struct {
@@ -165,7 +150,7 @@ func TestConfigSnapshot_marshalJSONUsesMachineReadableShape(t *testing.T) {
 	if err := json.Unmarshal(data, &decoded); err != nil {
 		t.Fatalf("json.Unmarshal returned error: %v", err)
 	}
-	if decoded.ConfigFile != "/tmp/config.yaml" || decoded.UsageDisplayMode != "used" || decoded.MenubarTitleMode != "oct" || decoded.SessionRefreshInterval != "daily" {
+	if decoded.ConfigFile != "/tmp/config.yaml" || decoded.MenubarTitleMode != "oct" || decoded.SessionRefreshInterval != "daily" {
 		t.Fatalf("decoded snapshot = %+v", decoded)
 	}
 	if len(decoded.Tools) == 0 || decoded.Tools[0].BinaryName == "" {
@@ -276,10 +261,10 @@ func TestConfigUpdatePayload_applyConfigUpdatePersistsAlertSettings(t *testing.T
 
 func TestConfigUpdatePayload_rejectsInvalidAlertWithoutMutation(t *testing.T) {
 	invalidPayloads := map[string]string{
-		"percent":     `{"usage_display_mode":"used","alert":{"threshold_percent":101}}`,
-		"cooldown":    `{"usage_display_mode":"used","alert":{"cooldown_minutes":0}}`,
-		"quiet hours": `{"usage_display_mode":"used","alert":{"quiet_hours":"25:00-08:00"}}`,
-		"timezone":    `{"usage_display_mode":"used","alert":{"timezone":"Mars/Olympus"}}`,
+		"percent":     `{"alert":{"threshold_percent":101}}`,
+		"cooldown":    `{"alert":{"cooldown_minutes":0}}`,
+		"quiet hours": `{"alert":{"quiet_hours":"25:00-08:00"}}`,
+		"timezone":    `{"alert":{"timezone":"Mars/Olympus"}}`,
 	}
 
 	for name, raw := range invalidPayloads {
@@ -290,7 +275,6 @@ func TestConfigUpdatePayload_rejectsInvalidAlertWithoutMutation(t *testing.T) {
 			viper.Set("usage_alert_cooldown_minutes", 360)
 			viper.Set("usage_alert_quiet_hours", "")
 			viper.Set("usage_alert_timezone", "UTC")
-			viper.Set("usage_display_mode", "remaining")
 
 			payload, err := parseConfigUpdatePayload(raw)
 			if err != nil {
@@ -310,9 +294,6 @@ func TestConfigUpdatePayload_rejectsInvalidAlertWithoutMutation(t *testing.T) {
 			}
 			if got := viper.GetString("usage_alert_timezone"); got != "UTC" {
 				t.Fatalf("usage_alert_timezone = %q, want unchanged UTC", got)
-			}
-			if got := viper.GetString("usage_display_mode"); got != "remaining" {
-				t.Fatalf("usage_display_mode = %q, want unchanged remaining", got)
 			}
 		})
 	}

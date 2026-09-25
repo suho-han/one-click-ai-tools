@@ -83,7 +83,23 @@ func resolveGrokToken() (string, string) {
 		home = filepath.Join(home, ".grok")
 	}
 
-	data, err := os.ReadFile(filepath.Join(home, "auth.json"))
+	return grokTokenFromAuthFile(filepath.Join(home, "auth.json"))
+}
+
+// resolveGrokTokenForHome resolves the token for an explicit credential home
+// (a grok:<name> account row). The global GROK_OAUTH_TOKEN env is skipped so
+// two rows can never report the same account.
+func resolveGrokTokenForHome(home string) (string, string) {
+	if strings.TrimSpace(home) == "" {
+		return resolveGrokToken()
+	}
+	return grokTokenFromAuthFile(filepath.Join(home, "auth.json"))
+}
+
+// grokTokenFromAuthFile reads a Grok auth.json map (OIDC scope URLs ->
+// {key}), preferring the auth.x.ai scope.
+func grokTokenFromAuthFile(path string) (string, string) {
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return "", ""
 	}
@@ -112,10 +128,89 @@ func resolveGrokToken() (string, string) {
 	return "", ""
 }
 
+// describeGrokCredential probes the SuperGrok token chain in fetch priority
+// order: GROK_OAUTH_TOKEN -> auth.json under $GROK_HOME (or ~/.grok).
+func describeGrokCredential() CredentialStatus {
+	return describeGrokCredentialForHome("")
+}
+
+// describeGrokCredentialForHome probes one credential home; an explicit home
+// (grok:<name> account row) skips the global env source.
+func describeGrokCredentialForHome(home string) CredentialStatus {
+	if strings.TrimSpace(home) != "" {
+		authPath := filepath.Join(home, "auth.json")
+		status := credentialStatus([]CredentialSource{
+			{
+				Kind:     CredentialKindFile,
+				Location: authPath,
+				Found:    grokAuthFileHasToken(authPath),
+				Note:     "cached `grok login` credential (auth.x.ai scope)",
+			},
+		})
+		if status.Status == CredentialStatusMissing {
+			status.Note = "run 'grok login' with GROK_HOME pointing at this directory"
+		}
+		return status
+	}
+
+	home = os.Getenv("GROK_HOME")
+	if home == "" {
+		home = credentialHomePath(".grok")
+	}
+	authPath := filepath.Join(home, "auth.json")
+	status := credentialStatus([]CredentialSource{
+		{
+			Kind:     CredentialKindEnv,
+			Location: "GROK_OAUTH_TOKEN",
+			Found:    credentialEnvFound("GROK_OAUTH_TOKEN"),
+		},
+		{
+			Kind:     CredentialKindFile,
+			Location: authPath,
+			Found:    grokAuthFileHasToken(authPath),
+			Note:     "cached `grok login` credential (auth.x.ai scope)",
+		},
+	})
+	if status.Status == CredentialStatusMissing {
+		status.Note = "run 'grok login' or set GROK_OAUTH_TOKEN"
+	}
+	return status
+}
+
+// grokAuthFileHasToken reports whether an auth.json map file carries a
+// non-empty key under an auth.x.ai (or sign-in fallback) scope.
+func grokAuthFileHasToken(path string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	var auths map[string]struct {
+		Key string `json:"key"`
+	}
+	if json.Unmarshal(data, &auths) != nil {
+		return false
+	}
+	for _, substr := range []string{grokAuthPreferred, grokAuthFallback} {
+		for scope, auth := range auths {
+			if strings.Contains(scope, substr) && strings.TrimSpace(auth.Key) != "" {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // FetchGrokUsage reports SuperGrok credit usage over its billing period.
 func FetchGrokUsage(ctx context.Context) UsageResult {
+	return fetchGrokUsageForHome(ctx, "", "grok")
+}
+
+// fetchGrokUsageForHome is FetchGrokUsage for one credential home; an empty
+// home resolves the default token chain, a grok:<name> account row passes its
+// own directory.
+func fetchGrokUsageForHome(ctx context.Context, home string, provider string) UsageResult {
 	result := UsageResult{
-		Provider: "grok",
+		Provider: provider,
 		Period:   "1m",
 		Unit:     "percent",
 		Source:   "remote",
@@ -123,7 +218,7 @@ func FetchGrokUsage(ctx context.Context) UsageResult {
 		Message:  "No data: xAI token not found (run 'grok login' or set GROK_OAUTH_TOKEN)",
 	}
 
-	token, source := resolveGrokToken()
+	token, source := resolveGrokTokenForHome(home)
 	if token == "" {
 		return result
 	}

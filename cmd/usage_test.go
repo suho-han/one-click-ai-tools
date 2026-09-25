@@ -17,20 +17,58 @@ func TestShouldAutoJSONFallback(t *testing.T) {
 		name        string
 		jsonMode    bool
 		compactMode bool
+		format      string
 		isTTY       bool
 		want        bool
 	}{
 		{name: "json already requested", jsonMode: true, isTTY: false, want: false},
 		{name: "compact already requested", compactMode: true, isTTY: false, want: false},
+		{name: "explicit format requested", format: "waybar", isTTY: false, want: false},
 		{name: "tty and no output flag", isTTY: true, want: false},
 		{name: "non tty and no output flag", isTTY: false, want: true},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := shouldAutoJSONFallback(tc.jsonMode, tc.compactMode, tc.isTTY)
+			got := shouldAutoJSONFallback(tc.jsonMode, tc.compactMode, tc.format, tc.isTTY)
 			if got != tc.want {
-				t.Fatalf("shouldAutoJSONFallback(%v, %v, %v) = %v, want %v", tc.jsonMode, tc.compactMode, tc.isTTY, got, tc.want)
+				t.Fatalf("shouldAutoJSONFallback(%v, %v, %q, %v) = %v, want %v", tc.jsonMode, tc.compactMode, tc.format, tc.isTTY, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestResolveUsageOutputMode(t *testing.T) {
+	tests := []struct {
+		name        string
+		jsonMode    bool
+		compactMode bool
+		format      string
+		want        string
+		wantErr     bool
+	}{
+		{name: "defaults to none", want: ""},
+		{name: "json flag", jsonMode: true, want: "json"},
+		{name: "compact flag", compactMode: true, want: "compact"},
+		{name: "format waybar", format: "waybar", want: "waybar"},
+		{name: "format is case-insensitive", format: "SwiftBar", want: "swiftbar"},
+		{name: "format overrides json", jsonMode: true, format: "polybar", want: "polybar"},
+		{name: "invalid format errors", format: "fancy", wantErr: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := resolveUsageOutputMode(tc.jsonMode, tc.compactMode, tc.format)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("resolveUsageOutputMode(%v,%v,%q) = %q, want error", tc.jsonMode, tc.compactMode, tc.format, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("resolveUsageOutputMode(%v,%v,%q) errored: %v", tc.jsonMode, tc.compactMode, tc.format, err)
+			}
+			if got != tc.want {
+				t.Fatalf("resolveUsageOutputMode(%v,%v,%q) = %q, want %q", tc.jsonMode, tc.compactMode, tc.format, got, tc.want)
 			}
 		})
 	}
@@ -72,6 +110,11 @@ func TestUsageCommandPrintsCompactRemainingOutput(t *testing.T) {
 	cmd.SetArgs([]string{"--compact"})
 	if err := cmd.Flags().Set("compact", "true"); err != nil {
 		t.Fatalf("set compact flag failed: %v", err)
+	}
+	// The flag set is shared across in-process runs; clear --format so an
+	// earlier format test cannot override --compact.
+	if err := cmd.Flags().Set("format", ""); err != nil {
+		t.Fatalf("reset format flag failed: %v", err)
 	}
 	out := captureCommandStdout(t, func() {
 		if err := cmd.RunE(&cmd, nil); err != nil {

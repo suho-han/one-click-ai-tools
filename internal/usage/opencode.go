@@ -69,6 +69,28 @@ func resolveOpenCodeGoAPIKey() (string, string) {
 	return "", ""
 }
 
+// describeOpenCodeCredential probes the OpenCode Go key chain in fetch
+// priority order: OPENCODE_API_KEY -> auth.json (opencode-go entry).
+func describeOpenCodeCredential() CredentialStatus {
+	authPath := credentialHomePath(".local", "share", "opencode", "auth.json")
+	status := credentialStatus([]CredentialSource{
+		{
+			Kind:     CredentialKindEnv,
+			Location: "OPENCODE_API_KEY",
+			Found:    credentialEnvFound("OPENCODE_API_KEY"),
+		},
+		{
+			Kind:     CredentialKindFile,
+			Location: authPath,
+			Found:    authPath != "" && credentialJSONEntryKeyPresent(authPath, "opencode-go"),
+		},
+	})
+	if status.Status == CredentialStatusMissing {
+		status.Note = "run 'opencode auth login' or set OPENCODE_API_KEY"
+	}
+	return status
+}
+
 // FetchOpenCodeUsage fetches OpenCode Go quota from the remote API.
 // It uses the OpenCode Go usage endpoint with the API key from auth.json or env.
 func FetchOpenCodeUsage(ctx context.Context) UsageResult {

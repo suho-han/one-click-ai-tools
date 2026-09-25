@@ -9,6 +9,7 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 12) {
             settingsHeader
             settingsTabs
+            unsavedChangesFooter
         }
         .padding(16)
         .frame(minWidth: 640, idealWidth: 640, maxWidth: 640, minHeight: 480, alignment: .topLeading)
@@ -40,13 +41,9 @@ struct SettingsView: View {
                     SettingsConfigurationTab(
                         configDraft: $configurationStore.draft,
                         isLoading: configurationStore.isLoading,
-                        isSaving: configurationStore.isSaving,
-                        isRevertAvailable: configurationStore.isRevertAvailable,
                         feedback: configurationStore.feedback,
                         onDraftChange: markConfigurationChanged,
-                        onLoad: { Task { await configurationStore.loadDraft() } },
-                        onSave: { Task { await configurationStore.saveDraft() } },
-                        onRevert: revertConfiguration
+                        onLoad: { Task { await configurationStore.loadDraft() } }
                     )
                 case .tools:
                     SettingsToolsTab(feedback: lastActionFeedback, onAction: runAction)
@@ -55,6 +52,45 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    /// Pinned to the window bottom (outside the scrolling tab content) and
+    /// shown only while the draft differs from the loaded snapshot.
+    @ViewBuilder
+    private var unsavedChangesFooter: some View {
+        if configurationStore.hasUnsavedChanges {
+            VStack(spacing: 10) {
+                Divider()
+                HStack(spacing: 8) {
+                    Image(systemName: "pencil.circle")
+                        .foregroundStyle(Color.accentColor)
+                    Text("Unsaved changes")
+                        .font(.system(size: 12, weight: .medium))
+
+                    if configurationStore.isSaving {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+
+                    Spacer(minLength: 0)
+
+                    Button(action: revertConfiguration) {
+                        Label("Revert", systemImage: "arrow.uturn.backward")
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(configurationStore.isSaving)
+
+                    Button(action: { Task { await configurationStore.saveDraft() } }) {
+                        Label("Save changes", systemImage: "checkmark.circle")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(
+                        configurationStore.isSaving
+                            || !(configurationStore.draft?.hasEnabledTool ?? false)
+                    )
+                }
+            }
+        }
     }
 
     private func runAction(_ action: OctMenubarAction) {
@@ -79,12 +115,14 @@ struct SettingsView: View {
             return
         }
 
+        // Unsaved edits are surfaced by the pinned footer, so the inline
+        // feedback only carries actionable problems (e.g. no provider left).
         if configDraft == ConfigurationDraft(snapshot: loadedConfig) {
             configurationStore.feedback = nil
-        } else if configDraft.hasEnabledTool {
-            configurationStore.feedback = .informational("Unsaved changes.")
-        } else {
+        } else if !configDraft.hasEnabledTool {
             configurationStore.feedback = .warning("Select at least one provider.")
+        } else {
+            configurationStore.feedback = nil
         }
     }
 }
