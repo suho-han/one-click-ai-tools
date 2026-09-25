@@ -113,6 +113,8 @@ jobs:
             echo "ERROR: OctMenubarApp binary not found after swift build"
             exit 1
           fi
+          # dist/ is otherwise only created by the later darwin-build step.
+          mkdir -p dist
           cp "$helper_bin" dist/OctMenubarApp
           file dist/OctMenubarApp
           # A universal build is required: the same helper rides in both the
