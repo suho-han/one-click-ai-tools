@@ -76,6 +76,13 @@ func TestFetchClaudeUsageBuckets(t *testing.T) {
 	oldClient := netclient.DefaultClient.HTTPClient
 	oldRetries := netclient.DefaultClient.MaxRetries
 
+	// A successful OAuth fetch now records a last-good cache; keep that
+	// write out of the real user cache directory.
+	tmp := t.TempDir()
+	origCachePath := claudeUsageCachePath
+	claudeUsageCachePath = func() string { return filepath.Join(tmp, "claude-usage.json") }
+	defer func() { claudeUsageCachePath = origCachePath }()
+
 	t.Setenv("CLAUDE_API_TOKEN", "dummy-token")
 
 	netclient.DefaultClient.HTTPClient = &http.Client{
