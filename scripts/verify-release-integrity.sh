@@ -41,7 +41,9 @@ echo "OK: install script syntax and Go build passed"
 # them (the local pre-tag run in release-package.sh has nothing to download).
 verify_darwin_helper_assets() {
   local repo="${GITHUB_REPOSITORY:-suho-han/one-click-ai-tools}"
-  local tmp_assets checksums arch asset expected actual file_output
+  local checksums arch asset expected actual file_output
+  # tmp_assets must stay global: the EXIT trap fires outside this function,
+  # and `set -u` aborts there if it can't see the variable.
   tmp_assets="$(mktemp -d)"
   trap 'rm -rf "$tmp_assets"' EXIT
 
