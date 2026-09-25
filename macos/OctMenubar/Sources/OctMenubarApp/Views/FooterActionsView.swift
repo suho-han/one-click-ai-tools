@@ -4,6 +4,7 @@ import SwiftUI
 struct FooterActionsView: View {
     let isRefreshing: Bool
     let onRefresh: () -> Void
+    let onRestartHelper: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -22,6 +23,9 @@ struct FooterActionsView: View {
             }
 
             HStack(spacing: 10) {
+                actionButton(title: "Restart helper", systemImage: "arrow.triangle.2.circlepath") {
+                    onRestartHelper()
+                }
                 actionButton(title: "Quit helper", systemImage: "xmark.circle") {
                     NSApp.terminate(nil)
                 }
