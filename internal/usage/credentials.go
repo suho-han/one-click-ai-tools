@@ -180,35 +180,53 @@ func credentialHomePath(parts ...string) string {
 }
 
 // DescribeProviderCredentials probes one provider's credential chain by
-// canonical registry name (or alias). ok=false when the name is unknown.
+// canonical registry name, alias, or configured <provider>:<name> account
+// row. ok=false when the name is unknown.
 func DescribeProviderCredentials(name string) (CredentialStatus, bool) {
 	resolved, ok := lookupProviderName(strings.ToLower(strings.TrimSpace(name)))
-	if !ok {
+	if ok {
+		for _, entry := range providers {
+			if entry.Name != resolved {
+				continue
+			}
+			if entry.DescribeCredential == nil {
+				return CredentialStatus{
+					Status: CredentialStatusInfo,
+					Note:   "no credential probe registered",
+				}, true
+			}
+			return entry.DescribeCredential(), true
+		}
 		return CredentialStatus{}, false
 	}
-	for _, entry := range providers {
-		if entry.Name != resolved {
+	// Not a registry name; configured account rows probe their own source.
+	target := strings.ToLower(strings.TrimSpace(name))
+	for _, p := range accountProviders() {
+		if p.Name != target {
 			continue
 		}
-		if entry.DescribeCredential == nil {
+		if p.DescribeCredential == nil {
 			return CredentialStatus{
 				Status: CredentialStatusInfo,
 				Note:   "no credential probe registered",
 			}, true
 		}
-		return entry.DescribeCredential(), true
+		return p.DescribeCredential(), true
 	}
 	return CredentialStatus{}, false
 }
 
-// CredentialProviderNames lists every registry provider with a credential
-// probe, in registry order.
+// CredentialProviderNames lists every provider with a credential probe, in
+// registry order followed by configured <provider>:<name> account rows.
 func CredentialProviderNames() []string {
 	names := make([]string, 0, len(providers))
 	for _, entry := range providers {
 		if entry.DescribeCredential != nil {
 			names = append(names, entry.Name)
 		}
+	}
+	for _, p := range accountProviders() {
+		names = append(names, p.Name)
 	}
 	return names
 }

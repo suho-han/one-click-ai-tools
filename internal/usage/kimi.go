@@ -89,7 +89,23 @@ func resolveKimiToken() (token, source string, expired bool) {
 		return "", "", false
 	}
 
-	credDir := filepath.Join(home, "credentials")
+	return kimiTokenFromCredentials(filepath.Join(home, "credentials"))
+}
+
+// resolveKimiTokenForHome resolves the token for an explicit credential home
+// (a kimi:<name> account row). Unlike the default row, the global
+// KIMI_CODE_API_KEY env is deliberately skipped so two rows can never report
+// the same account.
+func resolveKimiTokenForHome(home string) (token, source string, expired bool) {
+	if strings.TrimSpace(home) == "" {
+		return resolveKimiToken()
+	}
+	return kimiTokenFromCredentials(filepath.Join(home, "credentials"))
+}
+
+// kimiTokenFromCredentials reads the static credential file, falling back to
+// the newest rotated OAuth env-file, under one credentials directory.
+func kimiTokenFromCredentials(credDir string) (token, source string, expired bool) {
 	if data, err := os.ReadFile(filepath.Join(credDir, "kimi-code.json")); err == nil {
 		if token := parseKimiAccessToken(data); token != "" {
 			return token, "kimi-code.json", false
@@ -98,14 +114,7 @@ func resolveKimiToken() (token, source string, expired bool) {
 
 	// The current CLI rotates OAuth env-files (kimi-code-env-<id>.json);
 	// pick the most recently written one.
-	envFiles, _ := filepath.Glob(filepath.Join(credDir, "kimi-code-env-*.json"))
-	newest, newestTime := "", time.Time{}
-	for _, path := range envFiles {
-		if info, err := os.Stat(path); err == nil && info.ModTime().After(newestTime) {
-			newest, newestTime = path, info.ModTime()
-		}
-	}
-	if newest != "" {
+	if newest := newestKimiCredentialPath(credDir, "kimi-code-env-*.json"); newest != "" {
 		if data, err := os.ReadFile(newest); err == nil {
 			if token := parseKimiAccessToken(data); token != "" {
 				source := "kimi-code-env-*.json"
@@ -125,16 +134,26 @@ func resolveKimiToken() (token, source string, expired bool) {
 // KIMI_CODE_API_KEY -> credentials/kimi-code.json -> the newest rotated
 // kimi-code-env-*.json, annotating expired OAuth tokens.
 func describeKimiCredential() CredentialStatus {
-	envSource := CredentialSource{
-		Kind:     CredentialKindEnv,
-		Location: "KIMI_CODE_API_KEY",
-		Found:    credentialEnvFound("KIMI_CODE_API_KEY"),
+	return describeKimiCredentialForHome("")
+}
+
+// describeKimiCredentialForHome probes one credential home; an explicit home
+// (kimi:<name> account row) skips the global env source.
+func describeKimiCredentialForHome(home string) CredentialStatus {
+	resolved := strings.TrimSpace(home)
+	sources := make([]CredentialSource, 0, 3)
+	if resolved == "" {
+		sources = append(sources, CredentialSource{
+			Kind:     CredentialKindEnv,
+			Location: "KIMI_CODE_API_KEY",
+			Found:    credentialEnvFound("KIMI_CODE_API_KEY"),
+		})
+		home = os.Getenv("KIMI_CODE_HOME")
+		if home == "" {
+			home = credentialHomePath(".kimi-code")
+		}
 	}
 
-	home := os.Getenv("KIMI_CODE_HOME")
-	if home == "" {
-		home = credentialHomePath(".kimi-code")
-	}
 	credDir := ""
 	if home != "" {
 		credDir = filepath.Join(home, "credentials")
@@ -162,8 +181,9 @@ func describeKimiCredential() CredentialStatus {
 			}
 		}
 	}
+	sources = append(sources, staticSource, rotatedSource)
 
-	status := credentialStatus([]CredentialSource{envSource, staticSource, rotatedSource})
+	status := credentialStatus(sources)
 	if status.Status == CredentialStatusMissing {
 		status.Note = "run 'kimi login' or set KIMI_CODE_API_KEY"
 	}
@@ -221,8 +241,15 @@ func kimiPercent(used, limit string) string {
 // request windows, normalized to percentages). Problems travel in the
 // UsageResult, never as an error.
 func FetchKimiUsage(ctx context.Context) UsageResult {
+	return fetchKimiUsageForHome(ctx, "", "kimi")
+}
+
+// fetchKimiUsageForHome is FetchKimiUsage for one credential home; an empty
+// home resolves the default token chain, a kimi:<name> account row passes its
+// configured directory.
+func fetchKimiUsageForHome(ctx context.Context, home string, provider string) UsageResult {
 	result := UsageResult{
-		Provider: "kimi",
+		Provider: provider,
 		Period:   "5h/7d",
 		Unit:     "percent",
 		Source:   "remote",
@@ -230,7 +257,7 @@ func FetchKimiUsage(ctx context.Context) UsageResult {
 		Message:  "No data: Kimi Code token not found (run 'kimi login' or set KIMI_CODE_API_KEY)",
 	}
 
-	token, source, expired := resolveKimiToken()
+	token, source, expired := resolveKimiTokenForHome(home)
 	if token == "" {
 		return result
 	}

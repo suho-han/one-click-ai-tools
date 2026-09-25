@@ -171,6 +171,24 @@ oct session-refresh --dry-run                                       # 토큰 소
 
 `(experimental)`는 실구독 API 응답에 대한 라이브 검증이 아직 안 된 통합이라는 뜻입니다 (라이브 검증 완료: Codex, Claude, Command Code, OpenCode, Antigravity, OpenRouter).
 
+### 멀티 계정 (codex, kimi, qwen, grok)
+
+계정이 여러 개면 각각의 자격증명 디렉터리를 등록해서 사용량을 함께 볼 수 있습니다.
+
+가장 간단한 방법은 대화형 화면입니다. codex 행 아래의 **"➕ Add codex account…"** 항목을 고르면 브라우저 로그인이 바로 열리고, 로그인이 끝나면 계정 이메일에서 이름을 자동 만들어 등록합니다(예: `hansuho36@...` → `codex:han***o36`, 홈은 `~/.codex-hansuho36`) — 입력 없이 로그인만 하면 됩니다.
+
+계정이 등록되면 codex 행 아래에 **"Manage existing accounts (N)"** 행이 나타납니다. Enter로 펼치면 마스킹된 계정 이름(`codex:han***o36`)이 표시되고, 계정 행에서 다시 Enter를 누르면 **🔄 Reconnect**(토큰 재로그인)와 **❌ Disconnect**(oct 설정에서만 제거; 저장된 자격증명 파일은 유지) 액션이 나타납니다.
+
+```bash
+oct config                                              # ➕ Add codex account… → 이름 입력 → 로그인
+oct config account add codex work                       # CLI: 이름만 쓰면 ~/.codex-work로 자동 파생
+oct config account add kimi personal ~/.kimi-code-alt   # 경로를 직접 지정할 수도 있음
+oct config account list                                 # 등록 목록 확인
+oct config account remove codex work                    # 등록 해제
+```
+
+등록하면 `oct usage` 표에서 해당 프로바이더 행 바로 아래에 `codex:work`, `kimi:personal` 같은 행이 생기고, 컴팩트/스테이터스라인 표기는 `XW`, `KP`처럼 별칭 첫 글자가 붙습니다. 계정 행은 기본 행이 표시될 때 함께 표시되며, `oct alert config set-provider-threshold ... --provider codex:work`처럼 알림 대상으로도 쓸 수 있습니다.
+
 ## 메뉴바 헬퍼 (macOS)
 
 macOS 릴리즈 tarball(`oct` 설치 스크립트, `oct update`)에는 Swift menubar helper가 함께 들어 있어 `oct`와 같은 디렉터리(기본 `~/.local/bin`)에 자동 설치됩니다. 소스에서 직접 빌드할 수도 있습니다.

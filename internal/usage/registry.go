@@ -34,6 +34,16 @@ type Provider struct {
 	// enabled_tools — an unconfigured standalone service must never add a
 	// permanent "not configured" row to the default usage table.
 	Standalone bool
+	// AccountKind selects the per-account override this provider supports
+	// (<provider>:<name> usage rows under the accounts config key). AccountKindNone
+	// (the default) means the provider has no multi-account support.
+	AccountKind AccountKind
+	// FetchForAccount collects usage for one configured account. Required
+	// when AccountKind is set.
+	FetchForAccount func(ctx context.Context, account Account) UsageResult
+	// DescribeAccountCredential probes one account's credential chain;
+	// optional even when AccountKind is set.
+	DescribeAccountCredential func(account Account) CredentialStatus
 	// Fetch collects the provider's usage. It reports problems through the
 	// UsageResult itself, never via error.
 	Fetch func(ctx context.Context) UsageResult
@@ -107,6 +117,13 @@ var providers = []Provider{
 		CompactLabel:       "X",
 		Fetch:              FetchCodexUsage,
 		DescribeCredential: describeCodexCredential,
+		AccountKind:        AccountKindHome,
+		FetchForAccount: func(ctx context.Context, account Account) UsageResult {
+			return fetchCodexUsageForHome(ctx, account.Home, AccountProviderName(account.Provider, account.Name))
+		},
+		DescribeAccountCredential: func(account Account) CredentialStatus {
+			return describeCodexCredentialForHome(account.Home)
+		},
 	},
 	{
 		Name:               "kimi",
@@ -115,6 +132,13 @@ var providers = []Provider{
 		CompactLabel:       "K",
 		Fetch:              FetchKimiUsage,
 		DescribeCredential: describeKimiCredential,
+		AccountKind:        AccountKindHome,
+		FetchForAccount: func(ctx context.Context, account Account) UsageResult {
+			return fetchKimiUsageForHome(ctx, account.Home, AccountProviderName(account.Provider, account.Name))
+		},
+		DescribeAccountCredential: func(account Account) CredentialStatus {
+			return describeKimiCredentialForHome(account.Home)
+		},
 	},
 	{
 		Name:               "zai",
@@ -133,6 +157,13 @@ var providers = []Provider{
 		CompactLabel:       "Q",
 		Fetch:              FetchQwenUsage,
 		DescribeCredential: describeQwenCredential,
+		AccountKind:        AccountKindHome,
+		FetchForAccount: func(ctx context.Context, account Account) UsageResult {
+			return fetchQwenUsageForHome(ctx, account.Home, AccountProviderName(account.Provider, account.Name))
+		},
+		DescribeAccountCredential: func(account Account) CredentialStatus {
+			return describeQwenCredentialForHome(account.Home)
+		},
 	},
 	{
 		Name:               "deepseek",
@@ -169,6 +200,13 @@ var providers = []Provider{
 		Standalone:         true,
 		Fetch:              FetchGrokUsage,
 		DescribeCredential: describeGrokCredential,
+		AccountKind:        AccountKindHome,
+		FetchForAccount: func(ctx context.Context, account Account) UsageResult {
+			return fetchGrokUsageForHome(ctx, account.Home, AccountProviderName(account.Provider, account.Name))
+		},
+		DescribeAccountCredential: func(account Account) CredentialStatus {
+			return describeGrokCredentialForHome(account.Home)
+		},
 	},
 }
 
@@ -235,6 +273,17 @@ func CanonicalProviderName(name string) (string, bool) {
 	if resolved, ok := lookupProviderName(p); ok {
 		return resolved, true
 	}
+	// <provider>:<name> account rows are their own canonical key, but only
+	// while the account is actually configured, so typo'd names fail
+	// validation instead of silently storing thresholds nothing will ever
+	// report.
+	if provider, alias, ok := SplitAccountProviderLabel(p); ok {
+		for _, account := range AccountsForProvider(provider) {
+			if account.Name == alias {
+				return p, true
+			}
+		}
+	}
 	// Legacy config keys speak tool names ("claude-code", "cursor") rather
 	// than registry names ("claude", "cursor-agent").
 	if normalized := update.NormalizeToolName(p); normalized != p {
@@ -286,6 +335,14 @@ func AlertProviderNames() []string {
 				seen[p.Name] = true
 				names = append(names, p.Name)
 			}
+		}
+	}
+	// <provider>:<name> account rows are alertable once configured; their
+	// UsageResult.Provider values are the keys thresholds are stored under.
+	for _, p := range accountProviders() {
+		if !seen[p.Name] {
+			seen[p.Name] = true
+			names = append(names, p.Name)
 		}
 	}
 	sort.Strings(names)

@@ -32,6 +32,16 @@ func CompactTitle(results []UsageResult, mode string) string {
 }
 
 func compactProviderLabel(provider string) string {
+	// <provider>:<name> account rows share the base provider's letter; the
+	// alias's first rune distinguishes them (codex:work -> XW,
+	// kimi:personal -> KP) instead of two identical "X-NN%" tokens on
+	// statusbar surfaces.
+	if base, alias, ok := SplitAccountProviderLabel(provider); ok {
+		if entry, ok := matchProvider(base); ok && entry.CompactLabel != "" {
+			runes := []rune(alias)
+			return entry.CompactLabel + strings.ToUpper(string(runes[0]))
+		}
+	}
 	if entry, ok := matchProvider(provider); ok && entry.CompactLabel != "" {
 		return entry.CompactLabel
 	}

@@ -120,24 +120,66 @@ func GetUsage(ctx context.Context) ([]UsageResult, error) {
 		}
 	}
 
-	jobs := make([]fetchJob, 0, len(toolJobs)+len(standaloneJobs))
+	// Configured <provider>:<name> account rows replace their base provider
+	// row: once accounts are configured they are the definitive list of
+	// logins to show for that provider. Several accounts keep their alias
+	// suffix ("codex:work", "codex:personal"); a single account renders
+	// under the plain provider name ("codex") because there is nothing to
+	// disambiguate. Providers without accounts keep the base row. Listing
+	// "<provider>:<name>" in agent_order acts like the base provider name.
+	accountJobs := make(map[string][]fetchJob)
+	for _, p := range providers {
+		if p.AccountKind == AccountKindNone || p.FetchForAccount == nil {
+			continue
+		}
+		accountJobs[p.Name] = append(accountJobs[p.Name], accountFetchJobs(p)...)
+	}
+
+	jobs := make([]fetchJob, 0, len(toolJobs)+len(standaloneJobs)+len(accountJobs)*2)
+	accountEmitted := make(map[string]bool)
+	// emitAccountRows appends the account rows of one base provider (in
+	// config order) and reports whether it has any. The rows still ride the
+	// base's membership in this fetch -- callers only reach them after the
+	// base provider itself was selected; they replace it, never duplicate
+	// it.
+	emitAccountRows := func(base string) bool {
+		key := strings.ToLower(strings.TrimSpace(base))
+		rows := accountJobs[key]
+		for _, job := range rows {
+			if !accountEmitted[job.label] {
+				accountEmitted[job.label] = true
+				jobs = append(jobs, job)
+			}
+		}
+		return len(rows) > 0
+	}
 	toolEmitted := make([]bool, len(toolJobs))
 	emitTool := func(i int) {
-		if !toolEmitted[i] {
-			toolEmitted[i] = true
-			jobs = append(jobs, toolJobs[i])
+		if toolEmitted[i] {
+			return
 		}
+		toolEmitted[i] = true
+		if emitAccountRows(update.NormalizeToolName(toolJobs[i].label)) {
+			return
+		}
+		jobs = append(jobs, toolJobs[i])
 	}
 	allowedStandalone := standaloneAllowedJobs(standaloneJobs)
 	for _, name := range orderedRequestedNames() {
 		if job, ok := standaloneJobs[name]; ok {
 			if !standaloneSeen[job.label] && allowedStandalone[job.label] {
 				standaloneSeen[job.label] = true
-				jobs = append(jobs, job)
+				if !emitAccountRows(job.label) {
+					jobs = append(jobs, job)
+				}
 			}
 			continue
 		}
-		if i, ok := toolIndex[update.NormalizeToolName(name)]; ok {
+		base := name
+		if provider, _, ok := SplitAccountProviderLabel(name); ok {
+			base = provider
+		}
+		if i, ok := toolIndex[update.NormalizeToolName(base)]; ok {
 			emitTool(i)
 		}
 	}
@@ -171,6 +213,40 @@ func GetUsage(ctx context.Context) ([]UsageResult, error) {
 	}
 
 	return filtered, nil
+}
+
+// accountFetchJobs builds the fetch jobs for one account-capable provider's
+// configured accounts, in config order. The rows replace the provider's base
+// row, so a single account keeps the plain provider label ("codex"), while
+// several accounts carry their alias suffix ("codex:work", "codex:personal")
+// to stay distinguishable.
+func accountFetchJobs(p Provider) []fetchJob {
+	accounts := AccountsForProvider(p.Name)
+	if len(accounts) == 0 {
+		return nil
+	}
+	suffixed := len(accounts) > 1
+	jobs := make([]fetchJob, 0, len(accounts))
+	for _, account := range accounts {
+		account := account
+		label := p.Name
+		if suffixed {
+			label = AccountProviderName(p.Name, account.Name)
+		}
+		base := p
+		jobs = append(jobs, fetchJob{
+			label: label,
+			fetch: func(ctx context.Context) UsageResult {
+				// FetchForAccount stamps the <provider>:<name> label itself;
+				// the job label wins so a single account renders under the
+				// plain provider name.
+				result := base.FetchForAccount(ctx, account)
+				result.Provider = label
+				return result
+			},
+		})
+	}
+	return jobs
 }
 
 // requestedProviderNames lowercases and splits the raw agent_order and
