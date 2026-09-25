@@ -177,6 +177,21 @@ func FetchClaudeUsage(ctx context.Context) UsageResult {
 	plan, source := detectClaudePlan(ctx, token)
 	result = withPlan(result, plan, source)
 
+	// Inside a rate-limit backoff window, don't touch the endpoint again —
+	// serve the recorded last-good usage or hold the warn state until it
+	// expires.
+	if remaining, ok := claudeUsageBackoffRemaining(time.Now()); ok {
+		reason := fmt.Sprintf("API rate limited; retrying in %s", remaining.Round(time.Second))
+		if cached, ok := lastGoodClaudeUsage(result, time.Now(), reason); ok {
+			return cached
+		}
+		result.Status = "warn"
+		result.Used = "n/a"
+		result.Message = "Claude usage API rate limited; backing off, no cached usage found"
+		result.SourceDetail = "backoff_remaining=" + remaining.Round(time.Second).String()
+		return result
+	}
+
 	endpoint := "https://api.anthropic.com/api/oauth/usage"
 	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil {
@@ -196,7 +211,11 @@ func FetchClaudeUsage(ctx context.Context) UsageResult {
 
 	if resp.StatusCode != http.StatusOK {
 		if resp.StatusCode == http.StatusTooManyRequests {
+			markClaudeRateLimited(time.Now(), parseRetryAfter(resp.Header.Get("Retry-After")))
 			if cached, ok := fetchClaudeCachedUsage(result, home, "API rate limited"); ok {
+				return cached
+			}
+			if cached, ok := lastGoodClaudeUsage(result, time.Now(), "API rate limited"); ok {
 				return cached
 			}
 			result.Status = "warn"
@@ -275,6 +294,7 @@ func FetchClaudeUsage(ctx context.Context) UsageResult {
 
 	result.Status = "ok"
 	result.Source = "oauth"
+	saveClaudeLastGoodUsage(result.Buckets, result.BucketResets, time.Now())
 	return result
 }
 
