@@ -83,6 +83,26 @@ struct OctCLIService {
             || lowered.contains("flag provided but not defined: -payload")
     }
 
+    /// Restarts the menubar helper by handing stop→start to a detached shell:
+    /// `oct menubar stop` SIGTERMs every helper instance (this one included),
+    /// then `oct menubar --daemon` starts a fresh one. The sequence must
+    /// outlive this terminating app, so it runs unmanaged — no pipes or
+    /// watchdog, unlike `runProcess`, which would die with the app.
+    func restartHelperDetached() throws {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        process.arguments = ["-c", Self.helperRestartScript(octPath: executableURL.path)]
+        process.standardInput = FileHandle.nullDevice
+        process.standardOutput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        try process.run()
+    }
+
+    static func helperRestartScript(octPath: String) -> String {
+        let oct = shellQuote(octPath)
+        return "\(oct) menubar stop; sleep 0.5; \(oct) menubar --daemon"
+    }
+
     func run(action: OctMenubarAction) async throws {
         switch action {
         case .openUsage:
@@ -202,7 +222,7 @@ struct OctCLIService {
     }
 
     private func buildShellCommand(arguments: [String]) -> String {
-        ([shellQuote(executableURL.path)] + arguments.map(shellQuote)).joined(separator: " ")
+        ([Self.shellQuote(executableURL.path)] + arguments.map(Self.shellQuote)).joined(separator: " ")
     }
 
     /// Runs a process off the caller's thread and collects its output without
@@ -306,7 +326,7 @@ struct OctCLIService {
         return ProcessOutput(stdout: stdoutText, stderr: stderrText)
     }
 
-    private func shellQuote(_ value: String) -> String {
+    static func shellQuote(_ value: String) -> String {
         if value.isEmpty { return "''" }
         return "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }

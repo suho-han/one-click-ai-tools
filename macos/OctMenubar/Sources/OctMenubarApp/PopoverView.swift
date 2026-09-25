@@ -59,7 +59,8 @@ struct PopoverView: View {
                 Divider()
                 FooterActionsView(
                     isRefreshing: viewModel.isRefreshing,
-                    onRefresh: { viewModel.refresh() }
+                    onRefresh: { viewModel.refresh() },
+                    onRestartHelper: { viewModel.restartHelper() }
                 )
             }
             .padding(16)
