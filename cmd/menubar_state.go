@@ -23,7 +23,7 @@ type menubarSnapshot struct {
 }
 
 func menubarOverviewTitle() string {
-	return "Usage Overview"
+	return "One Click AI Tools"
 }
 
 func menubarProviderSectionTitle(count int) string {

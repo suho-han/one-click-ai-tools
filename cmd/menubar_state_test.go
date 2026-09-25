@@ -55,7 +55,7 @@ func TestMenubarUsageSnapshotDefaultsToOctTitleMode(t *testing.T) {
 }
 
 func TestMenubarOverviewAndProviderSectionLabels(t *testing.T) {
-	if got := menubarOverviewTitle(); got != "Usage Overview" {
+	if got := menubarOverviewTitle(); got != "One Click AI Tools" {
 		t.Fatalf("menubarOverviewTitle = %q", got)
 	}
 	if got := menubarProviderSectionTitle(0); got != "Providers" {
