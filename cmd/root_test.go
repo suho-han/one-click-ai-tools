@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/spf13/viper"
@@ -59,8 +60,8 @@ func TestRootCommand(t *testing.T) {
 	if contains(out, "agent-update    🔄") {
 		t.Errorf("expected help to omit command-name-before-emoji order, got: %s", out)
 	}
-	if !contains(out, "🧩completion") {
-		t.Errorf("expected help to include completion command emoji, got: %s", out)
+	if contains(out, "completion") {
+		t.Errorf("completion command should be removed, got: %s", out)
 	}
 	if !contains(out, "❓help") {
 		t.Errorf("expected help to include help command emoji, got: %s", out)
@@ -69,6 +70,35 @@ func TestRootCommand(t *testing.T) {
 
 func contains(s, substr string) bool {
 	return bytes.Contains([]byte(s), []byte(substr))
+}
+
+// isolateTestHome points os.UserHomeDir at a temp dir on every platform:
+// windows reads USERPROFILE, unix reads HOME.
+func isolateTestHome(t *testing.T, dir string) {
+	t.Helper()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
+}
+
+func TestReorderRootCommandsMaintenanceOrder(t *testing.T) {
+	reorderRootCommands()
+
+	var maintenance []string
+	for _, c := range rootCmd.Commands() {
+		if c.GroupID == "maintenance" {
+			maintenance = append(maintenance, c.Name())
+		}
+	}
+	want := []string{"update", "agent-update", "session-refresh", "doctor", "release-doctor"}
+	if strings.Join(maintenance, ",") != strings.Join(want, ",") {
+		t.Fatalf("maintenance order = %v, want %v", maintenance, want)
+	}
+
+	for _, c := range rootCmd.Commands() {
+		if c.Name() == "quota" || c.Name() == "completion" {
+			t.Fatalf("%s command should be removed from the root command", c.Name())
+		}
+	}
 }
 
 func TestRootVersionIsSemver(t *testing.T) {
