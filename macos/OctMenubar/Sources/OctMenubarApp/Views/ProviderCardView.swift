@@ -200,7 +200,7 @@ struct ProviderCardView: View {
                     .lineLimit(1)
                     .foregroundStyle(.primary)
             }
-            Text(metric.resetsIn.map { "/ \($0)" } ?? "")
+            Text(metric.resetsIn ?? "")
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .frame(width: columnWidths.countdown, alignment: .trailing)
