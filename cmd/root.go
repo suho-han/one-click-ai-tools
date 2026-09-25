@@ -102,7 +102,10 @@ func commandHelpLine(cmd *cobra.Command) string {
 	if emoji == "" {
 		return fmt.Sprintf("%s %s", name, description)
 	}
-	return fmt.Sprintf("%s%s %s", emoji, name, description)
+	// The space between emoji and name keeps double-width glyphs from
+	// rendering on top of the first letter in terminals that undercount emoji
+	// width.
+	return fmt.Sprintf("%s %s %s", emoji, name, description)
 }
 
 func splitHelpEmoji(short string) (string, string) {
