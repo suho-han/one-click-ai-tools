@@ -398,11 +398,10 @@ final class UsageSnapshotTests: XCTestCase {
 
         let widths = UsageRowMetrics.columnWidths(for: providers)
         // Every column is at least as wide as its longest string across all
-        // providers, so no text can truncate; the countdown column accounts
-        // for the "/ " prefix.
+        // providers, so no text can truncate.
         XCTAssertGreaterThanOrEqual(widths.label, UsageRowMetrics.width(of: ["Claude/GPT"]))
         XCTAssertGreaterThanOrEqual(widths.value, UsageRowMetrics.width(of: ["100.0%"]))
-        XCTAssertGreaterThanOrEqual(widths.countdown, UsageRowMetrics.width(of: ["/ 6d 23h"]))
+        XCTAssertGreaterThanOrEqual(widths.countdown, UsageRowMetrics.width(of: ["6d 23h"]))
         // Widths track content: a longer label measures wider than a short one.
         XCTAssertGreaterThan(UsageRowMetrics.width(of: ["Claude/GPT"]), UsageRowMetrics.width(of: ["7d"]))
         // Empty input collapses to zero so absent columns don't eat bar width.

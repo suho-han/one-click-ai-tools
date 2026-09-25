@@ -24,7 +24,7 @@ enum UsageRowMetrics {
                 labels.append(metric.label)
                 values.append(metric.value)
                 if let resetsIn = metric.resetsIn {
-                    countdowns.append("/ \(resetsIn)")
+                    countdowns.append(resetsIn)
                 }
             }
         }
