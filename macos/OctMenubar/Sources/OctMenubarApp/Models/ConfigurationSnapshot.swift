@@ -1,21 +1,5 @@
 import Foundation
 
-enum UsageDisplayMode: String, Codable, CaseIterable, Identifiable {
-    case remaining
-    case used
-
-    var id: String { rawValue }
-
-    var label: String {
-        switch self {
-        case .remaining:
-            return "Remaining"
-        case .used:
-            return "Used"
-        }
-    }
-}
-
 enum MenubarTitleMode: String, Codable, CaseIterable, Identifiable {
     case oct
     case compact
@@ -27,8 +11,8 @@ enum MenubarTitleMode: String, Codable, CaseIterable, Identifiable {
         case .oct:
             return "oct"
         case .compact:
-            // Shows whichever Usage Display Mode is configured (used or
-            // remaining), not always remaining -- see UsageDisplayMode.
+            // Shows the compact remaining-usage title, matching the popover
+            // body below it.
             return "Compact %"
         }
     }
@@ -117,7 +101,6 @@ struct AlertSettings: Codable, Equatable {
 
 struct ConfigurationSnapshot: Codable, Equatable {
     let configFile: String
-    let usageDisplayMode: UsageDisplayMode
     let menubarTitleMode: MenubarTitleMode
     let menubarRefreshInterval: String
     let sessionRefreshEnabled: Bool
@@ -128,7 +111,6 @@ struct ConfigurationSnapshot: Codable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case configFile = "config_file"
-        case usageDisplayMode = "usage_display_mode"
         case menubarTitleMode = "menubar_title_mode"
         case menubarRefreshInterval = "menubar_refresh_interval"
         case sessionRefreshEnabled = "session_refresh_enabled"
@@ -140,7 +122,6 @@ struct ConfigurationSnapshot: Codable, Equatable {
 
     init(
         configFile: String,
-        usageDisplayMode: UsageDisplayMode,
         menubarTitleMode: MenubarTitleMode,
         menubarRefreshInterval: String = "1m",
         sessionRefreshEnabled: Bool,
@@ -150,7 +131,6 @@ struct ConfigurationSnapshot: Codable, Equatable {
         alert: AlertSettings = .goDefaults
     ) {
         self.configFile = configFile
-        self.usageDisplayMode = usageDisplayMode
         self.menubarTitleMode = menubarTitleMode
         self.menubarRefreshInterval = menubarRefreshInterval
         self.sessionRefreshEnabled = sessionRefreshEnabled
@@ -164,7 +144,6 @@ struct ConfigurationSnapshot: Codable, Equatable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.init(
             configFile: try container.decode(String.self, forKey: .configFile),
-            usageDisplayMode: try container.decode(UsageDisplayMode.self, forKey: .usageDisplayMode),
             menubarTitleMode: try container.decodeIfPresent(MenubarTitleMode.self, forKey: .menubarTitleMode) ?? .oct,
             menubarRefreshInterval: try container.decodeIfPresent(String.self, forKey: .menubarRefreshInterval) ?? "1m",
             sessionRefreshEnabled: try container.decode(Bool.self, forKey: .sessionRefreshEnabled),
@@ -229,7 +208,6 @@ struct ConfigurationSnapshot: Codable, Equatable {
 
 struct ConfigurationUpdatePayload: Codable, Equatable {
     let enabledTools: [String]
-    let usageDisplayMode: UsageDisplayMode
     let menubarTitleMode: MenubarTitleMode
     let sessionRefreshEnabled: Bool
     let sessionRefreshInterval: String
@@ -239,7 +217,6 @@ struct ConfigurationUpdatePayload: Codable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case enabledTools = "enabled_tools"
-        case usageDisplayMode = "usage_display_mode"
         case menubarTitleMode = "menubar_title_mode"
         case sessionRefreshEnabled = "session_refresh_enabled"
         case sessionRefreshInterval = "session_refresh_interval"
@@ -251,7 +228,6 @@ struct ConfigurationUpdatePayload: Codable, Equatable {
 
 struct ConfigurationDraft: Equatable {
     var configFile: String
-    var usageDisplayMode: UsageDisplayMode
     var menubarTitleMode: MenubarTitleMode
     var sessionRefreshEnabled: Bool
     var sessionRefreshInterval: String
@@ -261,7 +237,6 @@ struct ConfigurationDraft: Equatable {
 
     init(snapshot: ConfigurationSnapshot) {
         configFile = snapshot.configFile
-        usageDisplayMode = snapshot.usageDisplayMode
         menubarTitleMode = snapshot.menubarTitleMode
         sessionRefreshEnabled = snapshot.sessionRefreshEnabled
         sessionRefreshInterval = snapshot.sessionRefreshInterval
@@ -304,7 +279,6 @@ struct ConfigurationDraft: Equatable {
     func updatePayload() -> ConfigurationUpdatePayload {
         ConfigurationUpdatePayload(
             enabledTools: tools.filter(\.enabled).map(\.binaryName),
-            usageDisplayMode: usageDisplayMode,
             menubarTitleMode: menubarTitleMode,
             sessionRefreshEnabled: sessionRefreshEnabled,
             sessionRefreshInterval: sessionRefreshInterval,

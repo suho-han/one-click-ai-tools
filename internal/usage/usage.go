@@ -17,26 +17,6 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-// Display modes for the "used" vs "remaining" toggle (usage_display_mode
-// config key). All UI surfaces (oct usage, oct monitor, both menubars) should
-// resolve the raw config value through NormalizeDisplayMode so an invalid or
-// missing value falls back the same way everywhere.
-const (
-	DisplayModeUsed      = "used"
-	DisplayModeRemaining = "remaining"
-)
-
-// NormalizeDisplayMode canonicalizes a usage_display_mode value. Invalid or
-// empty input falls back to "remaining", matching root.go's viper default,
-// so a missing/corrupt config can't make one UI surface disagree with another.
-func NormalizeDisplayMode(raw string) string {
-	mode := strings.ToLower(strings.TrimSpace(raw))
-	if mode != DisplayModeUsed && mode != DisplayModeRemaining {
-		return DisplayModeRemaining
-	}
-	return mode
-}
-
 type UsageResult struct {
 	Provider     string            `json:"provider"`
 	Plan         string            `json:"plan,omitempty"`
@@ -120,24 +100,66 @@ func GetUsage(ctx context.Context) ([]UsageResult, error) {
 		}
 	}
 
-	jobs := make([]fetchJob, 0, len(toolJobs)+len(standaloneJobs))
+	// Configured <provider>:<name> account rows replace their base provider
+	// row: once accounts are configured they are the definitive list of
+	// logins to show for that provider. Several accounts keep their alias
+	// suffix ("codex:work", "codex:personal"); a single account renders
+	// under the plain provider name ("codex") because there is nothing to
+	// disambiguate. Providers without accounts keep the base row. Listing
+	// "<provider>:<name>" in agent_order acts like the base provider name.
+	accountJobs := make(map[string][]fetchJob)
+	for _, p := range providers {
+		if p.AccountKind == AccountKindNone || p.FetchForAccount == nil {
+			continue
+		}
+		accountJobs[p.Name] = append(accountJobs[p.Name], accountFetchJobs(p)...)
+	}
+
+	jobs := make([]fetchJob, 0, len(toolJobs)+len(standaloneJobs)+len(accountJobs)*2)
+	accountEmitted := make(map[string]bool)
+	// emitAccountRows appends the account rows of one base provider (in
+	// config order) and reports whether it has any. The rows still ride the
+	// base's membership in this fetch -- callers only reach them after the
+	// base provider itself was selected; they replace it, never duplicate
+	// it.
+	emitAccountRows := func(base string) bool {
+		key := strings.ToLower(strings.TrimSpace(base))
+		rows := accountJobs[key]
+		for _, job := range rows {
+			if !accountEmitted[job.label] {
+				accountEmitted[job.label] = true
+				jobs = append(jobs, job)
+			}
+		}
+		return len(rows) > 0
+	}
 	toolEmitted := make([]bool, len(toolJobs))
 	emitTool := func(i int) {
-		if !toolEmitted[i] {
-			toolEmitted[i] = true
-			jobs = append(jobs, toolJobs[i])
+		if toolEmitted[i] {
+			return
 		}
+		toolEmitted[i] = true
+		if emitAccountRows(update.NormalizeToolName(toolJobs[i].label)) {
+			return
+		}
+		jobs = append(jobs, toolJobs[i])
 	}
 	allowedStandalone := standaloneAllowedJobs(standaloneJobs)
 	for _, name := range orderedRequestedNames() {
 		if job, ok := standaloneJobs[name]; ok {
 			if !standaloneSeen[job.label] && allowedStandalone[job.label] {
 				standaloneSeen[job.label] = true
-				jobs = append(jobs, job)
+				if !emitAccountRows(job.label) {
+					jobs = append(jobs, job)
+				}
 			}
 			continue
 		}
-		if i, ok := toolIndex[update.NormalizeToolName(name)]; ok {
+		base := name
+		if provider, _, ok := SplitAccountProviderLabel(name); ok {
+			base = provider
+		}
+		if i, ok := toolIndex[update.NormalizeToolName(base)]; ok {
 			emitTool(i)
 		}
 	}
@@ -171,6 +193,40 @@ func GetUsage(ctx context.Context) ([]UsageResult, error) {
 	}
 
 	return filtered, nil
+}
+
+// accountFetchJobs builds the fetch jobs for one account-capable provider's
+// configured accounts, in config order. The rows replace the provider's base
+// row, so a single account keeps the plain provider label ("codex"), while
+// several accounts carry their alias suffix ("codex:work", "codex:personal")
+// to stay distinguishable.
+func accountFetchJobs(p Provider) []fetchJob {
+	accounts := AccountsForProvider(p.Name)
+	if len(accounts) == 0 {
+		return nil
+	}
+	suffixed := len(accounts) > 1
+	jobs := make([]fetchJob, 0, len(accounts))
+	for _, account := range accounts {
+		account := account
+		label := p.Name
+		if suffixed {
+			label = AccountProviderName(p.Name, account.Name)
+		}
+		base := p
+		jobs = append(jobs, fetchJob{
+			label: label,
+			fetch: func(ctx context.Context) UsageResult {
+				// FetchForAccount stamps the <provider>:<name> label itself;
+				// the job label wins so a single account renders under the
+				// plain provider name.
+				result := base.FetchForAccount(ctx, account)
+				result.Provider = label
+				return result
+			},
+		})
+	}
+	return jobs
 }
 
 // requestedProviderNames lowercases and splits the raw agent_order and
@@ -304,14 +360,12 @@ func PrintTable(results []UsageResult) {
 func RenderTable(w io.Writer, results []UsageResult) {
 	width := terminalWidth()
 
-	displayMode := NormalizeDisplayMode(viper.GetString("usage_display_mode"))
-
 	cardWidth := tableCardWidth(width)
 	for i, r := range results {
 		if i > 0 {
 			fmt.Fprintln(w)
 		}
-		renderProviderCard(w, r, displayMode, cardWidth)
+		renderProviderCard(w, r, cardWidth)
 	}
 }
 
@@ -446,7 +500,7 @@ func tableCardWidth(width int) int {
 	}
 }
 
-func renderProviderCard(w io.Writer, r UsageResult, displayMode string, cardWidth int) {
+func renderProviderCard(w io.Writer, r UsageResult, cardWidth int) {
 	innerWidth := cardWidth - 2
 	providerLabel := providerDisplayLabel(r.Provider)
 	statusLabel := strings.ToUpper(strings.TrimSpace(r.Status))
@@ -458,7 +512,7 @@ func renderProviderCard(w io.Writer, r UsageResult, displayMode string, cardWidt
 	fmt.Fprintln(w, cardTitleLine(providerLabel, r.Provider, statusLabel, r.Status, innerWidth))
 	fmt.Fprintf(w, "├%s┤\n", strings.Repeat("─", innerWidth))
 	fmt.Fprintln(w, cardKeyValueLine("Plan", tablePlanLabel(r.Plan), innerWidth, ""))
-	fmt.Fprintln(w, cardKeyValueLine("Quota", usageSummaryDisplay(r, displayMode), innerWidth, ""))
+	fmt.Fprintln(w, cardKeyValueLine("Quota", usageSummaryDisplay(r), innerWidth, ""))
 	fmt.Fprintln(w, cardKeyValueLine("Source", tableSourceLabel(r.Source), innerWidth, ""))
 	if msg := strings.TrimSpace(r.Message); msg != "" {
 		fmt.Fprintln(w, cardKeyValueLine("Note", truncateText(msg, innerWidth-10), innerWidth, r.Status))
@@ -509,9 +563,12 @@ func tableSourceLabel(source string) string {
 	return source
 }
 
-func formatBucketDisplay(r UsageResult, rawValue, mode string) string {
+// formatBucketDisplay renders a raw bucket value for the card table. Every
+// surface now shows remaining quota, so a percent bucket is inverted
+// (used -> remaining) before display.
+func formatBucketDisplay(r UsageResult, rawValue string) string {
 	value := rawValue
-	if mode == DisplayModeRemaining && strings.EqualFold(r.Unit, "percent") {
+	if strings.EqualFold(r.Unit, "percent") {
 		if rem, ok := RemainingFromUsedPercent(rawValue); ok {
 			value = rem
 		}
@@ -535,24 +592,24 @@ func tablePlanLabel(plan string) string {
 	return plan
 }
 
-func usageSummaryDisplay(r UsageResult, mode string) string {
+func usageSummaryDisplay(r UsageResult) string {
 	var parts []string
-	if !strings.EqualFold(r.Provider, "codex") {
-		if val, ok := visibleBucketValue(r, "5h", mode); ok {
+	if !isCodexProviderName(r.Provider) {
+		if val, ok := visibleBucketValue(r, "5h"); ok {
 			parts = append(parts, "5h "+val)
 		}
 	}
-	if val, ok := visibleBucketValue(r, "7d", mode); ok {
+	if val, ok := visibleBucketValue(r, "7d"); ok {
 		parts = append(parts, "7d "+val)
 	}
-	if val, ok := visibleBucketValue(r, "1m", mode); ok {
+	if val, ok := visibleBucketValue(r, "1m"); ok {
 		parts = append(parts, "1m "+val)
 	}
 	if len(parts) > 0 {
 		return strings.Join(parts, " · ")
 	}
 
-	if modelParts := modelBucketDisplays(r, mode); len(modelParts) > 0 {
+	if modelParts := modelBucketDisplays(r); len(modelParts) > 0 {
 		return strings.Join(modelParts, " · ")
 	}
 
@@ -561,7 +618,7 @@ func usageSummaryDisplay(r UsageResult, mode string) string {
 	if used == "" || strings.EqualFold(used, "n/a") || hasNoDataSignal(msg) {
 		return "—"
 	}
-	if mode == DisplayModeRemaining && strings.EqualFold(r.Unit, "percent") {
+	if strings.EqualFold(r.Unit, "percent") {
 		if rem, ok := RemainingFromUsedPercent(used); ok {
 			used = rem
 		}
@@ -578,33 +635,31 @@ func usageSummaryDisplay(r UsageResult, mode string) string {
 		if quota := strings.TrimSpace(r.Buckets["quota"]); quota != "" {
 			// "quota" (e.g. Copilot) is always a pre-computed used-percentage
 			// even though r.Unit is a count unit like "AIC", not "percent" --
-			// it still has to honor the used/remaining toggle like every
-			// other percent-based bucket, or it silently ignores the setting.
-			return used + "/" + limit + " " + unit + " (" + quotaModeLabel(quota, mode) + ")"
+			// it still gets the remaining inversion like every other
+			// percent-based bucket.
+			return used + "/" + limit + " " + unit + " (" + quotaModeLabel(quota) + ")"
 		}
 		return used + "/" + limit + " " + unit
 	}
 	return used + " " + unit
 }
 
-func quotaModeLabel(quota string, mode string) string {
-	if mode == DisplayModeRemaining {
-		if rem, ok := RemainingFromUsedPercent(quota); ok {
-			return rem + "% left"
-		}
+func quotaModeLabel(quota string) string {
+	if rem, ok := RemainingFromUsedPercent(quota); ok {
+		return rem + "% left"
 	}
 	return quota + "% used"
 }
 
-// BucketValue resolves a single bucket's display value for the given mode,
-// applying the used/remaining inversion and "% left" labeling used by the
-// `oct usage` card table. `oct monitor` and the legacy menubar's fixed-width
-// surfaces intentionally use their own terser bucketVal (cmd/monitor.go)
-// instead -- see its doc comment -- but both apply the identical numeric
-// inversion, so the two never disagree on the underlying number, only on
-// whether it's labeled.
+// BucketValue resolves a single bucket's display value, applying the
+// used -> remaining inversion and "% left" labeling used by the `oct usage`
+// card table. `oct monitor` and the legacy menubar's fixed-width surfaces
+// intentionally use their own terser bucketVal (cmd/monitor.go) instead --
+// see its doc comment -- but both apply the identical numeric inversion, so
+// the two never disagree on the underlying number, only on whether it's
+// labeled.
 // ok is false when there's no usable value for this bucket.
-func BucketValue(r UsageResult, bucket string, mode string) (string, bool) {
+func BucketValue(r UsageResult, bucket string) (string, bool) {
 	raw := ""
 	if r.Buckets != nil {
 		raw = strings.TrimSpace(r.Buckets[bucket])
@@ -612,15 +667,15 @@ func BucketValue(r UsageResult, bucket string, mode string) (string, bool) {
 	if raw == "" || raw == "-" || strings.EqualFold(raw, "n/a") || strings.EqualFold(raw, "unavailable") {
 		return "", false
 	}
-	value := formatBucketDisplay(r, raw, mode)
-	if mode == DisplayModeRemaining && strings.EqualFold(r.Unit, "percent") {
+	value := formatBucketDisplay(r, raw)
+	if strings.EqualFold(r.Unit, "percent") {
 		value += " left"
 	}
 	return value, true
 }
 
-func visibleBucketValue(r UsageResult, bucket string, mode string) (string, bool) {
-	value, ok := BucketValue(r, bucket, mode)
+func visibleBucketValue(r UsageResult, bucket string) (string, bool) {
+	value, ok := BucketValue(r, bucket)
 	if !ok {
 		return "", false
 	}
@@ -691,7 +746,7 @@ func compactDuration(d time.Duration) string {
 	}
 }
 
-func modelBucketDisplays(r UsageResult, mode string) []string {
+func modelBucketDisplays(r UsageResult) []string {
 	if len(r.Buckets) == 0 {
 		return nil
 	}
@@ -705,7 +760,7 @@ func modelBucketDisplays(r UsageResult, mode string) []string {
 
 	out := make([]string, 0, len(keys))
 	for _, key := range keys {
-		value, ok := visibleBucketValue(r, key, mode)
+		value, ok := visibleBucketValue(r, key)
 		if !ok {
 			continue
 		}
@@ -729,11 +784,11 @@ func modelBucketDisplays(r UsageResult, mode string) []string {
 // visibleMetrics) -- falls back to the same value instead of some surfaces
 // showing real numbers while others show blank/dashed buckets for the exact
 // same result.
-func FallbackMetricsSummary(r UsageResult, mode string) (string, bool) {
+func FallbackMetricsSummary(r UsageResult) (string, bool) {
 	if quota := strings.TrimSpace(r.Buckets["quota"]); quota != "" {
-		return "quota " + quotaModeLabel(quota, mode), true
+		return "quota " + quotaModeLabel(quota), true
 	}
-	if modelParts := modelBucketDisplays(r, mode); len(modelParts) > 0 {
+	if modelParts := modelBucketDisplays(r); len(modelParts) > 0 {
 		return strings.Join(modelParts, " · "), true
 	}
 	return "", false

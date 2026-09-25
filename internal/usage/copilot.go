@@ -85,6 +85,54 @@ func FetchCopilotLocalUsage(ctx context.Context) UsageResult {
 	return result
 }
 
+// describeCopilotCredential probes the Copilot token chain in fetch priority
+// order: oct config -> GITHUB_API_TOKEN -> GITHUB_TOKEN -> `gh auth token`,
+// with the local session-log fallback noted last.
+func describeCopilotCredential() CredentialStatus {
+	sources := []CredentialSource{
+		{
+			Kind:     CredentialKindConfig,
+			Location: "github_api_token",
+			Found:    strings.TrimSpace(viper.GetString("github_api_token")) != "",
+			Note:     "oct config takes priority over the environment",
+		},
+		{
+			Kind:     CredentialKindEnv,
+			Location: "GITHUB_API_TOKEN",
+			Found:    credentialEnvFound("GITHUB_API_TOKEN"),
+		},
+		{
+			Kind:     CredentialKindEnv,
+			Location: "GITHUB_TOKEN",
+			Found:    credentialEnvFound("GITHUB_TOKEN"),
+		},
+		{
+			Kind:     CredentialKindCLI,
+			Location: "gh auth token",
+			Found:    credentialCommandPresent("gh", "auth", "token"),
+		},
+	}
+	sessionDir := credentialHomePath(".copilot", "session-state")
+	sessionFound := false
+	if sessionDir != "" {
+		if entries, err := os.ReadDir(sessionDir); err == nil && len(entries) > 0 {
+			sessionFound = true
+		}
+	}
+	sources = append(sources, CredentialSource{
+		Kind:     CredentialKindLocal,
+		Location: sessionDir,
+		Found:    sessionFound,
+		Note:     "local session-log estimate needs no token",
+	})
+
+	status := credentialStatus(sources)
+	if status.Status == CredentialStatusMissing {
+		status.Note = "run 'gh auth login' or set GITHUB_TOKEN"
+	}
+	return status
+}
+
 func FetchCopilotUsage(ctx context.Context) UsageResult {
 	result := UsageResult{
 		Provider:   "copilot",
@@ -303,6 +351,18 @@ func fetchCopilotQuotaUsage(ctx context.Context, base UsageResult, token string)
 		result.Buckets = map[string]string{"quota": fmt.Sprintf("%.1f", used/float64(limit)*100)}
 	} else {
 		result.Limit = "n/a"
+	}
+	// Reset time is stored raw (epoch seconds/millis or RFC3339); the
+	// shared parseBucketResetTime decides the format at read time, same as
+	// the other provider fetchers.
+	reset := ""
+	if snapshot.QuotaResetAt > 0 {
+		reset = fmt.Sprintf("%d", snapshot.QuotaResetAt)
+	} else if reset = strings.TrimSpace(snapshot.ResetDate); reset == "" {
+		reset = strings.TrimSpace(payload.QuotaResetDateUTC)
+	}
+	if reset != "" {
+		result.BucketResets = map[string]string{"quota": reset}
 	}
 	if strings.TrimSpace(payload.CopilotPlan) != "" {
 		result.Plan = strings.TrimSpace(payload.CopilotPlan)

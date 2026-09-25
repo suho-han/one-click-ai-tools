@@ -23,9 +23,9 @@ Supported agents:
 - GitHub Copilot (`@github/copilot`)
 - Cursor (`cursor-agent`)
 - OpenCode (`opencode-ai`)
-- Kimi Code (`@moonshot-ai/kimi-code`, binary: `kimi`)
-- Qwen Code (`@qwen-code/qwen-code`, binary: `qwen`)
-- MiniMax (`mmx-cli`, binary: `mmx`)
+- Kimi Code (`@moonshot-ai/kimi-code`, binary: `kimi`) (experimental)
+- Qwen Code (`@qwen-code/qwen-code`, binary: `qwen`) (experimental)
+- MiniMax (`mmx-cli`, binary: `mmx`) (experimental)
 
 Default behavior:
 - macOS: `brew update/upgrade`, npm-based updates, then fallback paths when needed
@@ -53,10 +53,12 @@ Notes:
 - Claude Code falls back to parsing `claude --print /usage` for 5h/weekly quota when the OAuth API reports no utilization.
 - Antigravity parses quota from `agy --print /usage` without reading tokens or keychain data directly.
 - Command Code reads 5h/7d/monthly buckets from the billing API using `COMMAND_CODE_API_KEY` or `~/.commandcode/auth.json`.
-- Kimi Code reads weekly + 5-hour request windows from `api.kimi.com/coding/v1/usages` (`KIMI_CODE_API_KEY` or `~/.kimi-code/credentials/kimi-code.json`).
+- Kimi Code reads weekly + 5-hour request windows from `api.kimi.com/coding/v1/usages` (`KIMI_CODE_API_KEY`, `~/.kimi-code/credentials/kimi-code.json`, or the rotated `kimi-code-env-*.json` files the current CLI writes; access tokens expire after ~15 minutes and are only refreshed by the kimi CLI itself).
 - Qwen Code has no public usage API; oct counts today's local token-usage records (`~/.qwen/**/usage/token-usage-*.jsonl`) against `qwen_daily_limit` (default 100, this machine only).
 - MiniMax plan quota (5h + weekly) comes from `POST /v1/coding_plan/remains` (`MINIMAX_CODING_API_KEY` or `MINIMAX_API_KEY`; `MINIMAX_REGION=cn` switches to the mainland host).
 - Standalone providers (`zai`, `deepseek`, `openrouter`, `grok`) have no CLI behind them and are fetched only when listed in `agent_order` or `enabled_tools`.
+- Multiple accounts (codex, kimi, qwen, grok): `oct config account add <provider> <name> <dir>` registers an extra credential directory, reading that directory exactly like the default row reads `~/.codex` / `~/.kimi-code` / `~/.qwen` / `~/.grok` (account rows skip the provider's global env token so two rows never report the same account). Account rows REPLACE the default provider row: with several accounts the rows are `<provider>:<name>` (`codex:work`, `codex:personal`); with a single account the row renders under the plain provider name (`codex`); with none, the default row stays as before. Remove with `oct config account remove <provider> <name>`, inspect with `oct config account list`; the underlying `accounts` config key also accepts hand-written per-provider entries (the older `codex_accounts` key still reads as the codex section). Account rows appear whenever their base provider row would (dropping the provider from `enabled_tools` drops them too), get compact-title tokens `<letter><first letter>` (e.g. `XW`, `KP`), and are valid `--provider` keys in `oct alert config`. The `oct config` TUI has an "Add codex account…" action row under the codex tool row.
+- `(experimental)` marks providers whose response fields were written from community sources and not yet confirmed against a live subscription (2026-09-20: live-verified = codex, claude, commandcode, opencode, antigravity, openrouter; kimi auth path verified, schema pending quota reset).
 - Legacy config values `gemini` and `gemini-cli` are still accepted, but they normalize internally to `agy`.
 
 ### Key environment variables
@@ -96,6 +98,31 @@ Primary paths:
 - `~/.opencode/sessions`
 - `~/.config/opencode/sessions`
 - `~/.local/share/opencode/sessions`
+
+### Statusbar output modes (`--format`)
+
+`oct usage --format waybar|polybar|swiftbar` renders the same results for
+Linux/macOS statusbars (roadmap P2 cross-platform parity with the macOS-only
+menubar):
+
+- `waybar`: one-line JSON `{"text","tooltip","class"}` for a waybar
+  custom/script module; `class` is `ok|warn|error` using the shared severity
+  thresholds (percent used >= 85 warn, >= 95 crit).
+- `polybar`: one line for a polybar custom script; literal `%` is doubled and
+  per-provider tokens carry `%{F#...}` severity colors.
+- `swiftbar`: SwiftBar plugin protocol — severity-colored title line, `---`,
+  then one dropdown line per provider.
+
+All three show remaining quota (used -> remaining inversion), like the
+menubar title; `--compact` is pinned to "remaining" as well. Providers without a
+usable value (unconfigured tools, empty billing windows, local-only estimates
+— the "?" tokens) are hidden from statusline output, while real failures
+(e.g. HTTP 401s) stay visible; the waybar tooltip / swiftbar dropdown end
+with a count of the hidden providers. Pair with `--from-snapshot` to render
+`~/.oct/state/usage-latest.json` (written by `oct monitor`) instead of a live
+fetch, so short statusbar poll intervals do not trigger a provider fan-out. Renderers live in
+`internal/usage/statusline.go`; `UsageSeverity` there is the shared
+classification also used by `oct monitor`.
 
 ## 4) Related docs
 

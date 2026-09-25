@@ -35,7 +35,6 @@ final class ConfigurationDurationTests: XCTestCase {
         let json = """
         {
           "config_file": "/tmp/config.yaml",
-          "usage_display_mode": "remaining",
           "session_refresh_enabled": false,
           "session_refresh_interval": "daily",
           "session_refresh_hour": 9,
@@ -51,7 +50,6 @@ final class ConfigurationDurationTests: XCTestCase {
         let json = """
         {
           "config_file": "/tmp/config.yaml",
-          "usage_display_mode": "remaining",
           "menubar_refresh_interval": "90s",
           "session_refresh_enabled": false,
           "session_refresh_interval": "daily",

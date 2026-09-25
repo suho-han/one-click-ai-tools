@@ -5,12 +5,14 @@ import (
 	"bytes"
 	"fmt"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/viper"
+	"github.com/suho-han/one-click-ai-tools/internal/update"
 )
 
 func TestConfigModel_HasControlRowsAtEnd(t *testing.T) {
@@ -64,14 +66,22 @@ func TestConfigModel_EnterTogglesSingleItem(t *testing.T) {
 
 func TestConfigModel_ToggleControl_AllNoneByEnter(t *testing.T) {
 	m := newConfigModel([]string{"codex"}, []string{"codex", "antigravity"})
-	toggleIdx := len(m.items) - 2
+	toggleIdx := -1
+	for i, it := range m.items {
+		if it.isToggleControl {
+			toggleIdx = i
+		}
+	}
 	for i := range m.items {
 		m.items[i].cursor = i == toggleIdx
 	}
 
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	mm := updated.(configModel)
-	for i := 0; i < len(mm.items)-2; i++ {
+	for i := range mm.items {
+		if isControlItem(mm.items[i]) {
+			continue
+		}
 		if !mm.items[i].check {
 			t.Fatalf("expected all tools checked after enter on toggle control")
 		}
@@ -79,7 +89,10 @@ func TestConfigModel_ToggleControl_AllNoneByEnter(t *testing.T) {
 
 	updated, _ = mm.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	mm = updated.(configModel)
-	for i := 0; i < len(mm.items)-2; i++ {
+	for i := range mm.items {
+		if isControlItem(mm.items[i]) {
+			continue
+		}
 		if mm.items[i].check {
 			t.Fatalf("expected all tools unchecked after second enter on toggle control")
 		}
@@ -127,7 +140,7 @@ func TestConfigModel_KJDoesNotReorder(t *testing.T) {
 func TestConfigPromptsShareOneReader(t *testing.T) {
 	orig := configPromptReader
 	defer func() { configPromptReader = orig }()
-	configPromptReader = bufio.NewReader(strings.NewReader("y\ntok-123\nocto-user\nu\n"))
+	configPromptReader = bufio.NewReader(strings.NewReader("y\ntok-123\nocto-user\n"))
 
 	yes, err := promptYesNo("update token?", false)
 	if err != nil {
@@ -150,13 +163,6 @@ func TestConfigPromptsShareOneReader(t *testing.T) {
 	if user != "octo-user" {
 		t.Fatalf("expected octo-user, got %q", user)
 	}
-	mode, err := promptUsageMode("remaining")
-	if err != nil {
-		t.Fatalf("promptUsageMode: %v", err)
-	}
-	if mode != "used" {
-		t.Fatalf("expected used mode, got %q", mode)
-	}
 }
 
 func TestConfigPromptsTreatEOFAsDefaults(t *testing.T) {
@@ -177,13 +183,6 @@ func TestConfigPromptsTreatEOFAsDefaults(t *testing.T) {
 	}
 	if token != "" {
 		t.Fatalf("expected empty token on EOF, got %q", token)
-	}
-	mode, err := promptUsageMode("remaining")
-	if err != nil {
-		t.Fatalf("promptUsageMode: %v", err)
-	}
-	if mode != "remaining" {
-		t.Fatalf("expected default mode on EOF, got %q", mode)
 	}
 }
 
@@ -438,5 +437,61 @@ func TestConfigModel_WindowFitsTerminalHeightMidList(t *testing.T) {
 		if lines := strings.Count(view, "\n"); lines > height {
 			t.Errorf("height %d: mid-list view has %d lines, want <= %d", height, lines, height)
 		}
+	}
+}
+
+// TestConfigModel_AddCodexAccountRowUnderCodex pins the action row's
+// position: directly after the codex tool row, before the control rows.
+func TestConfigModel_AddCodexAccountRowUnderCodex(t *testing.T) {
+	m := newConfigModel([]string{"codex"}, []string{"codex", "antigravity", "claude"})
+	codexIdx := -1
+	for i, it := range m.items {
+		if update.NormalizeToolName(it.tool.BinaryName) == "codex" {
+			codexIdx = i
+		}
+	}
+	if codexIdx < 0 {
+		t.Fatal("codex row missing from picker items")
+	}
+	next := m.items[codexIdx+1]
+	if !next.isAddAccountControl {
+		t.Fatalf("item after codex = %+v, want the add-codex-account action row", next)
+	}
+	// The action row renders as an action, not a checkbox.
+	if lines := m.renderItemLines(next); !strings.Contains(lines[0], "➕") || strings.Contains(lines[0], "[ ]") {
+		t.Fatalf("action row rendered as %q, want ➕ without a checkbox mark", lines[0])
+	}
+	// ➕ must start in the tool-name column ("OpenAI Codex" et al), i.e. the
+	// row is indented by the mark's width.
+	stripANSI := regexp.MustCompile(`\x1b\[[0-9;]*m`).ReplaceAllString
+	toolLine := stripANSI(m.renderItemLines(m.items[codexIdx])[0], "")
+	actionLine := stripANSI(m.renderItemLines(next)[0], "")
+	nameCol := strings.Index(toolLine, "OpenAI Codex")
+	emojiCol := strings.Index(actionLine, "➕")
+	if nameCol < 0 || emojiCol != nameCol {
+		t.Fatalf("➕ column = %d, want the tool-name column %d (tool line %q, action line %q)", emojiCol, nameCol, toolLine, actionLine)
+	}
+}
+
+func TestConfigModel_EnterOnAddAccountRequestsFlow(t *testing.T) {
+	m := newConfigModel([]string{"codex"}, []string{"codex"})
+	addIdx := -1
+	for i, it := range m.items {
+		if it.isAddAccountControl {
+			addIdx = i
+		}
+	}
+	for i := range m.items {
+		m.items[i].cursor = i == addIdx
+	}
+	// Tool selection state must not matter: the account flow saves the
+	// account only, so toggles stay untouched.
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	mm := updated.(configModel)
+	if mm.accountAction == nil || mm.accountAction.kind != "add" || !mm.done {
+		t.Fatalf("enter on add-account row: action=%+v done=%v, want add action and done", mm.accountAction, mm.done)
+	}
+	if cmd == nil {
+		t.Fatal("expected quit command on add-account row")
 	}
 }

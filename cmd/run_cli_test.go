@@ -15,7 +15,7 @@ import (
 func writeTempConfig(t *testing.T) string {
 	t.Helper()
 	cfgPath := filepath.Join(t.TempDir(), "config.yaml")
-	cfg := "enabled_tools:\n  - codex\nusage_display_mode: remaining\n"
+	cfg := "enabled_tools:\n  - codex\nmenubar_title_mode: oct\n"
 	if err := os.WriteFile(cfgPath, []byte(cfg), 0o644); err != nil {
 		t.Fatalf("write config failed: %v", err)
 	}
@@ -38,7 +38,6 @@ func TestRunCLIRoutesCommandErrorsToStderr(t *testing.T) {
 		{name: "alert config set unknown key", args: []string{"alert", "config", "set", "nope", "1"}, wantErr: "invalid alert config"},
 		{name: "alert snooze set zero duration", args: []string{"alert", "snooze", "set", "--duration", "0s"}, wantErr: "duration must be > 0"},
 		{name: "config set-tools unknown tool", args: []string{"config", "set", "tools", "nope"}, wantErr: "unknown tool: nope"},
-		{name: "config usage-mode invalid", args: []string{"config", "set", "usage-mode", "sideways"}, wantErr: "invalid usage mode"},
 		{name: "config menubar-title-mode invalid", args: []string{"config", "set", "menubar-title-mode", "wide"}, wantErr: "invalid menubar title mode"},
 	}
 
@@ -156,7 +155,7 @@ func TestConfigUpdatePayloadFlag(t *testing.T) {
 	t.Run("payload round trip", func(t *testing.T) {
 		cfgPath := setup(t)
 		var stdout, stderr bytes.Buffer
-		payload := `{"usage_display_mode":"used","menubar_title_mode":"compact"}`
+		payload := `{"menubar_title_mode":"compact"}`
 		code := runCLI([]string{"--config", cfgPath, "config", "update", "--payload", payload}, &stdout, &stderr)
 		if code != 0 {
 			t.Fatalf("exit = %d, stderr: %s", code, stderr.String())
@@ -165,7 +164,7 @@ func TestConfigUpdatePayloadFlag(t *testing.T) {
 		if err != nil {
 			t.Fatalf("read config: %v", err)
 		}
-		if !strings.Contains(string(data), "used") || !strings.Contains(string(data), "compact") {
+		if !strings.Contains(string(data), "compact") {
 			t.Fatalf("payload not applied, config: %s", data)
 		}
 	})
@@ -173,7 +172,7 @@ func TestConfigUpdatePayloadFlag(t *testing.T) {
 	t.Run("legacy json warns on stderr", func(t *testing.T) {
 		cfgPath := setup(t)
 		var stdout, stderr bytes.Buffer
-		code := runCLI([]string{"--config", cfgPath, "config", "update", "--json", `{"usage_display_mode":"used"}`}, &stdout, &stderr)
+		code := runCLI([]string{"--config", cfgPath, "config", "update", "--json", `{"menubar_title_mode":"compact"}`}, &stdout, &stderr)
 		if code != 0 {
 			t.Fatalf("exit = %d, stderr: %s", code, stderr.String())
 		}
@@ -201,7 +200,7 @@ func TestConfigUpdatePayloadFlag(t *testing.T) {
 		// runCLI does not wire stdin; feed the payload through SetArgs path by
 		// pointing rootCmd's stdin at a reader.
 		oldIn := rootCmd.InOrStdin()
-		rootCmd.SetIn(strings.NewReader(`{"usage_display_mode":"remaining"}`))
+		rootCmd.SetIn(strings.NewReader(`{"menubar_title_mode":"oct"}`))
 		defer rootCmd.SetIn(oldIn)
 		code := runCLI([]string{"--config", cfgPath, "config", "update", "--payload", "-"}, &stdout, &stderr)
 		if code != 0 {

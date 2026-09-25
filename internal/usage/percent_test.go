@@ -78,30 +78,28 @@ func TestRemainingFromUsedPercent(t *testing.T) {
 	}
 }
 
-func TestPercentLabelForMode(t *testing.T) {
+func TestPercentLabel(t *testing.T) {
 	tests := []struct {
 		used string
-		mode string
 		want string
 		ok   bool
 	}{
-		{used: "45.5", mode: DisplayModeRemaining, want: "54%", ok: true}, // 100-45.5=54.5, %.0f rounds-to-even
-		{used: "45.5", mode: DisplayModeUsed, want: "46%", ok: true},
-		{used: "100", mode: DisplayModeRemaining, want: "0%", ok: true},
-		{used: "0", mode: DisplayModeRemaining, want: "100%", ok: true},
-		{used: "-10", mode: DisplayModeRemaining, want: "100%", ok: true}, // clamped
-		{used: "120", mode: DisplayModeUsed, want: "100%", ok: true},      // clamped
-		{used: "12.3%", mode: DisplayModeUsed, want: "12%", ok: true},     // suffix tolerated
-		{used: "n/a", mode: DisplayModeUsed, ok: false},
+		{used: "45.5", want: "54%", ok: true}, // 100-45.5=54.5, %.0f rounds-to-even
+		{used: "100", want: "0%", ok: true},
+		{used: "0", want: "100%", ok: true},
+		{used: "-10", want: "100%", ok: true},  // clamped
+		{used: "120", want: "0%", ok: true},    // clamped
+		{used: "12.3%", want: "88%", ok: true}, // suffix tolerated
+		{used: "n/a", ok: false},
 	}
 	for _, tt := range tests {
-		got, ok := PercentLabelForMode(tt.used, tt.mode)
+		got, ok := PercentLabel(tt.used)
 		if ok != tt.ok {
-			t.Errorf("PercentLabelForMode(%q, %q) ok = %v, want %v", tt.used, tt.mode, ok, tt.ok)
+			t.Errorf("PercentLabel(%q) ok = %v, want %v", tt.used, ok, tt.ok)
 			continue
 		}
 		if ok && got != tt.want {
-			t.Errorf("PercentLabelForMode(%q, %q) = %q, want %q", tt.used, tt.mode, got, tt.want)
+			t.Errorf("PercentLabel(%q) = %q, want %q", tt.used, got, tt.want)
 		}
 	}
 }

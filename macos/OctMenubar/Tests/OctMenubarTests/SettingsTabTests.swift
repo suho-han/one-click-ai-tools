@@ -67,6 +67,23 @@ final class SettingsTabTests: XCTestCase {
         XCTAssertFalse(SessionRefreshIntervalOption.usesHour("1h"))
     }
 
+    func testSaveBarIsPinnedToSettingsWindowBottomOnUnsavedChanges() throws {
+        let settingsSource = try sourceFile("Sources/OctMenubarApp/Views/SettingsView.swift")
+        let configurationSource = try sourceFile("Sources/OctMenubarApp/Views/Settings/SettingsConfigurationTab.swift")
+
+        // The save bar is driven by the store's unsaved-changes state and
+        // lives outside the scrolling tab content, so it stays pinned to the
+        // window bottom while edits are pending.
+        XCTAssertTrue(settingsSource.contains("configurationStore.hasUnsavedChanges"))
+        XCTAssertTrue(settingsSource.contains("unsavedChangesFooter"))
+        XCTAssertTrue(settingsSource.contains("Label(\"Save changes\""))
+        XCTAssertTrue(settingsSource.contains("Label(\"Revert\""))
+
+        // The configuration tab must not embed its own save actions anymore.
+        XCTAssertFalse(configurationSource.contains("saveActions"))
+        XCTAssertFalse(configurationSource.contains("Save changes"))
+    }
+
     private var packageRoot: URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

@@ -71,14 +71,14 @@ oct usage --json     # for scripts/pipes
 | --- | --- | --- |
 | Setup | `oct config` | pick tools/providers and usage display settings (interactive; notifications are separate) |
 | Update | `oct agent-update` | update every installed AI CLI (`--dry-run --explain` to preview) |
-| Watch | `oct usage` | one-shot quota snapshot (`--json`, `--compact`, `--notify`) |
+| Watch | `oct usage` | one-shot quota snapshot (`--json`, `--compact`, `--format waybar/polybar/swiftbar`, `--notify`) |
 | Watch | `oct monitor` | always-on refreshing screen (`--interval`, `--once`, sort/filter) |
 | Watch | `oct menubar` | persistent macOS menu bar display |
 | Watch | `oct quota` | OpenCode Go quota bars with reset countdowns + cost simulator over local session tokens |
 | Alert | `oct alert` | bare command opens arrow/key-based interactive alert setup; supports `config`, provider thresholds, `test`, and `snooze` |
 | Schedule | `oct schedule` | register agent-update / session-refresh with the OS scheduler |
 | Schedule | `oct session-refresh` | probe session/auth state without sending prompts (`--dry-run`) |
-| Diagnostics | `oct doctor` | shell PATH / bootstrap diagnostics |
+| Diagnostics | `oct doctor` | shell PATH / bootstrap diagnostics; `credentials` reports each provider's credential source |
 | Diagnostics | `oct update` | update oct itself |
 | Development | `oct release-doctor` | one compact release preflight report |
 
@@ -104,6 +104,24 @@ oct usage --notify               # send alerts per threshold/cooldown rules
 
 Script authors: the `--json` output shape is a documented stable contract —
 see [docs/usage-json-schema.md](docs/usage-json-schema.md).
+
+Statusbar integration via `--format` (colors escalate at warn 85% / crit 95%):
+
+```bash
+oct usage --format waybar        # JSON for a waybar custom/script module (text/tooltip/class)
+oct usage --format polybar       # one line for a polybar custom script (%{F#...} colors, escaped %)
+oct usage --format swiftbar      # SwiftBar plugin protocol (title + dropdown menu)
+oct usage --format waybar --from-snapshot   # render the last oct monitor snapshot instead of fetching live
+```
+
+`--from-snapshot` reads `~/.oct/state/usage-latest.json` (written every
+`oct monitor` cycle), so a statusbar can re-run oct on a short poll interval
+without triggering a full provider fan-out. waybar/polybar/swiftbar and
+`--compact` all show remaining quota.
+
+Statusline formats hide providers with no usable value (unconfigured, no data
+— the "?" tokens) while keeping real failures (401s) visible; the tooltip's
+last line counts what was hidden.
 
 ```bash
 oct monitor --interval 10s       # always-on view, 10s refresh
@@ -140,22 +158,24 @@ oct session-refresh --dry-run                                       # manual pro
 - **GitHub Copilot** (`@github/copilot`)
 - **Cursor CLI** (official `agent` install flow via `cursor.com/install`)
 - **OpenCode** (`opencode-ai`)
-- **Kimi Code** (`@moonshot-ai/kimi-code`, binary: `kimi`)
-- **Qwen Code** (`@qwen-code/qwen-code`, binary: `qwen`)
-- **MiniMax** (`mmx-cli`, binary: `mmx`)
+- **Kimi Code** (`@moonshot-ai/kimi-code`, binary: `kimi`) — (experimental)
+- **Qwen Code** (`@qwen-code/qwen-code`, binary: `qwen`) — (experimental)
+- **MiniMax** (`mmx-cli`, binary: `mmx`) — (experimental)
 
 ### Standalone usage providers (usage-only, no CLI managed)
 
 These are plan/account services with no installable CLI; `oct usage` reports them only when listed in `agent_order` or `enabled_tools` (e.g. `oct config set tools zai`).
 
-- **Z.ai (GLM Coding Plan)** — `ZAI_API_KEY` / `ZHIPU_API_KEY`, or an OpenCode `zai-coding-plan` login
-- **DeepSeek** — `DEEPSEEK_API_KEY`
+- **Z.ai (GLM Coding Plan)** — `ZAI_API_KEY` / `ZHIPU_API_KEY`, or an OpenCode `zai-coding-plan` login — (experimental)
+- **DeepSeek** — `DEEPSEEK_API_KEY` — (experimental)
 - **OpenRouter** — `OPENROUTER_API_KEY`
-- **Grok (xAI SuperGrok)** — `grok login` credential or `GROK_OAUTH_TOKEN`
+- **Grok (xAI SuperGrok)** — `grok login` credential or `GROK_OAUTH_TOKEN` — (experimental)
+
+`(experimental)` marks usage integrations whose live API responses have not been verified against a real subscription yet (verified live: Codex, Claude, Command Code, OpenCode, Antigravity, OpenRouter).
 
 ## Menubar helper (macOS)
 
-The Swift menubar helper can be built and installed separately.
+macOS release tarballs bundle the Swift menubar helper: the install script and `oct update` install it next to `oct` (default `~/.local/bin`). You can still build it from source yourself.
 
 In the menubar app's Settings, General is merged into the Configuration screen. Its alert section exposes only safe global alert settings; it does not expose provider-specific thresholds or snooze controls. Use `oct alert config ...` and `oct alert snooze ...` for those advanced controls.
 

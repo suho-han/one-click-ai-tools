@@ -55,6 +55,63 @@ func TestFetchCopilotQuotaUsageMapsAICBudget(t *testing.T) {
 	}
 }
 
+func TestFetchCopilotQuotaUsageMapsResetTime(t *testing.T) {
+	tests := []struct {
+		name     string
+		payload  string
+		expected string
+	}{
+		{
+			name: "snapshot epoch wins",
+			payload: `{
+				"login":"octocat",
+				"quota_reset_date_utc":"2026-10-01T00:00:00Z",
+				"quota_snapshots":{"premium_interactions":{
+					"entitlement":200,
+					"percent_remaining":41.7,
+					"quota_reset_at":1790918400
+				}}
+			}`,
+			expected: "1790918400",
+		},
+		{
+			name: "falls back to user-level reset date",
+			payload: `{
+				"login":"octocat",
+				"quota_reset_date_utc":"2026-10-01T00:00:00Z",
+				"quota_snapshots":{"premium_interactions":{
+					"entitlement":200,
+					"percent_remaining":41.7
+				}}
+			}`,
+			expected: "2026-10-01T00:00:00Z",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				fmt.Fprint(w, tt.payload)
+			}))
+			defer server.Close()
+			t.Setenv("OCT_COPILOT_USER_ENDPOINT", server.URL)
+
+			result, ok := fetchCopilotQuotaUsage(t.Context(), UsageResult{Provider: "copilot"}, "test-token")
+			if !ok {
+				t.Fatal("expected quota usage result")
+			}
+			got := result.BucketResets["quota"]
+			if got != tt.expected {
+				t.Fatalf("expected quota reset %q, got %q", tt.expected, got)
+			}
+			if _, ok := parseBucketResetTime(got); !ok {
+				t.Fatalf("stored reset %q is not parseable by parseBucketResetTime", got)
+			}
+		})
+	}
+}
+
 func TestFetchCopilotUsageQuotaPathMakesSingleRequest(t *testing.T) {
 	var mu sync.Mutex
 	var requests int

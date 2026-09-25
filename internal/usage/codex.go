@@ -14,9 +14,61 @@ import (
 	"github.com/suho-han/one-click-ai-tools/internal/netclient"
 )
 
+// isCodexProviderName reports whether a UsageResult.Provider value is the
+// default codex row or one of the codex:<name> account rows. Display code
+// uses it instead of an exact "codex" comparison so account rows keep codex
+// behavior (7d-first buckets, no phantom 5h).
+func isCodexProviderName(provider string) bool {
+	p := strings.ToLower(strings.TrimSpace(provider))
+	return p == "codex" || strings.HasPrefix(p, "codex:")
+}
+
+// CodexLoginEmail reads the account email from the auth.json JWT written by
+// `codex login` under home. "" when no auth.json, token, or email claim is
+// found — callers fall back to asking the user for a name.
+func CodexLoginEmail(home string) string {
+	data, err := os.ReadFile(filepath.Join(home, "auth.json"))
+	if err != nil {
+		return ""
+	}
+	var auth struct {
+		Tokens struct {
+			IDToken     string `json:"id_token"`
+			AccessToken string `json:"access_token"`
+		} `json:"tokens"`
+	}
+	if err := json.Unmarshal(data, &auth); err != nil {
+		return ""
+	}
+	for _, token := range []string{auth.Tokens.IDToken, auth.Tokens.AccessToken} {
+		parts := strings.Split(strings.TrimSpace(token), ".")
+		if len(parts) < 2 {
+			continue
+		}
+		payload, err := decodeJWTPayload(parts[1])
+		if err != nil {
+			continue
+		}
+		if email, ok := payload["email"].(string); ok {
+			if email = strings.TrimSpace(email); email != "" {
+				return email
+			}
+		}
+	}
+	return ""
+}
+
 func FetchCodexUsage(ctx context.Context) UsageResult {
+	return fetchCodexUsageForHome(ctx, "", "codex")
+}
+
+// fetchCodexUsageForHome collects Codex usage from one credential home. An
+// empty home resolves through codexHomePath ($CODEX_HOME or ~/.codex); the
+// codex:<name> account rows pass their configured directory instead. provider
+// is the UsageResult label ("codex", "codex:work", ...).
+func fetchCodexUsageForHome(ctx context.Context, home string, provider string) UsageResult {
 	result := UsageResult{
-		Provider:   "codex",
+		Provider:   provider,
 		Plan:       "unknown",
 		PlanSource: "codex auth unavailable",
 		Period:     "current",
@@ -27,13 +79,15 @@ func FetchCodexUsage(ctx context.Context) UsageResult {
 		Status:     "error",
 	}
 
-	result = withPlanDetection(ctx, result, detectCodexPlan)
+	result = withPlanDetection(ctx, result, func(ctx context.Context) (string, string) {
+		return detectCodexPlanForHome(ctx, home)
+	})
 
-	if backendResult, ok := fetchCodexBackendUsage(ctx, result); ok {
+	if backendResult, ok := fetchCodexBackendUsage(ctx, result, home); ok {
 		return backendResult
 	}
 
-	codexHome, ok := codexHomePath()
+	codexHome, ok := resolveCodexHome(home)
 	if !ok {
 		result.Status = "ok"
 		result.Used = "0"
@@ -47,7 +101,7 @@ func FetchCodexUsage(ctx context.Context) UsageResult {
 	if err != nil || len(logFiles) == 0 {
 		result.Status = "ok"
 		result.Used = "0"
-		result.Message = "No .jsonl session logs found in ~/.codex/sessions"
+		result.Message = "No .jsonl session logs found in " + filepath.Join(codexHome, "sessions")
 		return result
 	}
 
@@ -160,13 +214,13 @@ type codexBackendRateLimitWindow struct {
 	ResetAt            *int64   `json:"reset_at"`
 }
 
-func fetchCodexBackendUsage(ctx context.Context, base UsageResult) (UsageResult, bool) {
+func fetchCodexBackendUsage(ctx context.Context, base UsageResult, home string) (UsageResult, bool) {
 	endpoint := strings.TrimSpace(os.Getenv("OCT_CODEX_USAGE_ENDPOINT"))
 	if endpoint == "" {
 		endpoint = "https://chatgpt.com/backend-api/wham/usage"
 	}
 
-	auth, hasAuth := readCodexBackendAuth()
+	auth, hasAuth := readCodexBackendAuthFromHome(home)
 	if !hasAuth && os.Getenv("OCT_CODEX_USAGE_ENDPOINT") == "" {
 		return base, false
 	}
@@ -233,7 +287,7 @@ func fetchCodexBackendUsage(ctx context.Context, base UsageResult) (UsageResult,
 	if osDebugEnabled() {
 		result.SourceDetail = joinSourceDetails(
 			codexBucketSourceDetail(result.Buckets),
-			codexLocalModelSourceDetailFromHome(50),
+			codexLocalModelSourceDetailFromHome(home, 50),
 		)
 	}
 	return result, true
@@ -255,6 +309,62 @@ func addCodexBackendWindow(buckets map[string]string, resets map[string]string, 
 	}
 }
 
+// describeCodexCredential probes the Codex auth chain: auth.json under
+// $CODEX_HOME (or ~/.codex), then the local session-log fallback that needs
+// no credential.
+func describeCodexCredential() CredentialStatus {
+	return describeCodexCredentialForHome("")
+}
+
+func describeCodexCredentialForHome(home string) CredentialStatus {
+	resolved, _ := resolveCodexHome(home)
+	authPath := ""
+	authFound := false
+	if resolved != "" {
+		authPath = filepath.Join(resolved, "auth.json")
+		_, authFound = readCodexBackendAuthFromHome(home)
+	}
+	sessionsPath := ""
+	sessionsFound := false
+	if resolved != "" {
+		sessionsPath = filepath.Join(resolved, "sessions")
+		if logs, err := collectCodexLogFiles(sessionsPath); err == nil {
+			sessionsFound = len(logs) > 0
+		}
+	}
+	status := credentialStatus([]CredentialSource{
+		{
+			Kind:     CredentialKindFile,
+			Location: authPath,
+			Found:    authFound,
+			Note:     "tokens.access_token written by `codex login`",
+		},
+		{
+			Kind:     CredentialKindLocal,
+			Location: sessionsPath,
+			Found:    sessionsFound,
+			Note:     "local session-log estimate needs no credential",
+		},
+	})
+	if status.Status == CredentialStatusMissing {
+		if strings.TrimSpace(home) != "" {
+			status.Note = "run 'codex login' with CODEX_HOME pointing at this directory"
+		} else {
+			status.Note = "run 'codex login' to write ~/.codex/auth.json"
+		}
+	}
+	return status
+}
+
+// resolveCodexHome resolves an explicit account home, falling back to the
+// standard codexHomePath chain for the default row ("").
+func resolveCodexHome(home string) (string, bool) {
+	if strings.TrimSpace(home) != "" {
+		return home, true
+	}
+	return codexHomePath()
+}
+
 func codexHomePath() (string, bool) {
 	home := strings.TrimSpace(os.Getenv("CODEX_HOME"))
 	if home != "" {
@@ -273,8 +383,16 @@ func readCodexBackendAuth() (codexBackendAuth, bool) {
 	if !ok {
 		return codexBackendAuth{}, false
 	}
+	return readCodexBackendAuthFromHome(home)
+}
 
-	data, err := os.ReadFile(filepath.Join(home, "auth.json"))
+func readCodexBackendAuthFromHome(home string) (codexBackendAuth, bool) {
+	resolved, ok := resolveCodexHome(home)
+	if !ok {
+		return codexBackendAuth{}, false
+	}
+
+	data, err := os.ReadFile(filepath.Join(resolved, "auth.json"))
 	if err != nil {
 		return codexBackendAuth{}, false
 	}
@@ -323,8 +441,8 @@ func collectCodexLogFiles(sessionDir string) ([]string, error) {
 	return logFiles, nil
 }
 
-func codexLocalModelSourceDetailFromHome(maxFiles int) string {
-	codexHome, ok := codexHomePath()
+func codexLocalModelSourceDetailFromHome(home string, maxFiles int) string {
+	codexHome, ok := resolveCodexHome(home)
 	if !ok {
 		return ""
 	}

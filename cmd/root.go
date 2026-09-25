@@ -102,7 +102,10 @@ func commandHelpLine(cmd *cobra.Command) string {
 	if emoji == "" {
 		return fmt.Sprintf("%s %s", name, description)
 	}
-	return fmt.Sprintf("%s%s %s", emoji, name, description)
+	// The space between emoji and name keeps double-width glyphs from
+	// rendering on top of the first letter in terminals that undercount emoji
+	// width.
+	return fmt.Sprintf("%s %s %s", emoji, name, description)
 }
 
 func splitHelpEmoji(short string) (string, string) {
@@ -159,7 +162,7 @@ Simply type oct help [path to command] for full details.`,
 }
 
 func reorderRootCommands() {
-	preferred := []string{"usage", "monitor", "menubar", "quota", "config", "alert", "schedule", "agent-update", "session-refresh", "release-doctor", "doctor", "update", "help", "completion"}
+	preferred := []string{"usage", "monitor", "menubar", "config", "alert", "schedule", "update", "agent-update", "session-refresh", "doctor", "release-doctor", "help"}
 	current := rootCmd.Commands()
 	if len(current) == 0 {
 		return
@@ -205,7 +208,6 @@ func initConfig() {
 	}
 
 	viper.SetDefault("icon_style", "braille")
-	viper.SetDefault("usage_display_mode", "remaining")
 	viper.SetDefault("usage_alert_enabled", false)
 	viper.SetDefault("usage_alert_threshold_percent", 80.0)
 	viper.SetDefault("usage_alert_critical_percent", 98.0)

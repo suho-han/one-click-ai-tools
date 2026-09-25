@@ -32,6 +32,43 @@ type claudeOAuthToken struct {
 	RateLimitTier         string   `json:"rateLimitTier"`
 }
 
+// describeClaudeCredential probes the Claude token chain in fetch priority
+// order: macOS keychain -> ~/.claude/.credentials.json -> CLAUDE_API_TOKEN,
+// with the `claude` CLI noted as the usage fallback when no token is found.
+// The keychain probe discards output so the secret is never captured.
+func describeClaudeCredential() CredentialStatus {
+	credsFile := credentialHomePath(".claude", ".credentials.json")
+	sources := []CredentialSource{
+		{
+			Kind:     CredentialKindKeychain,
+			Location: `security: "Claude Code-credentials"`,
+			Found:    credentialCommandPresent("security", "find-generic-password", "-s", "Claude Code-credentials", "-w"),
+		},
+		{
+			Kind:     CredentialKindFile,
+			Location: credsFile,
+			Found:    credsFile != "" && credentialJSONFileFound(credsFile, "access_token"),
+		},
+		{
+			Kind:     CredentialKindEnv,
+			Location: "CLAUDE_API_TOKEN",
+			Found:    credentialEnvFound("CLAUDE_API_TOKEN"),
+		},
+	}
+	if credentialBinaryPresent("claude") {
+		sources = append(sources, CredentialSource{
+			Kind:     CredentialKindCLI,
+			Location: "claude --print /usage",
+			Note:     "fallback when no OAuth token is available",
+		})
+	}
+	status := credentialStatus(sources)
+	if status.Status == CredentialStatusMissing {
+		status.Note = "run 'claude' once to log in, or set CLAUDE_API_TOKEN"
+	}
+	return status
+}
+
 func FetchClaudeUsage(ctx context.Context) UsageResult {
 	home, _ := os.UserHomeDir()
 	credsFile := filepath.Join(home, ".claude", ".credentials.json")
@@ -140,6 +177,21 @@ func FetchClaudeUsage(ctx context.Context) UsageResult {
 	plan, source := detectClaudePlan(ctx, token)
 	result = withPlan(result, plan, source)
 
+	// Inside a rate-limit backoff window, don't touch the endpoint again —
+	// serve the recorded last-good usage or hold the warn state until it
+	// expires.
+	if remaining, ok := claudeUsageBackoffRemaining(time.Now()); ok {
+		reason := fmt.Sprintf("API rate limited; retrying in %s", remaining.Round(time.Second))
+		if cached, ok := lastGoodClaudeUsage(result, time.Now(), reason); ok {
+			return cached
+		}
+		result.Status = "warn"
+		result.Used = "n/a"
+		result.Message = "Claude usage API rate limited; backing off, no cached usage found"
+		result.SourceDetail = "backoff_remaining=" + remaining.Round(time.Second).String()
+		return result
+	}
+
 	endpoint := "https://api.anthropic.com/api/oauth/usage"
 	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil {
@@ -159,7 +211,11 @@ func FetchClaudeUsage(ctx context.Context) UsageResult {
 
 	if resp.StatusCode != http.StatusOK {
 		if resp.StatusCode == http.StatusTooManyRequests {
+			markClaudeRateLimited(time.Now(), parseRetryAfter(resp.Header.Get("Retry-After")))
 			if cached, ok := fetchClaudeCachedUsage(result, home, "API rate limited"); ok {
+				return cached
+			}
+			if cached, ok := lastGoodClaudeUsage(result, time.Now(), "API rate limited"); ok {
 				return cached
 			}
 			result.Status = "warn"
@@ -238,6 +294,7 @@ func FetchClaudeUsage(ctx context.Context) UsageResult {
 
 	result.Status = "ok"
 	result.Source = "oauth"
+	saveClaudeLastGoodUsage(result.Buckets, result.BucketResets, time.Now())
 	return result
 }
 

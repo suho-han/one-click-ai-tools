@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Foundation
 import SwiftUI
@@ -60,6 +61,20 @@ final class UsageViewModel: ObservableObject {
                 snapshot = .error(message: error.localizedDescription, refreshInterval: currentRefreshInterval())
             }
         }
+    }
+
+    /// Stops this helper and starts a fresh detached one. The replacement is
+    /// already queued in a detached shell when this returns, so terminating
+    /// right away cannot leave the menubar down; a spawn failure surfaces as
+    /// action feedback instead of quitting.
+    func restartHelper() {
+        do {
+            try service.restartHelperDetached()
+        } catch {
+            snapshot = .error(message: error.localizedDescription, refreshInterval: currentRefreshInterval())
+            return
+        }
+        NSApp.terminate(nil)
     }
 
     private func currentRefreshInterval() -> TimeInterval {

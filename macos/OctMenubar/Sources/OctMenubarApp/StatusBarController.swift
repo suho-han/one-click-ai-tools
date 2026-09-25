@@ -15,7 +15,34 @@ final class StatusBarController: NSObject, NSApplicationDelegate {
         configureStatusItem()
         configurePopover()
         bindSnapshot()
+        suppressAutoShownSettingsWindow()
         signalReadyIfRequested()
+    }
+
+    /// SwiftUI auto-shows the Settings window at launch when the app has no
+    /// regular window; close it so only the status item appears. SettingsLink
+    /// in the popover reopens it on demand.
+    private func suppressAutoShownSettingsWindow() {
+        let settingsWindowID = "com_apple_SwiftUI_settings_window"
+        func closeAttempt(remaining: Int) {
+            if closeSettingsWindow(identifier: settingsWindowID) || remaining <= 0 {
+                return
+            }
+            // The window may not exist yet on the first launch tick.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                closeAttempt(remaining: remaining - 1)
+            }
+        }
+        closeAttempt(remaining: 10)
+    }
+
+    private func closeSettingsWindow(identifier: String) -> Bool {
+        var closed = false
+        for window in NSApp.windows where window.identifier?.rawValue == identifier {
+            window.close()
+            closed = true
+        }
+        return closed
     }
 
     private func configureStatusItem() {

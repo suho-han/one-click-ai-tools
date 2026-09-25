@@ -244,6 +244,37 @@ func releaseAssetFor(goos, goarch, tag string) (releaseAsset, error) {
 	return releaseAsset{Name: name, URL: base + "/" + name}, nil
 }
 
+// selfUpdateGOOS is a seam so tests can exercise the darwin-only helper
+// install path on any host.
+var selfUpdateGOOS = runtime.GOOS
+
+// menubarHelperBinaryName is the Swift menubar helper bundled at the root of
+// darwin release tarballs (see the darwin-assets job in release.yml).
+const menubarHelperBinaryName = "OctMenubarApp"
+
+// installMenubarHelperFromArchive best-effort installs the Swift menubar
+// helper shipped in the same release archive as the oct binary. Unlike the
+// oct replacement (fail-closed), helper failures only produce a warning:
+// the legacy menubar keeps working, and archives from older releases do not
+// contain a helper at all. The temp+rename copy (copyExecutableFile) leaves
+// a running helper's inode intact.
+func installMenubarHelperFromArchive(archivePath, extractDir string) error {
+	if selfUpdateGOOS != "darwin" {
+		return nil
+	}
+	if err := extractTarGzBinary(archivePath, extractDir, menubarHelperBinaryName); err != nil {
+		return fmt.Errorf("helper not bundled in release archive: %w", err)
+	}
+	dst, err := defaultMenubarInstallPath()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return err
+	}
+	return copyExecutableFile(filepath.Join(extractDir, menubarHelperBinaryName), dst)
+}
+
 func installReleaseAsset(ctx context.Context, repo string, asset releaseAsset) error {
 	tmpDir, err := os.MkdirTemp("", "oct-update-*")
 	if err != nil {
@@ -282,7 +313,16 @@ func installReleaseAsset(ctx context.Context, repo string, asset releaseAsset) e
 	if err != nil {
 		return err
 	}
-	return replaceExecutable(binaryPath, targetPath)
+	if err := replaceExecutable(binaryPath, targetPath); err != nil {
+		return err
+	}
+	// The oct replacement above is the critical step and has already
+	// succeeded; a helper install failure from here on must not fail the
+	// update, so warn instead.
+	if err := installMenubarHelperFromArchive(archivePath, extractDir); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: menubar helper not updated: %v\n", err)
+	}
+	return nil
 }
 
 func downloadReleaseFile(ctx context.Context, url, dest string) error {
