@@ -108,7 +108,10 @@ jobs:
           # 'oct menubar build-helper'). macos-latest images select Xcode.
           swift build --package-path macos/OctMenubar -c release \
             --arch x86_64 --arch arm64 --product OctMenubarApp
-          helper_bin="$(find macos/OctMenubar/.build -type f -name OctMenubarApp | head -n 1)"
+          # The universal product lives under a Products/Release/ dir of the
+          # SwiftPM scratch dir; plain `find -name` would also match the
+          # single-arch slices in the per-triple scratch dirs.
+          helper_bin="$(find macos/OctMenubar/.build -type f -path '*Products/Release/OctMenubarApp' | head -n 1)"
           if [[ -z "$helper_bin" ]]; then
             echo "ERROR: OctMenubarApp binary not found after swift build"
             exit 1
