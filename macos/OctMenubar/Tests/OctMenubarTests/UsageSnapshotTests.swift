@@ -808,4 +808,16 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertFalse(loaded.isPlaceholder, "a refreshed snapshot must not be flagged as placeholder")
     }
 
+    func testProvidersHeaderShowsSpinnerWhilePlaceholderLoads() throws {
+        let testFile = URL(fileURLWithPath: #filePath)
+        let packageRoot = testFile
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let popoverPath = packageRoot.appendingPathComponent("Sources/OctMenubarApp/PopoverView.swift")
+        let popoverSource = try String(contentsOf: popoverPath, encoding: .utf8)
+
+        XCTAssertTrue(popoverSource.contains("snapshot.isPlaceholder"), "provider header should branch on the initial loading state")
+        XCTAssertTrue(popoverSource.contains("ProgressView()"), "provider header should render a loading spinner while placeholder")
+    }
 }
