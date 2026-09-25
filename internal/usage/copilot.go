@@ -352,6 +352,18 @@ func fetchCopilotQuotaUsage(ctx context.Context, base UsageResult, token string)
 	} else {
 		result.Limit = "n/a"
 	}
+	// Reset time is stored raw (epoch seconds/millis or RFC3339); the
+	// shared parseBucketResetTime decides the format at read time, same as
+	// the other provider fetchers.
+	reset := ""
+	if snapshot.QuotaResetAt > 0 {
+		reset = fmt.Sprintf("%d", snapshot.QuotaResetAt)
+	} else if reset = strings.TrimSpace(snapshot.ResetDate); reset == "" {
+		reset = strings.TrimSpace(payload.QuotaResetDateUTC)
+	}
+	if reset != "" {
+		result.BucketResets = map[string]string{"quota": reset}
+	}
 	if strings.TrimSpace(payload.CopilotPlan) != "" {
 		result.Plan = strings.TrimSpace(payload.CopilotPlan)
 		result.PlanSource = "github copilot_internal/user"
