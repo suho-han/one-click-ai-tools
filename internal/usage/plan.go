@@ -47,6 +47,22 @@ func detectCodexPlan(ctx context.Context) (string, string) {
 	if !ok {
 		return "unknown", "codex auth unavailable"
 	}
+	return detectCodexPlanFromAuthJSON(home)
+}
+
+// detectCodexPlanForHome is detectCodexPlan for an explicit credential home
+// (the codex:<name> account rows). An empty home falls back to the standard
+// $CODEX_HOME/~/.codex chain.
+func detectCodexPlanForHome(ctx context.Context, home string) (string, string) {
+	_ = ctx // no blocking I/O beyond file reads
+	resolved, ok := resolveCodexHome(home)
+	if !ok {
+		return "unknown", "codex auth unavailable"
+	}
+	return detectCodexPlanFromAuthJSON(resolved)
+}
+
+func detectCodexPlanFromAuthJSON(home string) (string, string) {
 	path := filepath.Join(home, "auth.json")
 	data, err := os.ReadFile(path)
 	if err != nil {

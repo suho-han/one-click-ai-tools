@@ -17,16 +17,22 @@ func selectedMenubarToolNames() []string {
 	// refresh actually returns instead of silently dropping their lines.
 	standalone := usage.SelectedStandaloneNames()
 	tools := usage.SelectedTools()
-	if len(tools) == 0 && len(standalone) == 0 {
+	accounts := usage.AllAccounts()
+	if len(tools) == 0 && len(standalone) == 0 && len(accounts) == 0 {
 		return []string{"No enabled providers"}
 	}
-	names := make([]string, 0, len(tools)+len(standalone))
+	names := make([]string, 0, len(tools)+len(standalone)+len(accounts))
 	for _, tool := range tools {
 		name := tool.Name
 		if name == "" {
 			name = tool.BinaryName
 		}
 		names = append(names, name)
+	}
+	// <provider>:<name> rows trail their base row in real results; as loading
+	// placeholders they just need to be present, in roughly the right place.
+	for _, account := range accounts {
+		names = append(names, usage.AccountProviderName(account.Provider, account.Name))
 	}
 	return append(names, standalone...)
 }

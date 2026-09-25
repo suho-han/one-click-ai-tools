@@ -44,10 +44,19 @@ func resolveQwenHome() string {
 // public quota API, so oct reads the CLI's token-usage JSONL logs and no
 // secret is involved.
 func describeQwenCredential() CredentialStatus {
-	home := resolveQwenHome()
+	return describeQwenCredentialForHome("")
+}
+
+// describeQwenCredentialForHome probes one Qwen home directory; an explicit
+// home (qwen:<name> account row) replaces $QWEN_HOME/~/.qwen.
+func describeQwenCredentialForHome(home string) CredentialStatus {
+	resolved := strings.TrimSpace(home)
+	if resolved == "" {
+		resolved = resolveQwenHome()
+	}
 	logsPresent := false
-	if home != "" {
-		if _, _, anyRecord := collectQwenUsage(home, time.Now()); anyRecord {
+	if resolved != "" {
+		if _, _, anyRecord := collectQwenUsage(resolved, time.Now()); anyRecord {
 			logsPresent = true
 		}
 	}
@@ -55,7 +64,7 @@ func describeQwenCredential() CredentialStatus {
 		Status: CredentialStatusInfo,
 		Sources: []CredentialSource{{
 			Kind:     CredentialKindLocal,
-			Location: filepath.Join(home, "...", "usage", qwenUsageFilePattern),
+			Location: filepath.Join(resolved, "...", "usage", qwenUsageFilePattern),
 			Found:    logsPresent,
 			Note:     "token-usage JSONL logs; no API credential (plan label comes from record authType)",
 		}},
@@ -191,9 +200,19 @@ func collectQwenUsage(qwenHome string, now time.Time) (int, string, bool) {
 // remaining-mode display, compact output, and threshold alerts treat it like
 // the percent-unit providers; the raw count stays in the message.
 func FetchQwenUsage(ctx context.Context) UsageResult {
-	qwenHome := resolveQwenHome()
+	return fetchQwenUsageForHome(ctx, "", "qwen")
+}
+
+// fetchQwenUsageForHome is FetchQwenUsage for one Qwen home directory; an
+// empty home resolves $QWEN_HOME/~/.qwen, a qwen:<name> account row passes
+// its own directory. The daily limit stays a global setting.
+func fetchQwenUsageForHome(ctx context.Context, home string, provider string) UsageResult {
+	qwenHome := strings.TrimSpace(home)
+	if qwenHome == "" {
+		qwenHome = resolveQwenHome()
+	}
 	result := UsageResult{
-		Provider: "qwen",
+		Provider: provider,
 		Period:   "1d",
 		Unit:     "percent",
 		Source:   "local",
