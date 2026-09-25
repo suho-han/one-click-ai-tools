@@ -74,7 +74,6 @@ oct usage --json     # 스크립트/파이프용
 | 감시 | `oct usage` | 전 프로바이더 쿼터 1회 조회 (`--json`, `--compact`, `--format waybar/polybar/swiftbar`, `--notify`) |
 | 감시 | `oct monitor` | 상시 갱신 화면 (`--interval`, `--once`, 정렬·필터) |
 | 감시 | `oct menubar` | macOS 메뉴바에 상시 표시 |
-| 감시 | `oct quota` | OpenCode Go 쿼터 바 + 리셋 카운트다운, 로컬 세션 토큰 기반 비용 시뮬레이터 |
 | 알림 | `oct alert` | 서브커맨드 없이 실행하면 방향키/키 입력 기반 인터랙티브 알림 설정; `config`·프로바이더 임계값·`test`·`snooze` 지원 |
 | 예약 | `oct schedule` | agent-update / session-refresh를 OS 스케줄러에 등록 |
 | 예약 | `oct session-refresh` | 프롬프트 없이 세션·인증 상태만 probe (`--dry-run`) |
