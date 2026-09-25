@@ -115,8 +115,8 @@ oct usage --format waybar --from-snapshot   # 라이브 fetch 대신 마지막 o
 
 `--from-snapshot`은 `~/.oct/state/usage-latest.json`(`oct monitor`가 매 사이클
 기록)을 읽으므로, 상태바가 짧은 폴링 간격으로 재실행해도 프로바이더 전체
-fan-out이 발생하지 않습니다. waybar/polybar/swiftbar는 `usage_display_mode`
-설정을 따르고, `--compact`는 문서화된 대로 항상 remaining 기준입니다.
+fan-out이 발생하지 않습니다. waybar/polybar/swiftbar와 `--compact`는 모두
+remaining 기준으로 표시합니다.
 
 statusline 포맷은 값 없는 프로바이더(미구성·데이터 없음 — `?` 토큰)는 숨기고
 실패(401 등)는 유지합니다. 숨겨진 개수는 툴팁 마지막 줄에 표시됩니다.

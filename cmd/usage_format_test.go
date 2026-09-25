@@ -8,7 +8,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/spf13/viper"
 	"github.com/suho-han/one-click-ai-tools/internal/usage"
 )
 
@@ -116,7 +115,7 @@ func TestUsageCommandRejectsInvalidFormat(t *testing.T) {
 	}
 }
 
-func TestUsageCommandFormatSwiftBarHonorsDisplayMode(t *testing.T) {
+func TestUsageCommandFormatSwiftBarShowsRemaining(t *testing.T) {
 	orig := usageFetcher
 	usageFetcher = func(ctx context.Context) ([]usage.UsageResult, error) {
 		return []usage.UsageResult{
@@ -125,13 +124,9 @@ func TestUsageCommandFormatSwiftBarHonorsDisplayMode(t *testing.T) {
 	}
 	defer func() { usageFetcher = orig }()
 
-	oldMode := viper.GetString("usage_display_mode")
-	t.Cleanup(func() { viper.Set("usage_display_mode", oldMode) })
-	viper.Set("usage_display_mode", "used")
-
 	out := runUsageWithFormat(t, usageFlagSetter(t, "--format", "swiftbar"))
-	if !strings.HasPrefix(out, "X-55% | color=") {
-		t.Fatalf("swiftbar output = %q, want used-mode title with color param", out)
+	if !strings.HasPrefix(out, "X-45% | color=") {
+		t.Fatalf("swiftbar output = %q, want remaining-mode title with color param", out)
 	}
 	if !strings.Contains(out, "---") {
 		t.Fatalf("swiftbar output = %q, want dropdown separator", out)

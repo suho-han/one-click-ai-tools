@@ -113,8 +113,8 @@ menubar):
 - `swiftbar`: SwiftBar plugin protocol — severity-colored title line, `---`,
   then one dropdown line per provider.
 
-All three honor `usage_display_mode` (normalized used/remaining) like the
-menubar title; `--compact` remains pinned to "remaining". Providers without a
+All three show remaining quota (used -> remaining inversion), like the
+menubar title; `--compact` is pinned to "remaining" as well. Providers without a
 usable value (unconfigured tools, empty billing windows, local-only estimates
 — the "?" tokens) are hidden from statusline output, while real failures
 (e.g. HTTP 401s) stay visible; the waybar tooltip / swiftbar dropdown end

@@ -38,7 +38,6 @@ struct OctCLIService {
         now: Date = Date()
     ) async throws -> UsageSnapshot {
         let titleMode = configuration?.menubarTitleMode ?? .oct
-        let usageDisplayMode = configuration?.usageDisplayMode ?? .remaining
         let refreshInterval = configuration?.refreshInterval ?? refreshInterval
         let output = try await runAndCapture(arguments: ["usage", "--json"])
         let data = Data(output.utf8)
@@ -47,8 +46,7 @@ struct OctCLIService {
             response: response,
             refreshDate: now,
             refreshInterval: refreshInterval,
-            titleMode: titleMode,
-            usageDisplayMode: usageDisplayMode
+            titleMode: titleMode
         )
     }
 

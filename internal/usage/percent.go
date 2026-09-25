@@ -61,18 +61,14 @@ func RemainingFromUsedPercent(used string) (string, bool) {
 	return fmt.Sprintf("%.1f", remaining), true
 }
 
-// PercentLabelForMode formats a raw (always "used") percentage string as a
-// bare "NN%" label for the given display mode, inverting used -> remaining
-// only in remaining mode. Callers must pass the raw stored value, never an
-// already-formatted display string, or the inversion doubles up.
-func PercentLabelForMode(used string, mode string) (string, bool) {
+// PercentLabel formats a raw (always "used") percentage string as a bare
+// "NN%" remaining label (used -> remaining inversion). Callers must pass the
+// raw stored value, never an already-formatted display string, or the
+// inversion doubles up.
+func PercentLabel(used string) (string, bool) {
 	v, ok := ParsePercent(used)
 	if !ok {
 		return "", false
 	}
-	value := v
-	if mode == DisplayModeRemaining {
-		value = 100 - v
-	}
-	return fmt.Sprintf("%.0f%%", ClampPercent(value)), true
+	return fmt.Sprintf("%.0f%%", ClampPercent(100-v)), true
 }

@@ -25,7 +25,7 @@ oct monitor --once --sort-by used --desc --top 5 --compact
 
 - Columns: `provider`, `5h`, `7d`, `1m`, `sev`, `status` (+ `used`, `limit`, `message` in default mode)
 - Default snapshot path: `~/.oct/state/usage-latest.json`
-- If `usage_display_mode=remaining`, values are shown as remaining quota (`100-used`)
+- Values are shown as remaining quota (`100-used`)
 
 ## Operational tips
 
