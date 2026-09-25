@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
 
@@ -51,10 +52,10 @@ func TestRootCommand(t *testing.T) {
 	if !contains(out, "🧭 Help & Shell") {
 		t.Errorf("expected help to include help category emoji, got: %s", out)
 	}
-	if !contains(out, "📊usage") {
-		t.Errorf("expected help to include usage command emoji, got: %s", out)
+	if !contains(out, "📊 usage") {
+		t.Errorf("expected help to include usage command emoji separated from the name, got: %s", out)
 	}
-	if !contains(out, "🔄agent-update") {
+	if !contains(out, "🔄 agent-update") {
 		t.Errorf("expected help to include agent-update command emoji before name, got: %s", out)
 	}
 	if contains(out, "agent-update    🔄") {
@@ -63,21 +64,23 @@ func TestRootCommand(t *testing.T) {
 	if contains(out, "completion") {
 		t.Errorf("completion command should be removed, got: %s", out)
 	}
-	if !contains(out, "❓help") {
-		t.Errorf("expected help to include help command emoji, got: %s", out)
+	if !contains(out, "❓ help") {
+		t.Errorf("expected help to include help command emoji separated from the name, got: %s", out)
 	}
 }
 
-func contains(s, substr string) bool {
-	return bytes.Contains([]byte(s), []byte(substr))
-}
-
-// isolateTestHome points os.UserHomeDir at a temp dir on every platform:
-// windows reads USERPROFILE, unix reads HOME.
-func isolateTestHome(t *testing.T, dir string) {
-	t.Helper()
-	t.Setenv("HOME", dir)
-	t.Setenv("USERPROFILE", dir)
+// TestCommandHelpLineSeparatesEmojiFromName pins the spacing fix: a
+// double-width emoji rendered flush against the padded command name overlaps
+// the first letter in terminals that undercount emoji width.
+func TestCommandHelpLineSeparatesEmojiFromName(t *testing.T) {
+	emojiCmd := &cobra.Command{Use: "usage", Short: "📊 Show tool usage report"}
+	if line := commandHelpLine(emojiCmd); !strings.Contains(line, "📊 usage") {
+		t.Fatalf("commandHelpLine = %q, want a space between emoji and command name", line)
+	}
+	plainCmd := &cobra.Command{Use: "codex-account", Short: "Manage extra Codex usage accounts"}
+	if line := commandHelpLine(plainCmd); !strings.HasPrefix(line, "codex-account") {
+		t.Fatalf("commandHelpLine = %q, want name-first line for an emoji-less Short", line)
+	}
 }
 
 func TestReorderRootCommandsMaintenanceOrder(t *testing.T) {
@@ -99,6 +102,18 @@ func TestReorderRootCommandsMaintenanceOrder(t *testing.T) {
 			t.Fatalf("%s command should be removed from the root command", c.Name())
 		}
 	}
+}
+
+func contains(s, substr string) bool {
+	return bytes.Contains([]byte(s), []byte(substr))
+}
+
+// isolateTestHome points os.UserHomeDir at a temp dir on every platform:
+// windows reads USERPROFILE, unix reads HOME.
+func isolateTestHome(t *testing.T, dir string) {
+	t.Helper()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
 }
 
 func TestRootVersionIsSemver(t *testing.T) {
