@@ -74,8 +74,7 @@ struct AlertSettings: Codable, Equatable {
     var thresholdPercent: Double
     var criticalPercent: Double
     var cooldownMinutes: Int
-    var quietHours: String
-    var timezone: String
+    var quietUntil: String
     var thresholds: AlertThresholds
 
     static let goDefaults = AlertSettings(
@@ -83,19 +82,78 @@ struct AlertSettings: Codable, Equatable {
         thresholdPercent: 80,
         criticalPercent: 98,
         cooldownMinutes: 360,
-        quietHours: "",
-        timezone: "",
+        quietUntil: "",
         thresholds: AlertThresholds(defaultThreshold: 80, fiveHours: 80, sevenDays: 80)
     )
+
+    /// Preset quiet timer durations in hours, mirroring the Go CLI choices.
+    static let quietChoices: [Int] = [1, 2, 4, 6, 12]
+
+    /// Maps a quiet_until timestamp to the picker bucket shown for it: 0 when
+    /// the timer is off or expired, otherwise the smallest preset covering the
+    /// remaining time. Purely cosmetic — the settings save round-trips
+    /// quiet_until itself and only rewrites it when the picker changes.
+    static func quietChoiceHours(for quietUntil: String, now: Date = Date()) -> Int {
+        guard let until = parseQuietUntil(quietUntil), until > now else { return 0 }
+        let remainingHours = until.timeIntervalSince(now) / 3600
+        for choice in quietChoices where remainingHours <= Double(choice) {
+            return choice
+        }
+        return quietChoices.last!
+    }
+
+    /// Builds the quiet_until value the Go config stores: an RFC3339 timestamp
+    /// N hours from now, or an empty string when the timer is off.
+    static func quietUntilString(armingHours hours: Int, now: Date = Date()) -> String {
+        guard hours > 0 else { return "" }
+        return ISO8601DateFormatter().string(from: now.addingTimeInterval(Double(hours) * 3600))
+    }
+
+    static func parseQuietUntil(_ raw: String) -> Date? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return ISO8601DateFormatter().date(from: trimmed)
+    }
 
     enum CodingKeys: String, CodingKey {
         case enabled
         case thresholdPercent = "threshold_percent"
         case criticalPercent = "critical_percent"
         case cooldownMinutes = "cooldown_minutes"
-        case quietHours = "quiet_hours"
-        case timezone
+        case quietUntil = "quiet_until"
         case thresholds
+    }
+
+    init(
+        enabled: Bool,
+        thresholdPercent: Double,
+        criticalPercent: Double,
+        cooldownMinutes: Int,
+        quietUntil: String,
+        thresholds: AlertThresholds
+    ) {
+        self.enabled = enabled
+        self.thresholdPercent = thresholdPercent
+        self.criticalPercent = criticalPercent
+        self.cooldownMinutes = cooldownMinutes
+        self.quietUntil = quietUntil
+        self.thresholds = thresholds
+    }
+
+    /// Tolerant decoding: snapshots from an older oct CLI carry no
+    /// `quiet_until` (they still had quiet_hours/timezone), and the alerts
+    /// screen must still load instead of failing with a missing-data error.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = AlertSettings.goDefaults
+        self.init(
+            enabled: try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? defaults.enabled,
+            thresholdPercent: try container.decodeIfPresent(Double.self, forKey: .thresholdPercent) ?? defaults.thresholdPercent,
+            criticalPercent: try container.decodeIfPresent(Double.self, forKey: .criticalPercent) ?? defaults.criticalPercent,
+            cooldownMinutes: try container.decodeIfPresent(Int.self, forKey: .cooldownMinutes) ?? defaults.cooldownMinutes,
+            quietUntil: try container.decodeIfPresent(String.self, forKey: .quietUntil) ?? "",
+            thresholds: try container.decodeIfPresent(AlertThresholds.self, forKey: .thresholds) ?? defaults.thresholds
+        )
     }
 }
 
