@@ -124,6 +124,9 @@ func FetchCommandCodeUsage(ctx context.Context) UsageResult {
 		monthlyPercent, ok := commandCodeMonthlyUsagePercent(planID, credits.MonthlyCredits, credits.PurchasedCredits, credits.FreeCredits, usageData.Summary)
 		if ok {
 			result.Buckets["1m"] = fmt.Sprintf("%.1f", monthlyPercent)
+			if periodEnd := commandCodePeriodEnd(usageData.Subscription); periodEnd != "" {
+				result.BucketResets["1m"] = periodEnd
+			}
 		}
 	}
 
@@ -346,6 +349,13 @@ func commandCodeUsageWindowLimits(credits *commandCodeCreditsResponse) *commandC
 		return credits.Credits.WindowLimits
 	}
 	return nil
+}
+
+func commandCodePeriodEnd(sub *commandCodeSubscriptionResponse) string {
+	if sub == nil || sub.Data == nil {
+		return ""
+	}
+	return strings.TrimSpace(sub.Data.CurrentPeriodEnd)
 }
 
 func commandCodeMonthlyUsagePercent(planID string, monthlyRemaining, purchasedRemaining, freeRemaining float64, summary *commandCodeSummaryResponse) (float64, bool) {
