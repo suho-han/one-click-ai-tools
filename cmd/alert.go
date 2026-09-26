@@ -30,6 +30,7 @@ Use the subcommands below for advanced provider thresholds, alert tests, and sno
   oct alert config show
   oct alert config set enabled true
   oct alert config set threshold_percent 85
+  oct alert config set quiet 2h
   oct alert config set-provider-threshold 5h 90 --provider codex
   oct alert snooze set --duration 2h
   oct alert test --provider codex --window 5h --value 91`,
@@ -130,7 +131,7 @@ var alertTestCmd = &cobra.Command{
 		r := usage.UsageResult{Provider: provider, Unit: "percent", Used: fmt.Sprintf("%.1f", value), Buckets: map[string]string{window: fmt.Sprintf("%.1f", value)}}
 		now := time.Now()
 		if quietNow {
-			cfg.QuietHours = "00:00-23:59"
+			cfg.QuietUntil = now.Add(time.Hour)
 		}
 		if err := notify.MaybeSendUsageAlerts([]usage.UsageResult{r}, cfg, now); err != nil {
 			return fmt.Errorf("alert test failed: %w", err)
@@ -149,8 +150,8 @@ var alertTestCmd = &cobra.Command{
 		}
 
 		priority := alertPriorityLabel(value, threshold, cfg.CriticalPct)
-		fmt.Fprintf(cmd.OutOrStdout(), "provider=%s window=%s value=%.1f threshold=%.1f priority=%s quiet_hours=%s critical=%.1f\n", provider, window, value, threshold, priority, cfg.QuietHours, cfg.CriticalPct)
-		fmt.Fprintln(cmd.OutOrStdout(), "test executed (notification may be suppressed by cooldown/quiet hours/snooze).")
+		fmt.Fprintf(cmd.OutOrStdout(), "provider=%s window=%s value=%.1f threshold=%.1f priority=%s quiet=%s critical=%.1f\n", provider, window, value, threshold, priority, alertQuietDisplay(cfg, now), cfg.CriticalPct)
+		fmt.Fprintln(cmd.OutOrStdout(), "test executed (notification may be suppressed by cooldown/quiet timer/snooze).")
 		return nil
 	},
 }
@@ -261,19 +262,16 @@ func setAlertConfigValue(key, val string) error {
 		}
 		viper.Set("usage_alert_critical_percent", f)
 		return nil
-	case "quiet_hours":
-		if err := validateAlertQuietHours(val); err != nil {
+	case "quiet":
+		until, err := alertQuietUntilFromChoice(val)
+		if err != nil {
 			return err
 		}
-		viper.Set("usage_alert_quiet_hours", val)
-		return nil
-	case "timezone":
-		if strings.TrimSpace(val) != "" {
-			if _, err := time.LoadLocation(val); err != nil {
-				return fmt.Errorf("invalid timezone %q: %v", val, err)
-			}
+		if until.IsZero() {
+			viper.Set("usage_alert_quiet_until", "")
+			return nil
 		}
-		viper.Set("usage_alert_timezone", val)
+		viper.Set("usage_alert_quiet_until", until.Format(time.RFC3339))
 		return nil
 	}
 
@@ -316,7 +314,7 @@ func setAlertConfigValue(key, val string) error {
 		return nil
 	}
 
-	return fmt.Errorf("supported keys: enabled, cooldown_minutes, threshold_percent, critical_percent, quiet_hours, timezone, threshold.<window>, provider.<name>.<window|default>")
+	return fmt.Errorf("supported keys: enabled, cooldown_minutes, threshold_percent, critical_percent, quiet, threshold.<window>, provider.<name>.<window|default>")
 }
 
 func parseAlertBool(val string) (bool, error) {
@@ -344,35 +342,39 @@ func parseAlertPercent(name, val string) (float64, error) {
 	return f, nil
 }
 
-func validateAlertQuietHours(val string) error {
-	val = strings.TrimSpace(val)
-	if val == "" {
-		return nil
+// alertQuietChoices are the preset quiet timer durations offered by the CLI,
+// the interactive TUI, and the menubar settings picker.
+var alertQuietChoices = []time.Duration{time.Hour, 2 * time.Hour, 4 * time.Hour, 6 * time.Hour, 12 * time.Hour}
+
+// alertQuietUntilFromChoice maps a quiet timer choice ("off", "1h", ..., "12h")
+// to the absolute time alerts stay quiet until. A zero time means "off".
+func alertQuietUntilFromChoice(val string) (time.Time, error) {
+	switch strings.ToLower(strings.TrimSpace(val)) {
+	case "", "0", "off", "none":
+		return time.Time{}, nil
 	}
-	parts := strings.Split(val, "-")
-	if len(parts) != 2 {
-		return fmt.Errorf("invalid quiet_hours %q: expected HH:MM-HH:MM", val)
+	for _, choice := range alertQuietChoices {
+		if strings.EqualFold(strings.TrimSpace(val), alertQuietChoiceLabel(choice)) {
+			return time.Now().Add(choice), nil
+		}
 	}
-	if _, ok := parseAlertClockMinute(parts[0]); !ok {
-		return fmt.Errorf("invalid quiet_hours %q: expected HH:MM-HH:MM", val)
+	labels := make([]string, 0, len(alertQuietChoices)+1)
+	labels = append(labels, "off")
+	for _, choice := range alertQuietChoices {
+		labels = append(labels, alertQuietChoiceLabel(choice))
 	}
-	if _, ok := parseAlertClockMinute(parts[1]); !ok {
-		return fmt.Errorf("invalid quiet_hours %q: expected HH:MM-HH:MM", val)
-	}
-	return nil
+	return time.Time{}, fmt.Errorf("invalid quiet choice %q: use %s", val, strings.Join(labels, ", "))
 }
 
-func parseAlertClockMinute(val string) (int, bool) {
-	parts := strings.Split(strings.TrimSpace(val), ":")
-	if len(parts) != 2 || len(parts[0]) != 2 || len(parts[1]) != 2 {
-		return 0, false
+func alertQuietChoiceLabel(d time.Duration) string {
+	return strconv.FormatInt(int64(d.Hours()), 10) + "h"
+}
+
+func alertQuietDisplay(cfg notify.UsageAlertConfig, now time.Time) string {
+	if !cfg.QuietUntil.After(now) {
+		return "off"
 	}
-	hour, errH := strconv.Atoi(parts[0])
-	minute, errM := strconv.Atoi(parts[1])
-	if errH != nil || errM != nil || hour < 0 || hour > 23 || minute < 0 || minute > 59 {
-		return 0, false
-	}
-	return hour*60 + minute, true
+	return "active until " + cfg.QuietUntil.Format(time.RFC3339)
 }
 
 func providerOptions() []string {
@@ -505,13 +507,18 @@ func parseProviderThresholdMap(raw map[string]any) map[string]map[string]float64
 }
 
 func buildAlertConfigFromViper(enabled bool) notify.UsageAlertConfig {
+	var quietUntil time.Time
+	if raw := strings.TrimSpace(viper.GetString("usage_alert_quiet_until")); raw != "" {
+		if parsed, err := time.Parse(time.RFC3339, raw); err == nil {
+			quietUntil = parsed
+		}
+	}
 	cfg := notify.UsageAlertConfig{
 		Enabled:           enabled,
 		ThresholdPct:      viper.GetFloat64("usage_alert_threshold_percent"),
 		CooldownMinutes:   viper.GetInt("usage_alert_cooldown_minutes"),
 		StatePath:         viper.GetString("usage_alert_state_path"),
-		QuietHours:        viper.GetString("usage_alert_quiet_hours"),
-		Timezone:          viper.GetString("usage_alert_timezone"),
+		QuietUntil:        quietUntil,
 		CriticalPct:       viper.GetFloat64("usage_alert_critical_percent"),
 		GlobalThresholds:  parseThresholdMap(viper.GetStringMap("usage_alert_thresholds")),
 		ProviderThreshold: parseProviderThresholdMap(viper.GetStringMap("usage_alert_provider_thresholds")),
@@ -540,7 +547,7 @@ func init() {
 	alertTestCmd.Flags().String("provider", "codex", "provider name")
 	alertTestCmd.Flags().String("window", "5h", "window key (e.g. 5h, 7d, current)")
 	alertTestCmd.Flags().Float64("value", 90, "synthetic usage value percent")
-	alertTestCmd.Flags().Bool("quiet-now", false, "force quiet-hours simulation")
+	alertTestCmd.Flags().Bool("quiet-now", false, "force quiet timer simulation")
 	alertConfigSetProviderThresholdCmd.Flags().String("provider", "", "provider name (empty = interactive select)")
 
 	alertSnoozeSetCmd.Flags().Duration("duration", 2*time.Hour, "snooze duration")

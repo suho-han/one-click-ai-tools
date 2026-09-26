@@ -134,7 +134,7 @@ oct alert
 oct alert config show
 oct alert config set enabled true
 oct alert config set threshold_percent 85
-oct alert config set quiet_hours 00:00-08:00
+oct alert config set quiet 2h
 oct alert config set-provider-threshold 5h 90 --provider codex
 oct alert test --provider codex --window 5h --value 91
 oct alert snooze set --duration 2h
