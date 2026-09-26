@@ -177,8 +177,7 @@ func TestConfigSnapshot_marshalJSONIncludesSafeAlertSettings(t *testing.T) {
 	viper.Set("usage_alert_threshold_percent", 80.0)
 	viper.Set("usage_alert_critical_percent", 98.0)
 	viper.Set("usage_alert_cooldown_minutes", 120)
-	viper.Set("usage_alert_quiet_hours", "00:00-08:00")
-	viper.Set("usage_alert_timezone", "Asia/Seoul")
+	viper.Set("usage_alert_quiet_until", "2026-05-09T08:00:00Z")
 	viper.Set("usage_alert_thresholds", map[string]any{
 		"default": 80,
 		"5h":      85,
@@ -203,6 +202,9 @@ func TestConfigSnapshot_marshalJSONIncludesSafeAlertSettings(t *testing.T) {
 	if got, want := alert["enabled"], true; got != want {
 		t.Fatalf("alert.enabled = %#v, want %v", got, want)
 	}
+	if got, want := alert["quiet_until"], "2026-05-09T08:00:00Z"; got != want {
+		t.Fatalf("alert.quiet_until = %#v, want %v", got, want)
+	}
 	if got, want := alert["threshold_percent"], 80.0; got != want {
 		t.Fatalf("alert.threshold_percent = %#v, want %v", got, want)
 	}
@@ -226,7 +228,7 @@ func TestConfigUpdatePayload_applyConfigUpdatePersistsAlertSettings(t *testing.T
 	t.Cleanup(viper.Reset)
 	viper.Reset()
 
-	payload, err := parseConfigUpdatePayload(`{"alert":{"enabled":true,"threshold_percent":85,"critical_percent":98,"cooldown_minutes":120,"quiet_hours":"00:00-08:00","timezone":"Asia/Seoul","thresholds":{"default":80,"5h":85,"7d":90}}}`)
+	payload, err := parseConfigUpdatePayload(`{"alert":{"enabled":true,"threshold_percent":85,"critical_percent":98,"cooldown_minutes":120,"quiet_until":"2026-05-09T08:00:00Z","thresholds":{"default":80,"5h":85,"7d":90}}}`)
 	if err != nil {
 		t.Fatalf("parseConfigUpdatePayload() error = %v", err)
 	}
@@ -246,11 +248,8 @@ func TestConfigUpdatePayload_applyConfigUpdatePersistsAlertSettings(t *testing.T
 	if got := viper.GetInt("usage_alert_cooldown_minutes"); got != 120 {
 		t.Fatalf("usage_alert_cooldown_minutes = %d, want 120", got)
 	}
-	if got := viper.GetString("usage_alert_quiet_hours"); got != "00:00-08:00" {
-		t.Fatalf("usage_alert_quiet_hours = %q, want 00:00-08:00", got)
-	}
-	if got := viper.GetString("usage_alert_timezone"); got != "Asia/Seoul" {
-		t.Fatalf("usage_alert_timezone = %q, want Asia/Seoul", got)
+	if got := viper.GetString("usage_alert_quiet_until"); got != "2026-05-09T08:00:00Z" {
+		t.Fatalf("usage_alert_quiet_until = %q, want 2026-05-09T08:00:00Z", got)
 	}
 	for key, want := range map[string]float64{"default": 80, "5h": 85, "7d": 90} {
 		if got := viper.GetFloat64("usage_alert_thresholds." + key); got != want {
@@ -263,8 +262,7 @@ func TestConfigUpdatePayload_rejectsInvalidAlertWithoutMutation(t *testing.T) {
 	invalidPayloads := map[string]string{
 		"percent":     `{"alert":{"threshold_percent":101}}`,
 		"cooldown":    `{"alert":{"cooldown_minutes":0}}`,
-		"quiet hours": `{"alert":{"quiet_hours":"25:00-08:00"}}`,
-		"timezone":    `{"alert":{"timezone":"Mars/Olympus"}}`,
+		"quiet_until": `{"alert":{"quiet_until":"2026-05-09 08:00"}}`,
 	}
 
 	for name, raw := range invalidPayloads {
@@ -273,8 +271,7 @@ func TestConfigUpdatePayload_rejectsInvalidAlertWithoutMutation(t *testing.T) {
 			viper.Reset()
 			viper.Set("usage_alert_threshold_percent", 80.0)
 			viper.Set("usage_alert_cooldown_minutes", 360)
-			viper.Set("usage_alert_quiet_hours", "")
-			viper.Set("usage_alert_timezone", "UTC")
+			viper.Set("usage_alert_quiet_until", "2026-05-09T08:00:00Z")
 
 			payload, err := parseConfigUpdatePayload(raw)
 			if err != nil {
@@ -289,11 +286,8 @@ func TestConfigUpdatePayload_rejectsInvalidAlertWithoutMutation(t *testing.T) {
 			if got := viper.GetInt("usage_alert_cooldown_minutes"); got != 360 {
 				t.Fatalf("usage_alert_cooldown_minutes = %d, want unchanged 360", got)
 			}
-			if got := viper.GetString("usage_alert_quiet_hours"); got != "" {
-				t.Fatalf("usage_alert_quiet_hours = %q, want unchanged empty", got)
-			}
-			if got := viper.GetString("usage_alert_timezone"); got != "UTC" {
-				t.Fatalf("usage_alert_timezone = %q, want unchanged UTC", got)
+			if got := viper.GetString("usage_alert_quiet_until"); got != "2026-05-09T08:00:00Z" {
+				t.Fatalf("usage_alert_quiet_until = %q, want unchanged", got)
 			}
 		})
 	}

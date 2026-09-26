@@ -13,6 +13,10 @@ import (
 
 type alertSettingsDraft struct {
 	values map[string]string
+	// initialQuiet is the quiet timer's state when the TUI opened. Confirm
+	// skips the quiet row unless its value changed, so saving unrelated
+	// settings never re-arms or clears a running timer.
+	initialQuiet string
 }
 
 type alertSettingsItem struct {
@@ -40,8 +44,7 @@ var alertSettingsRows = []struct{ key, label string }{
 	{"threshold_percent", "Threshold percent"},
 	{"critical_percent", "Critical percent"},
 	{"cooldown_minutes", "Cooldown minutes"},
-	{"quiet_hours", "Quiet hours"},
-	{"timezone", "Timezone"},
+	{"quiet", "Quiet timer"},
 	{"threshold.default", "Threshold default"},
 	{"threshold.5h", "Threshold 5h"},
 	{"threshold.7d", "Threshold 7d"},
@@ -64,8 +67,7 @@ func alertSettingsDraftFromViper() alertSettingsDraft {
 		"threshold_percent": formatAlertSettingNumber(threshold),
 		"critical_percent":  formatAlertSettingNumber(cfg.CriticalPct),
 		"cooldown_minutes":  strconv.Itoa(cfg.CooldownMinutes),
-		"quiet_hours":       cfg.QuietHours,
-		"timezone":          cfg.Timezone,
+		"quiet":             alertQuietDraftValue(cfg.QuietUntil),
 		"threshold.default": formatAlertSettingNumber(effectiveDefault),
 		"threshold.5h":      formatAlertSettingNumber(alertThresholdOrDefault(cfg.GlobalThresholds, "5h", effectiveDefault)),
 		"threshold.7d":      formatAlertSettingNumber(alertThresholdOrDefault(cfg.GlobalThresholds, "7d", effectiveDefault)),
@@ -76,7 +78,49 @@ func alertSettingsDraftFromViper() alertSettingsDraft {
 	if cfg.CooldownMinutes <= 0 {
 		values["cooldown_minutes"] = "360"
 	}
-	return alertSettingsDraft{values: values}
+	return alertSettingsDraft{values: values, initialQuiet: values["quiet"]}
+}
+
+// alertQuietDraftValue renders the quiet timer row: either "off" or how long
+// the running timer has left. Enter cycles this row through the preset
+// choices in alertQuietChoices instead of editing free text.
+func alertQuietDraftValue(until time.Time) string {
+	remaining := time.Until(until)
+	if remaining <= 0 {
+		return "off"
+	}
+	minutes := int(remaining.Minutes())
+	if minutes == 0 {
+		minutes = 1
+	}
+	hours, mins := minutes/60, minutes%60
+	if hours == 0 {
+		return fmt.Sprintf("on (%dm left)", mins)
+	}
+	if mins == 0 {
+		return fmt.Sprintf("on (%dh left)", hours)
+	}
+	return fmt.Sprintf("on (%dh %dm left)", hours, mins)
+}
+
+// cycleAlertQuietValue moves the quiet timer row through off -> 1h -> 2h ->
+// 4h -> 6h -> 12h -> off. A running timer ("on (...)") cycles to "off" first,
+// so the first Enter press always produces an explicit choice.
+func cycleAlertQuietValue(current string) string {
+	if strings.HasPrefix(current, "on (") {
+		return "off"
+	}
+	labels := make([]string, 0, len(alertQuietChoices)+1)
+	labels = append(labels, "off")
+	for _, choice := range alertQuietChoices {
+		labels = append(labels, alertQuietChoiceLabel(choice))
+	}
+	for i, label := range labels {
+		if label == current {
+			return labels[(i+1)%len(labels)]
+		}
+	}
+	return "off"
 }
 
 func alertThresholdOrDefault(thresholds map[string]float64, key string, fallback float64) float64 {
@@ -112,8 +156,8 @@ func (m alertSettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		if m.editing {
-			// Plain "q" must reach updateEdit so values like timezones can
-			// contain it; cancellation while editing stays on the ctrl keys.
+			// Plain "q" must reach updateEdit so free-text edits can contain
+			// it; cancellation while editing stays on the ctrl keys.
 			return m.updateEdit(msg)
 		}
 		if msg.String() == "q" {
@@ -134,6 +178,8 @@ func (m alertSettingsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if item.key == "enabled" {
 				item.value = strconv.FormatBool(item.value != "true")
+			} else if item.key == "quiet" {
+				item.value = cycleAlertQuietValue(item.value)
 			} else {
 				m.editing = true
 				m.editingValue = item.value
@@ -263,29 +309,33 @@ func validateAlertSettingsValue(key, value string) error {
 	case "threshold_percent", "critical_percent", "threshold.default", "threshold.5h", "threshold.7d":
 		_, err := parseAlertPercent(strings.ReplaceAll(key, ".", " "), value)
 		return err
-	case "quiet_hours":
-		return validateAlertQuietHours(value)
-	case "timezone":
-		if strings.TrimSpace(value) == "" {
+	case "quiet":
+		if strings.HasPrefix(value, "on (") {
+			// A running timer's display value; valid as long as it is left
+			// untouched (apply skips it via initialQuiet).
 			return nil
 		}
-		_, err := time.LoadLocation(strings.TrimSpace(value))
-		if err != nil {
-			return fmt.Errorf("invalid timezone %q: %w", value, err)
-		}
-		return nil
+		_, err := alertQuietUntilFromChoice(value)
+		return err
 	default:
 		return fmt.Errorf("unsupported alert settings key %q", key)
 	}
 }
 
 func applyAlertSettingsDraft(draft alertSettingsDraft) error {
+	applyRows := make([]struct{ key, label string }, 0, len(alertSettingsRows))
 	for _, row := range alertSettingsRows {
+		if row.key == "quiet" && draft.values[row.key] == draft.initialQuiet {
+			// Timer untouched by the user: never re-arm or clear it as a side
+			// effect of saving other settings.
+			continue
+		}
 		if err := validateAlertSettingsValue(row.key, draft.values[row.key]); err != nil {
 			return err
 		}
+		applyRows = append(applyRows, row)
 	}
-	for _, row := range alertSettingsRows {
+	for _, row := range applyRows {
 		if err := setAlertConfigValue(row.key, draft.values[row.key]); err != nil {
 			return fmt.Errorf("apply %s: %w", row.key, err)
 		}

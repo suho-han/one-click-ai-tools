@@ -160,8 +160,18 @@ struct SettingsConfigurationTab: View {
                     Text("Cooldown: \(configDraft?.alert.cooldownMinutes ?? 360) minutes")
                 }
 
-                TextField("Quiet hours", text: alertQuietHoursBinding)
-                TextField("Timezone", text: alertTimezoneBinding)
+                Picker("Quiet timer", selection: alertQuietChoiceBinding) {
+                    Text("Off").tag(0)
+                    ForEach(AlertSettings.quietChoices, id: \.self) { hours in
+                        Text("\(hours)H").tag(hours)
+                    }
+                }
+
+                if let quietUntilDate = alertQuietUntilDate, quietUntilDate > Date() {
+                    Text("Quiet until \(quietUntilDate.formatted(date: .omitted, time: .shortened))")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
 
                 Divider()
 
@@ -280,12 +290,18 @@ struct SettingsConfigurationTab: View {
         )
     }
 
-    private var alertQuietHoursBinding: Binding<String> {
-        alertBinding(\.quietHours)
+    private var alertQuietChoiceBinding: Binding<Int> {
+        Binding(
+            get: { AlertSettings.quietChoiceHours(for: configDraft?.alert.quietUntil ?? "") },
+            set: { hours in
+                configDraft?.alert.quietUntil = AlertSettings.quietUntilString(armingHours: hours)
+                onDraftChange()
+            }
+        )
     }
 
-    private var alertTimezoneBinding: Binding<String> {
-        alertBinding(\.timezone)
+    private var alertQuietUntilDate: Date? {
+        AlertSettings.parseQuietUntil(configDraft?.alert.quietUntil ?? "")
     }
 
     private var alertDefaultThresholdBinding: Binding<Double> {

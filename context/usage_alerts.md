@@ -11,8 +11,9 @@ usage_alert_enabled: true
 usage_alert_threshold_percent: 80
 usage_alert_critical_percent: 98
 usage_alert_cooldown_minutes: 360
-usage_alert_quiet_hours: "00:00-08:00"
-usage_alert_timezone: "Asia/Seoul"
+# Quiet timer: alerts stay suppressed until this instant (empty = off).
+# Armed via the preset choices off/1h/2h/4h/6h/12h, not edited by hand.
+usage_alert_quiet_until: "2026-09-26T22:00:00+09:00"
 
 usage_alert_thresholds:
   default: 80
@@ -51,8 +52,7 @@ oct alert config set enabled true
 oct alert config set cooldown_minutes 120
 oct alert config set threshold_percent 85
 oct alert config set critical_percent 98
-oct alert config set quiet_hours 00:00-08:00
-oct alert config set timezone Asia/Seoul
+oct alert config set quiet 2h          # choices: off, 1h, 2h, 4h, 6h, 12h
 
 oct alert config set threshold.5h 90
 oct alert config set threshold.7d 92
@@ -79,7 +79,8 @@ oct alert snooze clear --provider codex --window 5h
   - `threshold <= value < critical_percent` -> `HIGH`
 - Duplicate alerts are suppressed during cooldown windows
 - Escalation can still alert during cooldown if threshold level increases
-- During quiet hours, only `CRITICAL` passes
+- While the quiet timer is armed, only `CRITICAL` passes
+- The quiet timer is a one-shot mute (off/1h/2h/4h/6h/12h) armed from the moment it is set; it expires on its own
 - `CRITICAL` overrides snooze
 - State file: `~/.oct/state/usage-alert-state.json`
 

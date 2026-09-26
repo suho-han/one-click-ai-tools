@@ -456,8 +456,7 @@ final class UsageSnapshotTests: XCTestCase {
             "threshold_percent": 82.5,
             "critical_percent": 97.5,
             "cooldown_minutes": 120,
-            "quiet_hours": "00:00-08:00",
-            "timezone": "Asia/Seoul",
+            "quiet_until": "2026-09-26T22:00:00Z",
             "thresholds": {
               "default": 81,
               "5h": 82.5,
@@ -496,12 +495,53 @@ final class UsageSnapshotTests: XCTestCase {
             thresholdPercent: 82.5,
             criticalPercent: 97.5,
             cooldownMinutes: 120,
-            quietHours: "00:00-08:00",
-            timezone: "Asia/Seoul",
+            quietUntil: "2026-09-26T22:00:00Z",
             thresholds: AlertThresholds(defaultThreshold: 81, fiveHours: 82.5, sevenDays: 90)
         ))
         XCTAssertEqual(snapshot.tools.map(\.binaryName), ["codex", "commandcode", "claude"])
         XCTAssertEqual(snapshot.tools.map(\.enabled), [true, true, false])
+    }
+
+    /// An installed (older) oct CLI emits quiet_hours/timezone and no
+    /// quiet_until; the alerts settings must still load with the timer off.
+    func testConfigurationSnapshotDecodesLegacyAlertWithoutQuietUntil() throws {
+        let json = #"""
+        {
+          "config_file": "/Users/me/.oct/config.yaml",
+          "menubar_title_mode": "oct",
+          "session_refresh_enabled": true,
+          "session_refresh_interval": "weekly",
+          "session_refresh_hour": 9,
+          "alert": {
+            "enabled": true,
+            "threshold_percent": 82.5,
+            "critical_percent": 97.5,
+            "cooldown_minutes": 120,
+            "quiet_hours": "00:00-08:00",
+            "timezone": "Asia/Seoul",
+            "thresholds": {
+              "default": 81,
+              "5h": 82.5,
+              "7d": 90
+            }
+          },
+          "tools": [
+            {
+              "name": "OpenAI Codex",
+              "binary_name": "codex",
+              "enabled": true
+            }
+          ]
+        }
+        """#
+
+        let snapshot = try JSONDecoder().decode(ConfigurationSnapshot.self, from: Data(json.utf8))
+
+        XCTAssertEqual(snapshot.alert.enabled, true)
+        XCTAssertEqual(snapshot.alert.thresholdPercent, 82.5)
+        XCTAssertEqual(snapshot.alert.cooldownMinutes, 120)
+        XCTAssertEqual(snapshot.alert.quietUntil, "")
+        XCTAssertEqual(AlertSettings.quietChoiceHours(for: snapshot.alert.quietUntil), 0)
     }
 
     func testConfigurationSnapshotDecodesLegacyConfigListJSON() throws {
@@ -554,8 +594,7 @@ final class UsageSnapshotTests: XCTestCase {
         draft.alert.thresholdPercent = 82.5
         draft.alert.criticalPercent = 97.5
         draft.alert.cooldownMinutes = 120
-        draft.alert.quietHours = "00:00-08:00"
-        draft.alert.timezone = "Asia/Seoul"
+        draft.alert.quietUntil = "2026-09-26T22:00:00Z"
         draft.alert.thresholds.defaultThreshold = 81
         draft.alert.thresholds.fiveHours = 82.5
         draft.alert.thresholds.sevenDays = 90
@@ -572,8 +611,7 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertEqual(payload.alert.thresholdPercent, 82.5)
         XCTAssertEqual(payload.alert.criticalPercent, 97.5)
         XCTAssertEqual(payload.alert.cooldownMinutes, 120)
-        XCTAssertEqual(payload.alert.quietHours, "00:00-08:00")
-        XCTAssertEqual(payload.alert.timezone, "Asia/Seoul")
+        XCTAssertEqual(payload.alert.quietUntil, "2026-09-26T22:00:00Z")
         XCTAssertEqual(payload.alert.thresholds.defaultThreshold, 81)
         XCTAssertEqual(payload.alert.thresholds.fiveHours, 82.5)
         XCTAssertEqual(payload.alert.thresholds.sevenDays, 90)
@@ -596,8 +634,7 @@ final class UsageSnapshotTests: XCTestCase {
             "threshold_percent",
             "critical_percent",
             "cooldown_minutes",
-            "quiet_hours",
-            "timezone",
+            "quiet_until",
             "thresholds",
         ])
         XCTAssertEqual(Set(thresholds.keys), ["default", "5h", "7d"])
@@ -611,8 +648,7 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertEqual(alert["threshold_percent"] as? Double, 82.5)
         XCTAssertEqual(alert["critical_percent"] as? Double, 97.5)
         XCTAssertEqual(alert["cooldown_minutes"] as? Int, 120)
-        XCTAssertEqual(alert["quiet_hours"] as? String, "00:00-08:00")
-        XCTAssertEqual(alert["timezone"] as? String, "Asia/Seoul")
+        XCTAssertEqual(alert["quiet_until"] as? String, "2026-09-26T22:00:00Z")
         XCTAssertEqual(thresholds["default"] as? Double, 81)
         XCTAssertEqual(thresholds["5h"] as? Double, 82.5)
         XCTAssertEqual(thresholds["7d"] as? Double, 90)
@@ -631,8 +667,7 @@ final class UsageSnapshotTests: XCTestCase {
             "threshold_percent": 80,
             "critical_percent": 98,
             "cooldown_minutes": 360,
-            "quiet_hours": "",
-            "timezone": "",
+            "quiet_until": "",
             "thresholds": { "default": 80, "5h": 80, "7d": 80 }
           }
         }

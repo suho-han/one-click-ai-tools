@@ -22,8 +22,7 @@ type UsageAlertConfig struct {
 	CooldownMinutes int
 	StatePath       string
 
-	Timezone          string
-	QuietHours        string // HH:MM-HH:MM
+	QuietUntil        time.Time // zero value = quiet timer off
 	GlobalThresholds  map[string]float64
 	ProviderThreshold map[string]map[string]float64 // provider -> window -> threshold
 	CriticalPct       float64
@@ -56,14 +55,6 @@ func MaybeSendUsageAlerts(results []usage.UsageResult, cfg UsageAlertConfig, now
 		return nil
 	}
 	cfg = normalizeConfig(cfg)
-
-	loc := time.Local
-	if strings.TrimSpace(cfg.Timezone) != "" {
-		if l, err := time.LoadLocation(cfg.Timezone); err == nil {
-			loc = l
-		}
-	}
-	localNow := now.In(loc)
 
 	// Serialize the read-modify-write below across processes: monitor, the
 	// menubar's usage --notify, and the scheduled task can run concurrently
@@ -103,7 +94,7 @@ func MaybeSendUsageAlerts(results []usage.UsageResult, cfg UsageAlertConfig, now
 				}
 			}
 
-			if inQuietHours(localNow, cfg.QuietHours) && priority != alertPriorityCritical {
+			if cfg.QuietUntil.After(now) && priority != alertPriorityCritical {
 				continue
 			}
 
@@ -276,44 +267,6 @@ func GetSnooze(path string) (map[string]time.Time, error) {
 		return map[string]time.Time{}, nil
 	}
 	return st.SnoozedUntil, nil
-}
-
-func inQuietHours(now time.Time, quiet string) bool {
-	quiet = strings.TrimSpace(quiet)
-	if quiet == "" {
-		return false
-	}
-	parts := strings.Split(quiet, "-")
-	if len(parts) != 2 {
-		return false
-	}
-	start, ok1 := parseHHMM(parts[0])
-	end, ok2 := parseHHMM(parts[1])
-	if !ok1 || !ok2 {
-		return false
-	}
-	cur := now.Hour()*60 + now.Minute()
-	if start == end {
-		return true
-	}
-	if start < end {
-		return cur >= start && cur < end
-	}
-	return cur >= start || cur < end
-}
-
-func parseHHMM(s string) (int, bool) {
-	s = strings.TrimSpace(s)
-	parts := strings.Split(s, ":")
-	if len(parts) != 2 {
-		return 0, false
-	}
-	h, errH := strconv.Atoi(parts[0])
-	m, errM := strconv.Atoi(parts[1])
-	if errH != nil || errM != nil || h < 0 || h > 23 || m < 0 || m > 59 {
-		return 0, false
-	}
-	return h*60 + m, true
 }
 
 func parsePercent(s string) (float64, bool) {

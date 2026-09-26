@@ -38,8 +38,7 @@ type configAlertSnapshot struct {
 	ThresholdPercent float64               `json:"threshold_percent"`
 	CriticalPercent  float64               `json:"critical_percent"`
 	CooldownMinutes  int                   `json:"cooldown_minutes"`
-	QuietHours       string                `json:"quiet_hours"`
-	Timezone         string                `json:"timezone"`
+	QuietUntil       string                `json:"quiet_until"`
 	Thresholds       configAlertThresholds `json:"thresholds"`
 }
 
@@ -64,8 +63,7 @@ type configAlertUpdatePayload struct {
 	ThresholdPercent *float64                     `json:"threshold_percent"`
 	CriticalPercent  *float64                     `json:"critical_percent"`
 	CooldownMinutes  *int                         `json:"cooldown_minutes"`
-	QuietHours       *string                      `json:"quiet_hours"`
-	Timezone         *string                      `json:"timezone"`
+	QuietUntil       *string                      `json:"quiet_until"`
 	Thresholds       *configAlertThresholdPayload `json:"thresholds"`
 }
 
@@ -80,8 +78,7 @@ type configAlertUpdate struct {
 	ThresholdPercent *float64
 	CriticalPercent  *float64
 	CooldownMinutes  *int
-	QuietHours       *string
-	Timezone         *string
+	QuietUntil       *string
 	Thresholds       *configAlertThresholdUpdate
 }
 
@@ -271,13 +268,16 @@ func buildConfigAlertSnapshot() configAlertSnapshot {
 	// payload always sends the complete alert object, so reporting the legacy
 	// percent here would persist it as an explicit window override on save.
 	effectiveDefault := configAlertThreshold(alert.GlobalThresholds, "default", threshold)
+	quietUntil := ""
+	if !alert.QuietUntil.IsZero() {
+		quietUntil = alert.QuietUntil.Format(time.RFC3339)
+	}
 	return configAlertSnapshot{
 		Enabled:          alert.Enabled,
 		ThresholdPercent: threshold,
 		CriticalPercent:  critical,
 		CooldownMinutes:  cooldown,
-		QuietHours:       alert.QuietHours,
-		Timezone:         alert.Timezone,
+		QuietUntil:       quietUntil,
 		Thresholds: configAlertThresholds{
 			Default:   effectiveDefault,
 			FiveHours: configAlertThreshold(alert.GlobalThresholds, "5h", effectiveDefault),
@@ -309,24 +309,15 @@ func normalizeConfigAlertUpdate(payload *configAlertUpdatePayload) (configAlertU
 		return configAlertUpdate{}, fmt.Errorf("invalid cooldown_minutes %d: must be a positive integer", *payload.CooldownMinutes)
 	}
 
-	var quietHours *string
-	if payload.QuietHours != nil {
-		value := strings.TrimSpace(*payload.QuietHours)
-		if err := validateAlertQuietHours(value); err != nil {
-			return configAlertUpdate{}, err
-		}
-		quietHours = &value
-	}
-
-	var timezone *string
-	if payload.Timezone != nil {
-		value := strings.TrimSpace(*payload.Timezone)
+	var quietUntil *string
+	if payload.QuietUntil != nil {
+		value := strings.TrimSpace(*payload.QuietUntil)
 		if value != "" {
-			if _, err := time.LoadLocation(value); err != nil {
-				return configAlertUpdate{}, fmt.Errorf("invalid timezone %q: %w", value, err)
+			if _, err := time.Parse(time.RFC3339, value); err != nil {
+				return configAlertUpdate{}, fmt.Errorf("invalid quiet_until %q: must be RFC3339 or empty", value)
 			}
 		}
-		timezone = &value
+		quietUntil = &value
 	}
 
 	thresholds, err := normalizeConfigAlertThresholds(payload.Thresholds)
@@ -338,8 +329,7 @@ func normalizeConfigAlertUpdate(payload *configAlertUpdatePayload) (configAlertU
 		ThresholdPercent: thresholdPercent,
 		CriticalPercent:  criticalPercent,
 		CooldownMinutes:  payload.CooldownMinutes,
-		QuietHours:       quietHours,
-		Timezone:         timezone,
+		QuietUntil:       quietUntil,
 		Thresholds:       thresholds,
 	}, nil
 }
@@ -391,11 +381,8 @@ func applyConfigAlertUpdate(alert configAlertUpdate) {
 	if alert.CooldownMinutes != nil {
 		viper.Set("usage_alert_cooldown_minutes", *alert.CooldownMinutes)
 	}
-	if alert.QuietHours != nil {
-		viper.Set("usage_alert_quiet_hours", *alert.QuietHours)
-	}
-	if alert.Timezone != nil {
-		viper.Set("usage_alert_timezone", *alert.Timezone)
+	if alert.QuietUntil != nil {
+		viper.Set("usage_alert_quiet_until", *alert.QuietUntil)
 	}
 	if alert.Thresholds == nil {
 		return
