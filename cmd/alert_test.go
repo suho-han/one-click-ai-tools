@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/viper"
@@ -26,7 +27,7 @@ func TestAlertSettingsModel_HasRequiredRows_whenCreated(t *testing.T) {
 	// Then
 	want := []string{
 		"enabled", "threshold_percent", "critical_percent", "cooldown_minutes",
-		"quiet_hours", "timezone", "threshold.default", "threshold.5h", "threshold.7d", "confirm",
+		"quiet", "threshold.default", "threshold.5h", "threshold.7d", "confirm",
 	}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("rows = %v, want %v", got, want)
@@ -80,19 +81,20 @@ func TestAlertSettingsModel_UpdatesScalar_whenValidInputSubmitted(t *testing.T) 
 	}
 }
 
-func TestAlertSettingsModel_AcceptsTimezoneWithoutCancelKey_whenEditingString(t *testing.T) {
+func TestAlertSettingsModel_UpdatesScalarWithoutCancelKey_whenEditingString(t *testing.T) {
 	// Given
 	viper.Reset()
 	t.Cleanup(viper.Reset)
 	m := newAlertSettingsModel(alertSettingsDraftFromViper())
 	for i := range m.items {
-		m.items[i].cursor = m.items[i].key == "timezone"
+		m.items[i].cursor = m.items[i].key == "cooldown_minutes"
 	}
+	m.items[m.index()].value = ""
 
 	// When
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(alertSettingsModel)
-	for _, r := range "Asia/Seoul" {
+	for _, r := range "45" {
 		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
 		m = updated.(alertSettingsModel)
 	}
@@ -101,10 +103,10 @@ func TestAlertSettingsModel_AcceptsTimezoneWithoutCancelKey_whenEditingString(t 
 
 	// Then
 	if m.cancelled || m.editing {
-		t.Fatalf("timezone edit state = cancelled:%t editing:%t, want committed edit", m.cancelled, m.editing)
+		t.Fatalf("edit state = cancelled:%t editing:%t, want committed edit", m.cancelled, m.editing)
 	}
-	if got := m.items[m.index()].value; got != "Asia/Seoul" {
-		t.Fatalf("timezone = %q, want Asia/Seoul", got)
+	if got := m.items[m.index()].value; got != "45" {
+		t.Fatalf("cooldown_minutes = %q, want 45", got)
 	}
 }
 
@@ -114,20 +116,20 @@ func TestAlertSettingsModel_EscKeepsCurrentValue_whenEditingString(t *testing.T)
 	t.Cleanup(viper.Reset)
 	m := newAlertSettingsModel(alertSettingsDraftFromViper())
 	for i := range m.items {
-		m.items[i].cursor = m.items[i].key == "timezone"
+		m.items[i].cursor = m.items[i].key == "cooldown_minutes"
 	}
 
 	// When
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(alertSettingsModel)
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("America/Guayaquil")})
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("90")})
 	m = updated.(alertSettingsModel)
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(alertSettingsModel)
 
 	// Then
-	if m.editing || m.cancelled || m.items[m.index()].value != "" {
-		t.Fatalf("Esc changed edit state/value: editing:%t cancelled:%t timezone:%q", m.editing, m.cancelled, m.items[m.index()].value)
+	if m.editing || m.cancelled || m.items[m.index()].value == "90" {
+		t.Fatalf("Esc changed edit state/value: editing:%t cancelled:%t cooldown:%q", m.editing, m.cancelled, m.items[m.index()].value)
 	}
 }
 
@@ -243,7 +245,7 @@ func TestApplyAlertSettingsDraft_PersistsAllRows_whenConfirmed(t *testing.T) {
 	draft := alertSettingsDraft{
 		values: map[string]string{
 			"enabled": "true", "threshold_percent": "82", "critical_percent": "97", "cooldown_minutes": "45",
-			"quiet_hours": "22:00-07:00", "timezone": "Asia/Seoul", "threshold.default": "81", "threshold.5h": "83", "threshold.7d": "84",
+			"quiet": "2h", "threshold.default": "81", "threshold.5h": "83", "threshold.7d": "84",
 		},
 	}
 
@@ -257,12 +259,71 @@ func TestApplyAlertSettingsDraft_PersistsAllRows_whenConfirmed(t *testing.T) {
 	if !viper.GetBool("usage_alert_enabled") || viper.GetFloat64("usage_alert_threshold_percent") != 82 || viper.GetInt("usage_alert_cooldown_minutes") != 45 {
 		t.Fatalf("saved alert values were not applied: enabled=%t threshold=%v cooldown=%d", viper.GetBool("usage_alert_enabled"), viper.GetFloat64("usage_alert_threshold_percent"), viper.GetInt("usage_alert_cooldown_minutes"))
 	}
+	untilRaw := viper.GetString("usage_alert_quiet_until")
+	until, err := time.Parse(time.RFC3339, untilRaw)
+	if err != nil {
+		t.Fatalf("persisted quiet_until %q is not RFC3339: %v", untilRaw, err)
+	}
+	if remaining := time.Until(until); remaining <= 0 || remaining > 3*time.Hour {
+		t.Fatalf("quiet_until = %v, want roughly 2h from now", until)
+	}
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		t.Fatalf("read persisted config: %v", err)
 	}
-	if !strings.Contains(string(data), "Asia/Seoul") || !strings.Contains(string(data), "quiet_hours") {
+	if !strings.Contains(string(data), "quiet_until") {
 		t.Fatalf("persisted config missing alert values: %s", data)
+	}
+}
+
+func TestApplyAlertSettingsDraft_SkipsQuietRow_whenTimerUntouched(t *testing.T) {
+	// Given: a draft whose quiet row still shows the armed state it loaded
+	// with; confirming other settings must not re-arm or clear the timer.
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	viper.SetConfigFile(configPath)
+	armed := time.Now().Add(2 * time.Hour).Format(time.RFC3339)
+	viper.Set("usage_alert_quiet_until", armed)
+	draft := alertSettingsDraft{
+		values: map[string]string{
+			"enabled": "true", "threshold_percent": "80", "critical_percent": "98", "cooldown_minutes": "360",
+			"quiet": "on (1h 59m left)", "threshold.default": "80", "threshold.5h": "80", "threshold.7d": "80",
+		},
+		initialQuiet: "on (1h 59m left)",
+	}
+
+	// When
+	if err := applyAlertSettingsDraft(draft); err != nil {
+		t.Fatalf("apply draft: %v", err)
+	}
+
+	// Then
+	if got := viper.GetString("usage_alert_quiet_until"); got != armed {
+		t.Fatalf("quiet_until = %q, want unchanged %q", got, armed)
+	}
+}
+
+func TestApplyAlertSettingsDraft_UpdatesQuietTimer_whenCycledToChoice(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	viper.SetConfigFile(configPath)
+	armed := time.Now().Add(2 * time.Hour).Format(time.RFC3339)
+	viper.Set("usage_alert_quiet_until", armed)
+	draft := alertSettingsDraft{
+		values: map[string]string{
+			"enabled": "true", "threshold_percent": "80", "critical_percent": "98", "cooldown_minutes": "360",
+			"quiet": "off", "threshold.default": "80", "threshold.5h": "80", "threshold.7d": "80",
+		},
+		initialQuiet: "on (1h 59m left)",
+	}
+
+	if err := applyAlertSettingsDraft(draft); err != nil {
+		t.Fatalf("apply draft: %v", err)
+	}
+	if got := viper.GetString("usage_alert_quiet_until"); got != "" {
+		t.Fatalf("quiet_until = %q, want cleared", got)
 	}
 }
 
@@ -456,8 +517,7 @@ func TestSetAlertConfigValueRejectsInvalidScalars(t *testing.T) {
 		"cooldown_minutes":  "0",
 		"threshold_percent": "101",
 		"critical_percent":  "-1",
-		"quiet_hours":       "9:00-18:00",
-		"timezone":          "No/Such_Zone",
+		"quiet":             "3h",
 	} {
 		if err := setAlertConfigValue(key, value); err == nil {
 			t.Fatalf("expected %s=%q to be rejected", key, value)
@@ -546,6 +606,69 @@ func TestAlertPriorityLabel(t *testing.T) {
 	}
 }
 
+func TestSetAlertConfigValueQuietChoices(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	// Arming a preset choice stores an RFC3339 quiet_until about N hours out.
+	if err := setAlertConfigValue("quiet", "4h"); err != nil {
+		t.Fatalf("set quiet 4h: %v", err)
+	}
+	until, err := time.Parse(time.RFC3339, viper.GetString("usage_alert_quiet_until"))
+	if err != nil {
+		t.Fatalf("quiet_until = %q, want RFC3339: %v", viper.GetString("usage_alert_quiet_until"), err)
+	}
+	remaining := time.Until(until)
+	if remaining < 3*time.Hour+50*time.Minute || remaining > 4*time.Hour+10*time.Minute {
+		t.Fatalf("quiet_until remaining = %v, want ~4h", remaining)
+	}
+
+	// "off" (and its aliases) clears the timer.
+	for _, choice := range []string{"off", "0", ""} {
+		if err := setAlertConfigValue("quiet", choice); err != nil {
+			t.Fatalf("set quiet %q: %v", choice, err)
+		}
+		if got := viper.GetString("usage_alert_quiet_until"); got != "" {
+			t.Fatalf("quiet choice %q left quiet_until = %q, want empty", choice, got)
+		}
+	}
+
+	// Durations outside the preset choices are rejected.
+	if err := setAlertConfigValue("quiet", "3h"); err == nil {
+		t.Fatal("expected quiet 3h to be rejected")
+	}
+}
+
+func TestCycleAlertQuietValue_WalksChoices_andDisarmsRunningTimerFirst(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	got := "off"
+	want := []string{"1h", "2h", "4h", "6h", "12h", "off"}
+	for _, expected := range want {
+		got = cycleAlertQuietValue(got)
+		if got != expected {
+			t.Fatalf("cycle from start = %q, want %q", got, expected)
+		}
+	}
+
+	if cycled := cycleAlertQuietValue("on (1h 23m left)"); cycled != "off" {
+		t.Fatalf("cycle of armed display = %q, want off", cycled)
+	}
+}
+
+func TestAlertQuietDraftValue_ReportsRemainingTimeForArmedTimer(t *testing.T) {
+	if got := alertQuietDraftValue(time.Time{}); got != "off" {
+		t.Fatalf("zero QuietUntil draft value = %q, want off", got)
+	}
+	if got := alertQuietDraftValue(time.Now().Add(-time.Minute)); got != "off" {
+		t.Fatalf("expired timer draft value = %q, want off", got)
+	}
+	if got := alertQuietDraftValue(time.Now().Add(90 * time.Minute)); !strings.HasPrefix(got, "on (1h ") || !strings.HasSuffix(got, "m left)") {
+		t.Fatalf("armed draft value = %q, want on (1h Nm left)", got)
+	}
+}
+
 func TestAlertSettingsDraft_InheritsGlobalDefaultForWindows_whenWindowOverridesAbsent(t *testing.T) {
 	// Given: runtime evaluation falls back window -> default -> legacy percent,
 	// so the draft must display the inherited default, not the legacy percent.
@@ -571,12 +694,13 @@ func TestAlertSettingsModel_InsertsQWhileEditing_andCancelsOnlyFromNavigation(t 
 	t.Cleanup(viper.Reset)
 	m := newAlertSettingsModel(alertSettingsDraftFromViper())
 	for i := range m.items {
-		m.items[i].cursor = m.items[i].key == "timezone"
+		m.items[i].cursor = m.items[i].key == "cooldown_minutes"
 	}
+	m.items[m.index()].value = ""
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(alertSettingsModel)
 
-	// When: a timezone such as Pacific/Marquesas contains "q".
+	// When: free text can contain "q".
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("q")})
 	m = updated.(alertSettingsModel)
 
