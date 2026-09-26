@@ -20,10 +20,7 @@ struct ProviderCardView: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .top, spacing: 6) {
                 HStack(alignment: .top, spacing: 6) {
-                    Circle()
-                        .fill(provider.status.tint)
-                        .frame(width: 8, height: 8)
-                        .padding(.top, 4)
+                    providerLogo
 
                     HStack(alignment: .firstTextBaseline, spacing: 4) {
                         Text(provider.name)
@@ -76,6 +73,30 @@ struct ProviderCardView: View {
         }
         .onChange(of: isRefreshing) { _, refreshing in
             setBarPulsing(refreshing)
+        }
+    }
+
+    /// Provider service logo where the status dot used to sit — 14pt so the
+    /// mark reads next to the 13pt name without inflating the title row.
+    /// Providers without a logo asset (commandcode, kimi, grok, …) keep the
+    /// old status-colored dot. Status still has a visible signal either way
+    /// via the badge on the card's trailing edge and the card border tint;
+    /// the logo only dims while the first refresh is still loading.
+    @ViewBuilder
+    private var providerLogo: some View {
+        if let logo = ProviderLogo.image(for: provider.name) {
+            Image(nsImage: logo)
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 14, height: 14)
+                .opacity(provider.status == .loading ? 0.45 : 1)
+                .padding(.top, 1)
+                .accessibilityHidden(true)
+        } else {
+            Circle()
+                .fill(provider.status.tint)
+                .frame(width: 8, height: 8)
+                .padding(.top, 4)
         }
     }
 

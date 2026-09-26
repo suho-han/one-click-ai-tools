@@ -52,18 +52,6 @@ func TestThresholdPriority(t *testing.T) {
 	}
 }
 
-func TestQuietHours(t *testing.T) {
-	loc := time.FixedZone("KST", 9*3600)
-	inside := time.Date(2026, 5, 9, 1, 30, 0, 0, loc)
-	outside := time.Date(2026, 5, 9, 9, 0, 0, 0, loc)
-	if !inQuietHours(inside, "00:00-08:00") {
-		t.Fatalf("expected inside quiet hours")
-	}
-	if inQuietHours(outside, "00:00-08:00") {
-		t.Fatalf("expected outside quiet hours")
-	}
-}
-
 func TestCooldownStatePersistence(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "state.json")
 	st := alertState{LastSent: map[string]time.Time{"claude:current": time.Now()}, LastThreshold: map[string]float64{"claude:current": 80}, SnoozedUntil: map[string]time.Time{"global": time.Now().Add(1 * time.Hour)}}
@@ -82,7 +70,7 @@ func TestCooldownStatePersistence(t *testing.T) {
 	}
 }
 
-func TestMaybeSendUsageAlertsWithQuietHoursAndEscalation(t *testing.T) {
+func TestMaybeSendUsageAlertsWithQuietTimerAndEscalation(t *testing.T) {
 	origNotify := notifyFn
 	defer func() { notifyFn = origNotify }()
 	notifyCount := 0
@@ -92,30 +80,30 @@ func TestMaybeSendUsageAlertsWithQuietHoursAndEscalation(t *testing.T) {
 	}
 
 	statePath := filepath.Join(t.TempDir(), "state.json")
+	base := time.Date(2026, 5, 9, 1, 0, 0, 0, time.UTC)
 	cfg := UsageAlertConfig{
 		Enabled:         true,
 		ThresholdPct:    80,
 		CooldownMinutes: 120,
 		StatePath:       statePath,
-		QuietHours:      "00:00-08:00",
-		Timezone:        "Asia/Seoul",
+		QuietUntil:      base.Add(4 * time.Hour),
 		ProviderThreshold: map[string]map[string]float64{
 			"codex": {"5h": 85, "default": 80},
 		},
 	}
 
 	results := []usage.UsageResult{{Provider: "codex", Unit: "percent", Used: "86", Buckets: map[string]string{"5h": "86"}}}
-	// quiet hour -> suppress (<95)
-	nowQuiet := time.Date(2026, 5, 9, 1, 0, 0, 0, time.FixedZone("KST", 9*3600)).UTC()
+	// quiet timer running -> suppress (<95)
+	nowQuiet := base
 	if err := MaybeSendUsageAlerts(results, cfg, nowQuiet); err != nil {
 		t.Fatalf("MaybeSendUsageAlerts failed: %v", err)
 	}
 	if notifyCount != 0 {
-		t.Fatalf("expected no notifications during quiet hours")
+		t.Fatalf("expected no notifications during quiet timer")
 	}
 
-	// non-quiet -> send once
-	now := time.Date(2026, 5, 9, 10, 0, 0, 0, time.FixedZone("KST", 9*3600)).UTC()
+	// timer expired -> send once
+	now := base.Add(5 * time.Hour)
 	if err := MaybeSendUsageAlerts(results, cfg, now); err != nil {
 		t.Fatalf("MaybeSendUsageAlerts failed: %v", err)
 	}
@@ -357,17 +345,16 @@ func TestCriticalBoundaryBypassesQuietAndSnooze(t *testing.T) {
 	}
 
 	statePath := filepath.Join(t.TempDir(), "state.json")
+	now := time.Now()
 	cfg := UsageAlertConfig{
 		Enabled:         true,
 		ThresholdPct:    80,
 		CooldownMinutes: 120,
 		StatePath:       statePath,
 		CriticalPct:     98,
-		QuietHours:      "00:00-23:59",
-		Timezone:        "Asia/Seoul",
+		QuietUntil:      now.Add(1 * time.Hour),
 	}
 
-	now := time.Now()
 	if err := SetSnooze(statePath, "", "", now.Add(1*time.Hour)); err != nil {
 		t.Fatalf("SetSnooze failed: %v", err)
 	}
