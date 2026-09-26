@@ -122,6 +122,9 @@ func TestFetchCommandCodeUsageSuccess(t *testing.T) {
 	if result.Buckets["1m"] != "23.5" {
 		t.Fatalf("monthly bucket = %q, want 23.5", result.Buckets["1m"])
 	}
+	if got := result.BucketResets["1m"]; got != "2026-10-01T00:00:00Z" {
+		t.Fatalf("1m reset = %q, want 2026-10-01T00:00:00Z", got)
+	}
 	if result.BucketResets["5h"] != "1790000000000" {
 		t.Fatalf("5h reset = %q", result.BucketResets["5h"])
 	}
