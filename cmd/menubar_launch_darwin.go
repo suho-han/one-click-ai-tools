@@ -53,6 +53,11 @@ func launchSwiftMenubarHelper(detached bool) (bool, error) {
 		processDone <- cmd.Wait()
 	}()
 	if err := waitForMenubarReady(readyFile, processDone, 10*time.Second); err != nil {
+		// The helper keeps running detached after a failed wait; kill it so
+		// a retry cannot stack a second instance.
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
 		return true, err
 	}
 	fmt.Println("oct menubar ready")
