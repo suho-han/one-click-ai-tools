@@ -18,7 +18,7 @@ var rootCmd = &cobra.Command{
 	Use:     "oct",
 	Short:   "One binary that organizes your AI coding CLIs",
 	Long:    `One binary that organizes your AI coding CLIs — update them all, watch every quota plan, schedule the maintenance.`,
-	Version: "0.1.6-beta.1",
+	Version: "0.1.5",
 	CompletionOptions: cobra.CompletionOptions{
 		DisableDefaultCmd: true,
 	},
