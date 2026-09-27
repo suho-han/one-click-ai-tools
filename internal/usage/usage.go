@@ -594,10 +594,8 @@ func tablePlanLabel(plan string) string {
 
 func usageSummaryDisplay(r UsageResult) string {
 	var parts []string
-	if !isCodexProviderName(r.Provider) {
-		if val, ok := visibleBucketValue(r, "5h"); ok {
-			parts = append(parts, "5h "+val)
-		}
+	if val, ok := visibleBucketValue(r, "5h"); ok {
+		parts = append(parts, "5h "+val)
 	}
 	if val, ok := visibleBucketValue(r, "7d"); ok {
 		parts = append(parts, "7d "+val)

@@ -14,15 +14,6 @@ import (
 	"github.com/suho-han/one-click-ai-tools/internal/netclient"
 )
 
-// isCodexProviderName reports whether a UsageResult.Provider value is the
-// default codex row or one of the codex:<name> account rows. Display code
-// uses it instead of an exact "codex" comparison so account rows keep codex
-// behavior (7d-first buckets, no phantom 5h).
-func isCodexProviderName(provider string) bool {
-	p := strings.ToLower(strings.TrimSpace(provider))
-	return p == "codex" || strings.HasPrefix(p, "codex:")
-}
-
 // CodexLoginEmail reads the account email from the auth.json JWT written by
 // `codex login` under home. "" when no auth.json, token, or email claim is
 // found — callers fall back to asking the user for a name.
@@ -116,8 +107,11 @@ func fetchCodexUsageForHome(ctx context.Context, home string, provider string) U
 	}
 	defer file.Close()
 
-	var lastWeeklyPercent string
+	var lastWeeklyPercent, lastPrimaryPercent string
 	scanner := bufio.NewScanner(file)
+	// Codex rollout lines embed full conversation payloads and can far exceed
+	// the default 64KB scanner token, which would silently truncate the scan.
+	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 	for scanner.Scan() {
 		var line struct {
 			Type    string `json:"type"`
@@ -130,7 +124,8 @@ func fetchCodexUsageForHome(ctx context.Context, home string, provider string) U
 				} `json:"info"`
 				RateLimits struct {
 					Primary struct {
-						UsedPercent float64 `json:"used_percent"`
+						UsedPercent   float64 `json:"used_percent"`
+						WindowMinutes int     `json:"window_minutes"`
 					} `json:"primary"`
 					Secondary struct {
 						UsedPercent   float64 `json:"used_percent"`
@@ -142,30 +137,48 @@ func fetchCodexUsageForHome(ctx context.Context, home string, provider string) U
 
 		if err := json.Unmarshal(scanner.Bytes(), &line); err == nil {
 			if line.Type == "event_msg" && line.Payload.Type == "token_count" {
-				// Codex quota is weekly-only for current backend/account responses; do not surface primary as 5h.
 				if line.Payload.RateLimits.Secondary.UsedPercent > 0 && line.Payload.RateLimits.Secondary.WindowMinutes >= 10080 {
 					lastWeeklyPercent = fmt.Sprintf("%.1f", line.Payload.RateLimits.Secondary.UsedPercent)
+				}
+				// Older logs omit window_minutes on primary; only trust an
+				// explicit window there. Sub-weekly maps to 5h; weekly and
+				// longer fills 7d when the secondary did not already supply it.
+				if p := line.Payload.RateLimits.Primary; p.UsedPercent > 0 && p.WindowMinutes > 0 {
+					if p.WindowMinutes < 10080 {
+						lastPrimaryPercent = fmt.Sprintf("%.1f", p.UsedPercent)
+					} else if lastWeeklyPercent == "" {
+						lastWeeklyPercent = fmt.Sprintf("%.1f", p.UsedPercent)
+					}
 				}
 			}
 		}
 	}
 
-	if lastWeeklyPercent == "" {
+	scanErr := scanner.Err()
+
+	if lastWeeklyPercent == "" && lastPrimaryPercent == "" {
 		result.Status = "ok"
 		result.Used = "0"
-		result.Message = "No usage metrics found in latest session log"
+		if scanErr != nil {
+			result.Message = fmt.Sprintf("Failed to scan latest log: %v", scanErr)
+		} else {
+			result.Message = "No usage metrics found in latest session log"
+		}
 		return result
 	}
 
 	result.Status = "ok"
 	result.Buckets = make(map[string]string)
-	result.Used = lastWeeklyPercent
 	if lastWeeklyPercent != "" {
 		result.Buckets["7d"] = lastWeeklyPercent
 	}
+	if lastPrimaryPercent != "" {
+		result.Buckets["5h"] = lastPrimaryPercent
+	}
+	result.Used = firstNonEmpty(lastWeeklyPercent, lastPrimaryPercent)
 	if osDebugEnabled() {
 		result.SourceDetail = joinSourceDetails(
-			codexBucketSourceDetail(map[string]string{"7d": lastWeeklyPercent}),
+			codexBucketSourceDetail(result.Buckets),
 			codexLocalModelSourceDetail(logFiles, 50),
 		)
 	}
@@ -276,6 +289,9 @@ func fetchCodexBackendUsage(ctx context.Context, base UsageResult, home string) 
 	if result.Buckets["7d"] != "" {
 		result.Used = result.Buckets["7d"]
 		result.Message = "Usage fetched from Codex backend API (weekly bucket)"
+	} else if result.Buckets["5h"] != "" {
+		result.Used = result.Buckets["5h"]
+		result.Message = "Usage fetched from Codex backend API (5h bucket)"
 	} else {
 		if strings.TrimSpace(payload.PlanType) == "" {
 			return base, false
@@ -297,15 +313,24 @@ func addCodexBackendWindow(buckets map[string]string, resets map[string]string, 
 	if window == nil || window.UsedPercent == nil {
 		return
 	}
+	// Sub-weekly windows (the 5h primary reported for Plus/Pro accounts) map to
+	// the 5h bucket; weekly and longer map to 7d. Unknown duration keeps 7d.
+	bucket := "7d"
 	if window.LimitWindowSeconds != nil {
 		minutes := (*window.LimitWindowSeconds + 59) / 60
-		if minutes < 10080 {
-			return
+		if minutes > 0 && minutes < 10080 {
+			bucket = "5h"
 		}
 	}
-	buckets["7d"] = fmt.Sprintf("%.1f", *window.UsedPercent)
+	// Two windows can map to the same bucket (e.g. a 5h primary plus a daily
+	// secondary); keep the first so the later one cannot silently replace the
+	// value and reset time.
+	if _, exists := buckets[bucket]; exists {
+		return
+	}
+	buckets[bucket] = fmt.Sprintf("%.1f", *window.UsedPercent)
 	if window.ResetAt != nil && *window.ResetAt > 0 {
-		resets["7d"] = fmt.Sprintf("%d", *window.ResetAt)
+		resets[bucket] = fmt.Sprintf("%d", *window.ResetAt)
 	}
 }
 
@@ -376,14 +401,6 @@ func codexHomePath() (string, bool) {
 		return "", false
 	}
 	return filepath.Join(userHome, ".codex"), true
-}
-
-func readCodexBackendAuth() (codexBackendAuth, bool) {
-	home, ok := codexHomePath()
-	if !ok {
-		return codexBackendAuth{}, false
-	}
-	return readCodexBackendAuthFromHome(home)
 }
 
 func readCodexBackendAuthFromHome(home string) (codexBackendAuth, bool) {
@@ -516,6 +533,7 @@ func addCodexLocalModelUsage(path string, usage map[string]*codexLocalModelUsage
 
 	currentModel := ""
 	scanner := bufio.NewScanner(file)
+	scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 	for scanner.Scan() {
 		var line struct {
 			Type    string `json:"type"`
