@@ -200,7 +200,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          gh release download "$EFFECTIVE_RELEASE_TAG" -D dist --clobber
+          gh release download "$EFFECTIVE_RELEASE_TAG" -R "$GITHUB_REPOSITORY" -D dist --clobber
 
       # Signs every published asset with a Sigstore build-provenance
       # attestation (artifact digest + builder identity = this repository's
@@ -259,7 +259,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          gh release download "$EFFECTIVE_RELEASE_TAG" -D dist --clobber
+          gh release download "$EFFECTIVE_RELEASE_TAG" -R "$GITHUB_REPOSITORY" -D dist --clobber
           cd dist
           for f in ./*.tar.gz ./*.zip; do
             [ -e "$f" ] || continue
