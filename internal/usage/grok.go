@@ -318,8 +318,12 @@ func fetchGrokBilling(ctx context.Context, endpoint, token string) (*grokBilling
 	}
 	defer resp.Body.Close()
 
+	body, err := readAllCapped(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
 	var parsed grokBillingResponse
-	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+	if err := json.Unmarshal(body, &parsed); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 	return &parsed, nil
@@ -332,8 +336,12 @@ func fetchGrokSettings(ctx context.Context, endpoint, token string) (*grokSettin
 	}
 	defer resp.Body.Close()
 
+	body, err := readAllCapped(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
 	var parsed grokSettingsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+	if err := json.Unmarshal(body, &parsed); err != nil {
 		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
 	return &parsed, nil

@@ -57,6 +57,8 @@ func FetchCopilotLocalUsage(ctx context.Context) UsageResult {
 		}
 
 		scanner := bufio.NewScanner(file)
+		// Session log lines can exceed the default 64KB scanner token.
+		scanner.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 		for scanner.Scan() {
 			var line struct {
 				Type string `json:"type"`
