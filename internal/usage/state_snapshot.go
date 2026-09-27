@@ -22,7 +22,7 @@ func SaveSnapshot(path string, results []UsageResult, now time.Time) error {
 	if path == "" {
 		path = DefaultSnapshotPath()
 	}
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
 	payload := UsageSnapshot{
@@ -33,7 +33,8 @@ func SaveSnapshot(path string, results []UsageResult, now time.Time) error {
 	if err != nil {
 		return err
 	}
-	return writeFileAtomic(path, b, 0644)
+	// 0600: the snapshot reveals per-provider usage patterns to other local users.
+	return writeFileAtomic(path, b, 0600)
 }
 
 // LoadSnapshot reads a snapshot previously written by SaveSnapshot (oct

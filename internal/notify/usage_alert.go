@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -59,7 +60,12 @@ func MaybeSendUsageAlerts(results []usage.UsageResult, cfg UsageAlertConfig, now
 	// Serialize the read-modify-write below across processes: monitor, the
 	// menubar's usage --notify, and the scheduled task can run concurrently
 	// and would otherwise clobber each other's LastSent bookkeeping.
-	if unlock, err := lockStateFile(cfg.StatePath); err == nil {
+	unlock, lockErr := lockStateFile(cfg.StatePath)
+	if lockErr != nil {
+		// Proceed unlocked but say so: a held/unwritable lock means the
+		// read-modify-write below can clobber a concurrent run's LastSent.
+		log.Printf("usage alert: state lock unavailable (%v); continuing unlocked", lockErr)
+	} else {
 		defer unlock()
 	}
 	st, _ := loadState(cfg.StatePath)
@@ -309,14 +315,15 @@ func loadState(path string) (alertState, error) {
 }
 
 func saveState(path string, st alertState) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
 	}
 	b, err := json.MarshalIndent(st, "", "  ")
 	if err != nil {
 		return err
 	}
-	return writeFileAtomic(path, b, 0644)
+	// 0600: the state exposes per-provider usage patterns to other local users.
+	return writeFileAtomic(path, b, 0600)
 }
 
 // writeFileAtomic writes via a temp file + rename so a crash mid-write never
