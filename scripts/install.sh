@@ -6,7 +6,9 @@ VERSION=${OCT_VERSION:-latest}
 INSTALL_DIR=${OCT_INSTALL_DIR:-$HOME/.local/bin}
 BIN_NAME=${OCT_BIN_NAME:-oct}
 SKIP_CHECKSUM=${OCT_INSTALL_SKIP_CHECKSUM:-0}
-REQUIRE_CHECKSUM=${OCT_INSTALL_REQUIRE_CHECKSUM:-0}
+# Checksum verification is fail-closed by default: a release asset with no
+# checksums.txt entry aborts the install. Opt out with =0 (not recommended).
+REQUIRE_CHECKSUM=${OCT_INSTALL_REQUIRE_CHECKSUM:-1}
 DRY_RUN=${OCT_INSTALL_DRY_RUN:-0}
 RUN_CONFIG=${OCT_INSTALL_RUN_CONFIG:-1}
 
@@ -234,11 +236,10 @@ if [ "$SKIP_CHECKSUM" != "1" ]; then
     if [ -n "$expected" ]; then
         actual=$(sha256_file "$archive_path") || fail "failed to compute sha256 for ${asset} (is sha256sum or shasum available?)"
         [ "$actual" = "$expected" ] || fail "checksum mismatch for ${asset}"
-    elif [ "$REQUIRE_CHECKSUM" = "1" ]; then
-        fail "checksum entry not found for ${asset}"
+    elif [ "$REQUIRE_CHECKSUM" != "0" ]; then
+        fail "checksum entry not found for ${asset} (set OCT_INSTALL_REQUIRE_CHECKSUM=0 to install without verification)"
     else
-        ui_note "Checksum entry not found for ${asset}; continuing without checksum verification." >&2
-        ui_note "Set OCT_INSTALL_REQUIRE_CHECKSUM=1 to fail instead." >&2
+        ui_note "Checksum entry not found for ${asset}; continuing without checksum verification (OCT_INSTALL_REQUIRE_CHECKSUM=0)." >&2
     fi
 else
     ui_note "Checksum verification skipped because OCT_INSTALL_SKIP_CHECKSUM=1"
