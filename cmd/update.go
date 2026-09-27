@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"bufio"
+	"bytes"
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
@@ -296,6 +297,9 @@ func installReleaseAsset(ctx context.Context, repo string, asset releaseAsset) e
 	if err := verifyReleaseAssetChecksum(ctx, repo, asset, archivePath); err != nil {
 		return err
 	}
+	if err := verifyReleaseAttestation(ctx, repo, archivePath); err != nil {
+		return err
+	}
 
 	extractDir := filepath.Join(tmpDir, "extract")
 	if err := os.MkdirAll(extractDir, 0o755); err != nil {
@@ -386,6 +390,69 @@ func verifyReleaseAssetChecksum(ctx context.Context, repo string, asset releaseA
 	if actual != expected {
 		return fmt.Errorf("checksum mismatch for %s", asset.Name)
 	}
+	return nil
+}
+
+// errAttestationUnsupported marks an installed gh CLI that predates the
+// `gh attestation` command; it is a skip condition, not a verification failure.
+var errAttestationUnsupported = errors.New("gh CLI predates attestation support")
+
+var (
+	// Seams so tests can fake the gh lookup and the verification subprocess.
+	attestationGhLookup  = func() (string, error) { return exec.LookPath("gh") }
+	runAttestationVerify = func(ctx context.Context, ghPath, artifactPath, repo string) error {
+		ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, ghPath, "attestation", "verify", artifactPath,
+			"-R", repo, "--digest-alg", "sha256")
+		var stderr bytes.Buffer
+		cmd.Stdout = io.Discard
+		cmd.Stderr = &stderr
+		if err := cmd.Run(); err != nil {
+			msg := strings.ToLower(stderr.String())
+			if strings.Contains(msg, "unknown command") || strings.Contains(msg, "did you mean") {
+				return errAttestationUnsupported
+			}
+			return err
+		}
+		return nil
+	}
+)
+
+// verifyReleaseAttestation adds a Sigstore provenance check on top of the
+// checksum: it proves the artifact was built by this repository's GitHub
+// Actions, not merely that the download matches what was published (a
+// checksum proves nothing when the release itself is compromised).
+//
+// Full verification needs the gh CLI, which is not a runtime dependency of
+// oct, so a missing or too-old gh is a skip with a warning -- unless
+// OCT_UPDATE_REQUIRE_ATTESTATION=1 turns the skip into an error, or
+// OCT_UPDATE_SKIP_ATTESTATION=1 silences it entirely. An actual verification
+// failure always aborts the install.
+func verifyReleaseAttestation(ctx context.Context, repo, artifactPath string) error {
+	if os.Getenv("OCT_UPDATE_SKIP_ATTESTATION") == "1" {
+		fmt.Fprintln(os.Stderr, "warning: artifact attestation verification skipped (OCT_UPDATE_SKIP_ATTESTATION=1)")
+		return nil
+	}
+	ghPath, err := attestationGhLookup()
+	if err != nil {
+		return skipReleaseAttestation("gh CLI not found")
+	}
+	if err := runAttestationVerify(ctx, ghPath, artifactPath, repo); err != nil {
+		if errors.Is(err, errAttestationUnsupported) {
+			return skipReleaseAttestation("installed gh CLI predates attestation support")
+		}
+		return fmt.Errorf("artifact attestation verification failed for %s: %w (set OCT_UPDATE_SKIP_ATTESTATION=1 to override)",
+			filepath.Base(artifactPath), err)
+	}
+	return nil
+}
+
+func skipReleaseAttestation(reason string) error {
+	if os.Getenv("OCT_UPDATE_REQUIRE_ATTESTATION") == "1" {
+		return fmt.Errorf("attestation verification required (OCT_UPDATE_REQUIRE_ATTESTATION=1) but unavailable: %s", reason)
+	}
+	fmt.Fprintf(os.Stderr, "warning: skipping artifact attestation verification (%s)\n", reason)
 	return nil
 }
 

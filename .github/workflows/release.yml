@@ -182,9 +182,42 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  attest-release-assets:
+    name: attest release assets
+    needs: [goreleaser, darwin-assets]
+    runs-on: ubuntu-latest
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') ||
+      (github.event_name == 'workflow_dispatch' && inputs.release_mode == 'release')
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          gh release download "$EFFECTIVE_RELEASE_TAG" -D dist --clobber
+
+      # Signs every published asset with a Sigstore provenance attestation
+      # (artifact digest + builder identity = this repository's GitHub
+      # Actions). Verified by the verify-release-assets job below, by
+      # `oct update`, and by scripts/install.sh.
+      - name: Sign artifact attestations
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd dist
+          gh attestation sign ./*.tar.gz ./*.zip checksums.txt -R "$GITHUB_REPOSITORY"
+          gh attestation list -R "$GITHUB_REPOSITORY" --limit 10
+
   verify-release-assets:
     name: verify release assets
-    needs: [goreleaser, darwin-assets]
+    needs: [goreleaser, darwin-assets, attest-release-assets]
     runs-on: ubuntu-latest
     if: >-
       startsWith(github.ref, 'refs/tags/v') ||
@@ -216,6 +249,22 @@ jobs:
         env:
           RELEASE_TAG: ${{ env.EFFECTIVE_RELEASE_TAG }}
           OCT_VERIFY_ASSETS: '1'
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Fail-closed: the release must carry valid provenance attestations from
+      # the attest-release-assets job. A missing or forged attestation fails
+      # the release pipeline instead of shipping unsigned artifacts.
+      - name: Verify artifact attestations
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          gh release download "$EFFECTIVE_RELEASE_TAG" -D dist --clobber
+          cd dist
+          for f in ./*.tar.gz ./*.zip; do
+            [ -e "$f" ] || continue
+            gh attestation verify "$f" -R "$GITHUB_REPOSITORY" --digest-alg sha256
+          done
+        env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Verify release assets (macOS/Linux)
