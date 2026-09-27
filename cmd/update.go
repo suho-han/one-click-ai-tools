@@ -79,7 +79,10 @@ func runSelfUpdate(cmd *cobra.Command, opts selfUpdateOptions) error {
 			fmt.Fprintln(cmd.OutOrStdout(), "oct is managed by Homebrew. Use: brew upgrade one-click-tools")
 			return nil
 		}
-		brew := selfUpdateCommandContext(cmd.Context(), "brew", "upgrade", "one-click-tools")
+		// A stuck brew upgrade would otherwise hang `oct update` forever.
+		brewCtx, cancelBrew := context.WithTimeout(cmd.Context(), 10*time.Minute)
+		defer cancelBrew()
+		brew := selfUpdateCommandContext(brewCtx, "brew", "upgrade", "one-click-tools")
 		brew.Stdout = cmd.OutOrStdout()
 		brew.Stderr = cmd.ErrOrStderr()
 		return brew.Run()
@@ -474,14 +477,20 @@ func extractZipBinary(archivePath, destDir, binaryName string) error {
 }
 
 func writeExtractedBinary(path string, src io.Reader, mode os.FileMode) error {
-	out, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode|0o755)
+	// Perm() strips any setuid/setgid bits from the archive entry; |0o755
+	// guarantees the owner can execute.
+	out, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode.Perm()|0o755)
 	if err != nil {
 		return err
 	}
 	_, copyErr := io.Copy(out, src)
+	syncErr := out.Sync()
 	closeErr := out.Close()
 	if copyErr != nil {
 		return copyErr
+	}
+	if syncErr != nil {
+		return syncErr
 	}
 	return closeErr
 }
@@ -509,25 +518,37 @@ func replaceExecutable(src, target string) error {
 	if err != nil {
 		return err
 	}
-	tmpTarget := target + ".new"
 	in, err := os.Open(src)
 	if err != nil {
 		return err
 	}
 	defer in.Close()
 
-	out, err := os.OpenFile(tmpTarget, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, info.Mode()|0o755)
+	// A unique temp name instead of target+".new" so two concurrent updates
+	// cannot interleave writes into the same file.
+	tmp, err := os.CreateTemp(filepath.Dir(target), filepath.Base(target)+".tmp-*")
 	if err != nil {
 		return err
 	}
-	if _, err := io.Copy(out, in); err != nil {
-		out.Close()
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+
+	if _, err := io.Copy(tmp, in); err != nil {
+		tmp.Close()
 		return err
 	}
-	if err := out.Close(); err != nil {
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
 		return err
 	}
-	return os.Rename(tmpTarget, target)
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	// Perm() strips setuid/setgid from the source; |0o755 keeps it executable.
+	if err := os.Chmod(tmpName, info.Mode().Perm()|0o755); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, target)
 }
 
 func normalizeReleaseTag(version string) string {
