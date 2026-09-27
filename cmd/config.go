@@ -561,15 +561,39 @@ func writeConfig() error {
 		configPath = filepath.Join(home, ".oct", "config.yaml")
 	}
 
-	err := os.MkdirAll(filepath.Dir(configPath), 0o700)
+	return writeViperConfigAtomic(configPath)
+}
+
+// writeViperConfigAtomic serializes viper's config to a temp file in the
+// target directory and renames it into place. The config holds API tokens,
+// so the temp file is created owner-only instead of relying on a post-write
+// chmod, and the rename keeps a crash from leaving a truncated config.yaml.
+func writeViperConfigAtomic(configPath string) error {
+	if err := os.MkdirAll(filepath.Dir(configPath), 0o700); err != nil {
+		return err
+	}
+	// Viper picks the config format from the file extension, so the temp
+	// file must carry the same extension as the target.
+	ext := filepath.Ext(configPath)
+	if ext == "" {
+		ext = ".yaml"
+	}
+	tmp, err := os.CreateTemp(filepath.Dir(configPath), filepath.Base(configPath)+".tmp-*"+ext)
 	if err != nil {
 		return err
 	}
-
-	if err := viper.WriteConfigAs(configPath); err != nil {
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if err := tmp.Close(); err != nil {
 		return err
 	}
-	return os.Chmod(configPath, 0o600)
+	if err := viper.WriteConfigAs(tmpName); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpName, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmpName, configPath)
 }
 
 func runInteractiveConfig() ([]string, []string, bool, *pendingAccountAction, error) {
