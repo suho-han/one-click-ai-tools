@@ -37,10 +37,27 @@ CI release job는 GitHub Releases를 canonical distribution path로 사용합니
 - `push` on `v*` tags
 - `workflow_dispatch` with `release_mode` (`snapshot` / `release`) and `git_ref=vX.Y.Z`
 
-`verify-release-assets` job에서 아래 순서로 검증합니다.
+`attest-release-assets` job이 모든 release asset에 Sigstore provenance
+attestation을 서명합니다 (`gh attestation sign`, `id-token: write` +
+`attestations: write` 권한 필요). attestation은 "이 artifact가 이
+저장소의 GitHub Actions에서 빌드되었다"는 것을 증명하며, checksum이
+증명하지 못하는 "릴리스 자체가 변조되지 않았다"를 담당합니다.
+
+`verify-release-assets` job에서 아래 순서로 검증합니다 (attest job
+실패 시 verify job은 실행되지 않습니다).
 1. `bash scripts/verify-release-integrity.sh` (`RELEASE_TAG=${EFFECTIVE_RELEASE_TAG}`)
-2. release asset presence check (`gh release view ... --json assets`)
-3. `checksums.txt` 존재 확인
+2. artifact attestation 검증 (`gh attestation verify`, fail-closed)
+3. release asset presence check (`gh release view ... --json assets`)
+4. `checksums.txt` 존재 확인
+
+클라이언트 측 검증:
+- `oct update`: checksum 검증 후 `gh` CLI가 있으면 attestation 검증
+  (best-effort). `gh` 미설정/구버전은 경고 후 진행하고, 검증 실패는
+  중단합니다. 강제: `OCT_UPDATE_REQUIRE_ATTESTATION=1`, 비활성:
+  `OCT_UPDATE_SKIP_ATTESTATION=1`.
+- `scripts/install.sh`: 동일 정책. 강제:
+  `OCT_INSTALL_REQUIRE_ATTESTATION=1`, 비활성:
+  `OCT_INSTALL_SKIP_ATTESTATION=1`.
 
 수동 재실행 경로:
 - GitHub Actions → `goreleaser` → `Run workflow`

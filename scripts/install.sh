@@ -9,6 +9,8 @@ SKIP_CHECKSUM=${OCT_INSTALL_SKIP_CHECKSUM:-0}
 # Checksum verification is fail-closed by default: a release asset with no
 # checksums.txt entry aborts the install. Opt out with =0 (not recommended).
 REQUIRE_CHECKSUM=${OCT_INSTALL_REQUIRE_CHECKSUM:-1}
+SKIP_ATTESTATION=${OCT_INSTALL_SKIP_ATTESTATION:-0}
+REQUIRE_ATTESTATION=${OCT_INSTALL_REQUIRE_ATTESTATION:-0}
 DRY_RUN=${OCT_INSTALL_DRY_RUN:-0}
 RUN_CONFIG=${OCT_INSTALL_RUN_CONFIG:-1}
 
@@ -243,6 +245,28 @@ if [ "$SKIP_CHECKSUM" != "1" ]; then
     fi
 else
     ui_note "Checksum verification skipped because OCT_INSTALL_SKIP_CHECKSUM=1"
+fi
+
+# Artifact attestation: proves the archive was built by this repository's
+# GitHub Actions (Sigstore provenance), on top of the checksum which only
+# proves the download matches whatever was published. Best-effort: the gh
+# CLI is not an install prerequisite, so a missing or too-old gh is a skip
+# unless OCT_INSTALL_REQUIRE_ATTESTATION=1. An actual verification failure
+# always aborts the install.
+if [ "$SKIP_ATTESTATION" = "1" ]; then
+    ui_note "Attestation verification skipped because OCT_INSTALL_SKIP_ATTESTATION=1"
+elif command -v gh >/dev/null 2>&1 && gh attestation --help 2>/dev/null | grep -q "verify"; then
+    ui_step "Verifying artifact attestation"
+    if gh attestation verify "$archive_path" -R "$REPO" --digest-alg sha256 >/dev/null 2>&1; then
+        ui_line "│  attestation: verified (Sigstore provenance from ${REPO})"
+    else
+        fail "artifact attestation verification failed for ${asset} (set OCT_INSTALL_SKIP_ATTESTATION=1 to override)"
+    fi
+elif [ "$REQUIRE_ATTESTATION" = "1" ]; then
+    fail "attestation verification required (OCT_INSTALL_REQUIRE_ATTESTATION=1) but gh CLI with attestation support is unavailable"
+else
+    ui_note "Skipping artifact attestation verification (gh CLI not found or too old)."
+    ui_note "Set OCT_INSTALL_REQUIRE_ATTESTATION=1 to fail instead." >&2
 fi
 
 ui_step "Extracting archive"
