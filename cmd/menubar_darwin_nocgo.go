@@ -2,7 +2,10 @@
 
 package cmd
 
-import "errors"
+import (
+	"errors"
+	"time"
+)
 
 func runMenubar() error {
 	return errors.New("menubar requires cgo-enabled darwin build")
@@ -15,3 +18,7 @@ func startMenubarDetached() error {
 func stopMenubarInstances() (menubarStopResult, error) {
 	return menubarStopResult{}, errors.New("menubar requires cgo-enabled darwin build")
 }
+
+func findMenubarInstancePIDs() []int { return nil }
+
+func waitForMenubarExit(pids []string, timeout time.Duration) {}

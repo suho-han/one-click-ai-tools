@@ -1,12 +1,14 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -25,6 +27,9 @@ func warnLegacyMenubarFallback(w io.Writer) {
 var (
 	runMenubarCommand           = runMenubar
 	startMenubarDetachedCommand = startMenubarDetached
+	findMenubarInstancePIDsCmd  = findMenubarInstancePIDs
+	stopMenubarInstancesCmd     = stopMenubarInstances
+	waitForMenubarExitCmd       = waitForMenubarExit
 )
 
 type menubarDoctorReport struct {
@@ -50,6 +55,15 @@ var menubarCmd = &cobra.Command{
 	Short:        "🖥️ Run macOS menu bar app (status item)",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		proceed, err := handleExistingMenubarInstance(cmd)
+		if err != nil {
+			return err
+		}
+		if !proceed {
+			fmt.Fprintln(cmd.OutOrStdout(), "keeping the running menubar instance")
+			return nil
+		}
+
 		if menubarDaemon {
 			if err := startMenubarDetachedCommand(); err != nil {
 				return fmt.Errorf("menubar daemon start failed: %w", err)
@@ -158,6 +172,52 @@ var menubarStopCmd = &cobra.Command{
 		fmt.Fprintf(cmd.OutOrStdout(), "stopped %d menubar instance(s): %s\n", result.Stopped, strings.Join(result.PIDs, ", "))
 		return nil
 	},
+}
+
+// handleExistingMenubarInstance implements the menubar single-instance
+// policy: when an instance is already running, ask whether to replace it
+// (Enter defaults to yes) and stop it before proceeding. The detached
+// legacy child skips this — its parent already resolved the instance.
+func handleExistingMenubarInstance(cmd *cobra.Command) (bool, error) {
+	if os.Getenv("OCT_MENUBAR_CHILD") == "1" {
+		return true, nil
+	}
+	pids := findMenubarInstancePIDsCmd()
+	if len(pids) == 0 {
+		return true, nil
+	}
+	if !confirmMenubarRestart(cmd.OutOrStdout(), cmd.InOrStdin(), pids) {
+		return false, nil
+	}
+	result, err := stopMenubarInstancesCmd()
+	if err != nil {
+		return false, fmt.Errorf("failed to stop the running menubar: %w", err)
+	}
+	if len(result.PIDs) > 0 {
+		waitForMenubarExitCmd(result.PIDs, 3*time.Second)
+	}
+	return true, nil
+}
+
+// confirmMenubarRestart asks whether to replace the running menubar
+// instance. An empty answer (Enter) or EOF takes the default, yes.
+func confirmMenubarRestart(out io.Writer, in io.Reader, pids []int) bool {
+	fmt.Fprintf(out, "menubar is already running (pid %s).\n", strings.Trim(strings.Join(strings.Fields(fmt.Sprint(pids)), ", "), "[]"))
+	reader := bufio.NewReader(in)
+	for {
+		fmt.Fprint(out, "Stop it and start a new instance? [Y/n] ")
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			// No interactive stdin (daemon start, scripts): take the default.
+			return true
+		}
+		switch strings.ToLower(strings.TrimSpace(line)) {
+		case "", "y", "yes":
+			return true
+		case "n", "no":
+			return false
+		}
+	}
 }
 
 func collectMenubarDoctorReport() (menubarDoctorReport, error) {

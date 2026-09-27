@@ -62,6 +62,10 @@ func startMenubarDetached() error {
 		cmdArgs = append(cmdArgs, "--legacy")
 	}
 	cmd := exec.Command(execPath, cmdArgs...)
+	// The parent already resolved any running instance; the child must not
+	// re-run the single-instance check (its stdin is /dev/null, so the
+	// prompt would silently take the default and re-kill, e.g. the parent).
+	cmd.Env = append(os.Environ(), "OCT_MENUBAR_CHILD=1")
 	cmd.Stdout = devNull
 	cmd.Stderr = devNull
 	cmd.Stdin = devNull
