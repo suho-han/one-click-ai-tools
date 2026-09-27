@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -279,7 +280,13 @@ func TestDescribeCursorCredential(t *testing.T) {
 	home := isolateCredentialHome(t)
 	stubCredentialCommands(t, nil, nil)
 
+	// Write the fixture where cursorAuthPaths looks for it on this host:
+	// ~/.config/cursor on POSIX, %APPDATA%\cursor on Windows.
 	authDir := filepath.Join(home, ".config", "cursor")
+	if runtime.GOOS == "windows" {
+		authDir = filepath.Join(t.TempDir(), "cursor")
+		t.Setenv("APPDATA", filepath.Dir(authDir))
+	}
 	if err := os.MkdirAll(authDir, 0o755); err != nil {
 		t.Fatal(err)
 	}

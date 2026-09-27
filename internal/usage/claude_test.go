@@ -178,11 +178,19 @@ func TestFetchClaudeUsageFallsBackToCLIWhenAPINoUtilization(t *testing.T) {
 }
 
 func TestFetchClaudeUsageRateLimitedBuckets(t *testing.T) {
+	// The simulated 429 records a backoff via markClaudeRateLimited. On
+	// Windows os.UserCacheDir ignores HOME/USERPROFILE, so without this
+	// redirect the backoff lands in the real user cache and poisons later
+	// tests in the same process.
+	tmp := t.TempDir()
+	origPath := claudeUsageCachePath
+	claudeUsageCachePath = func() string { return filepath.Join(tmp, "claude-usage.json") }
+	t.Cleanup(func() { claudeUsageCachePath = origPath })
+
 	oldClient := netclient.DefaultClient.HTTPClient
 	oldRetries := netclient.DefaultClient.MaxRetries
 
 	t.Setenv("CLAUDE_API_TOKEN", "dummy-token")
-	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
 	t.Setenv("USERPROFILE", tmp)
 	cache := fmt.Sprintf(`{
@@ -351,6 +359,12 @@ func TestFetchClaudeUsage_FallbackToCredentialsFile(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
 	t.Setenv("USERPROFILE", tmp)
+
+	// Keep the backoff lookup off the real user cache (see the rate-limit
+	// test above): a stray backoff entry would turn this into a warn.
+	origPath := claudeUsageCachePath
+	claudeUsageCachePath = func() string { return filepath.Join(tmp, "claude-usage.json") }
+	t.Cleanup(func() { claudeUsageCachePath = origPath })
 
 	// Create .claude directory and credentials file
 	claudeDir := filepath.Join(tmp, ".claude")
