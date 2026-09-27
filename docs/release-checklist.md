@@ -38,8 +38,9 @@ CI release job는 GitHub Releases를 canonical distribution path로 사용합니
 - `workflow_dispatch` with `release_mode` (`snapshot` / `release`) and `git_ref=vX.Y.Z`
 
 `attest-release-assets` job이 모든 release asset에 Sigstore provenance
-attestation을 서명합니다 (`gh attestation sign`, `id-token: write` +
-`attestations: write` 권한 필요). attestation은 "이 artifact가 이
+attestation을 서명합니다 (`actions/attest-build-provenance` 액션,
+`id-token: write` + `attestations: write` 권한 필요. `gh attestation
+sign`은 최신 gh CLI에서 제거되어 액션으로 서명합니다). attestation은 "이 artifact가 이
 저장소의 GitHub Actions에서 빌드되었다"는 것을 증명하며, checksum이
 증명하지 못하는 "릴리스 자체가 변조되지 않았다"를 담당합니다.
 

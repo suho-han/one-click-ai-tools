@@ -202,18 +202,19 @@ jobs:
           mkdir -p dist
           gh release download "$EFFECTIVE_RELEASE_TAG" -D dist --clobber
 
-      # Signs every published asset with a Sigstore provenance attestation
-      # (artifact digest + builder identity = this repository's GitHub
-      # Actions). Verified by the verify-release-assets job below, by
-      # `oct update`, and by scripts/install.sh.
-      - name: Sign artifact attestations
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          cd dist
-          gh attestation sign ./*.tar.gz ./*.zip checksums.txt -R "$GITHUB_REPOSITORY"
-          gh attestation list -R "$GITHUB_REPOSITORY" --limit 10
+      # Signs every published asset with a Sigstore build-provenance
+      # attestation (artifact digest + builder identity = this repository's
+      # GitHub Actions). Verified by the verify-release-assets job below, by
+      # `oct update`, and by scripts/install.sh. Uses the official attest
+      # action: `gh attestation sign` was removed from recent gh CLI
+      # releases, so it cannot be relied on in CI.
+      - name: Generate build provenance attestations
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/checksums.txt
 
   verify-release-assets:
     name: verify release assets
