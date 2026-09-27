@@ -3,6 +3,7 @@ package schedule
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path"
 	"strings"
 )
@@ -42,6 +43,12 @@ func (l *Linux) Enable(task Task, interval string, hour int) error {
 	defer unlock()
 
 	out, err := linuxCrontabList()
+	if err != nil && !isNoCrontabError(err) {
+		// Any list failure other than "no crontab yet" must abort the
+		// rewrite: proceeding would replace every existing entry with only
+		// the oct line.
+		return fmt.Errorf("list crontab: %w", err)
+	}
 	if err != nil {
 		out = []byte{}
 	}
@@ -139,4 +146,14 @@ func cronMarker(task Task) string {
 
 func shellQuote(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\"'\"'") + "'"
+}
+
+// isNoCrontabError reports whether err from `crontab -l` means the user has
+// no crontab yet (exit 1 with a "no crontab" message on stderr).
+func isNoCrontabError(err error) bool {
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok || exitErr.ExitCode() != 1 {
+		return false
+	}
+	return strings.Contains(strings.ToLower(string(exitErr.Stderr)), "no crontab")
 }

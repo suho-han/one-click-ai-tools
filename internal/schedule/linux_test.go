@@ -2,6 +2,7 @@ package schedule
 
 import (
 	"errors"
+	"os/exec"
 	"strings"
 	"testing"
 )
@@ -172,5 +173,66 @@ func TestShellQuotePreventsShellExpansion(t *testing.T) {
 	want := `'/tmp/oct'"'"'s $HOME ` + "`touch nope`" + `'`
 	if got != want {
 		t.Fatalf("shellQuote() = %q, want %q", got, want)
+	}
+}
+
+func TestLinuxEnableAbortsWhenCrontabListFails(t *testing.T) {
+	origList := linuxCrontabList
+	origWrite := linuxCrontabWrite
+	t.Cleanup(func() {
+		linuxCrontabList = origList
+		linuxCrontabWrite = origWrite
+	})
+
+	linuxCrontabList = func() ([]byte, error) {
+		return nil, errors.New("crontab: permission denied")
+	}
+	writeCalled := false
+	linuxCrontabWrite = func(content string) error {
+		writeCalled = true
+		return nil
+	}
+
+	l := &Linux{}
+	if err := l.Enable(AgentUpdateTask, "daily", 3); err == nil {
+		t.Fatalf("expected Enable to fail when crontab -l fails")
+	}
+	if writeCalled {
+		t.Fatalf("crontab must not be rewritten after a list failure")
+	}
+}
+
+func TestLinuxEnableTreatsNoCrontabAsEmpty(t *testing.T) {
+	origExec := executablePath
+	origHome := homeDirPath
+	origList := linuxCrontabList
+	origWrite := linuxCrontabWrite
+	t.Cleanup(func() {
+		executablePath = origExec
+		homeDirPath = origHome
+		linuxCrontabList = origList
+		linuxCrontabWrite = origWrite
+	})
+
+	executablePath = func() (string, error) { return "/tmp/oct-under-test", nil }
+	homeDirPath = func() (string, error) { return "/tmp/test-home", nil }
+	linuxCrontabList = func() ([]byte, error) {
+		// Mirror what `crontab -l` produces via exec.Output() when the user
+		// has no crontab: exit 1 with the message on stderr.
+		cmd := exec.Command("sh", "-c", "echo 'no crontab for user' >&2; exit 1")
+		return cmd.Output()
+	}
+	var written string
+	linuxCrontabWrite = func(content string) error {
+		written = content
+		return nil
+	}
+
+	l := &Linux{}
+	if err := l.Enable(AgentUpdateTask, "daily", 3); err != nil {
+		t.Fatalf("Enable returned error: %v", err)
+	}
+	if !strings.Contains(written, cronMarker(AgentUpdateTask)) {
+		t.Fatalf("expected the managed entry to be installed, got %q", written)
 	}
 }
