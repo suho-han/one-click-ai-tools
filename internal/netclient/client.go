@@ -148,7 +148,15 @@ func (c *Client) GetJSON(ctx context.Context, url string, headers map[string]str
 }
 
 func truncateBody(s string, max int) string {
-	s = strings.TrimSpace(s)
+	// Drop control characters (newlines, ANSI escapes, NULs): the excerpt
+	// lands in user-visible error strings and notifications, and the remote
+	// endpoint must not be able to shape that output.
+	s = strings.Map(func(r rune) rune {
+		if r < 0x20 || r == 0x7f {
+			return -1
+		}
+		return r
+	}, strings.TrimSpace(s))
 	if len(s) <= max {
 		return s
 	}
