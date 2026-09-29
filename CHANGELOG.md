@@ -2,6 +2,130 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+> Version numbering reset to 0.1.x when the project moved to the `one-click-ai-tools` repository (July 2026). Entries below continue from the 0.4.x line of the previous `one-click-tools` repository.
+
+### [0.1.6](https://github.com/suho-han/one-click-ai-tools/compare/v0.1.5...v0.1.6) (2026-09-30)
+
+
+### Bug Fixes
+
+* **menubar:** bound every helper wait so one hung refresh cannot wedge the menubar ([6e6d837](https://github.com/suho-han/one-click-ai-tools/commit/6e6d837))
+* **usage:** make the provider fetch deadline tunable via OCT_USAGE_FETCH_TIMEOUT ([4287f80](https://github.com/suho-han/one-click-ai-tools/commit/4287f80))
+
+### [0.1.5](https://github.com/suho-han/one-click-ai-tools/compare/v0.1.4...v0.1.5) (2026-09-27)
+
+Stable cut of the standalone-provider and menubar-helper era; supersedes the 0.1.6-beta.1–4 pre-releases.
+
+
+### Features
+
+* **usage:** standalone provider support ([171d8d0](https://github.com/suho-han/one-click-ai-tools/commit/171d8d0))
+* **usage:** add Kimi Code, Qwen Code, and MiniMax providers ([2fa9f78](https://github.com/suho-han/one-click-ai-tools/commit/2fa9f78))
+* **usage:** add zai, deepseek, openrouter, and grok plan providers ([4e8a5ee](https://github.com/suho-han/one-click-ai-tools/commit/4e8a5ee))
+* **config:** multi-account support for codex, kimi, qwen, and grok ([287663c](https://github.com/suho-han/one-click-ai-tools/commit/287663c))
+* **release:** ship the Swift menubar helper in darwin tarballs ([7170b06](https://github.com/suho-han/one-click-ai-tools/commit/7170b06))
+* **update:** install the menubar helper on self-update ([e79da20](https://github.com/suho-han/one-click-ai-tools/commit/e79da20))
+* **doctor:** add credentials subcommand reporting per-provider credential sources ([b563cb2](https://github.com/suho-han/one-click-ai-tools/commit/b563cb2))
+* **usage:** add waybar/polybar/swiftbar statusline output modes ([9d2267a](https://github.com/suho-han/one-click-ai-tools/commit/9d2267a))
+* **alert:** add interactive alert setup ([b471ae9](https://github.com/suho-han/one-click-ai-tools/commit/b471ae9))
+* **alert:** replace the quiet-hours window with a one-shot quiet timer ([ca9d8f9](https://github.com/suho-han/one-click-ai-tools/commit/ca9d8f9))
+* **menubar:** merge alert settings into the configuration screen ([d177413](https://github.com/suho-han/one-click-ai-tools/commit/d177413))
+* **menubar:** add restart helper action ([ae414d9](https://github.com/suho-han/one-click-ai-tools/commit/ae414d9))
+* **menubar:** show provider service logos on provider cards ([3d0ce7a](https://github.com/suho-han/one-click-ai-tools/commit/3d0ce7a))
+* **menubar:** confirm replacing a running instance ([c58cf1c](https://github.com/suho-han/one-click-ai-tools/commit/c58cf1c))
+* **cli:** add shell completion management ([0200f7d](https://github.com/suho-han/one-click-ai-tools/commit/0200f7d))
+* **config:** add --payload flag for config update ([ea8686f](https://github.com/suho-han/one-click-ai-tools/commit/ea8686f))
+* **config:** expose menubar_refresh_interval in config list --json ([cc6db5b](https://github.com/suho-han/one-click-ai-tools/commit/cc6db5b))
+* **usage:** cache claude usage with 429 backoff ([a947051](https://github.com/suho-han/one-click-ai-tools/commit/a947051))
+* **usage:** record copilot quota reset time ([db1e3fa](https://github.com/suho-han/one-click-ai-tools/commit/db1e3fa))
+* **usage:** map the codex primary window to 5h and weekly buckets ([5b4f683](https://github.com/suho-han/one-click-ai-tools/commit/5b4f683))
+
+
+### Bug Fixes
+
+* **update:** fail closed on self-update checksum verification ([278c0a6](https://github.com/suho-han/one-click-ai-tools/commit/278c0a6))
+* **update:** bound brew upgrade and harden binary replacement ([ea0d58a](https://github.com/suho-han/one-click-ai-tools/commit/ea0d58a))
+* **install:** fail closed when the checksum entry is missing ([59cd332](https://github.com/suho-han/one-click-ai-tools/commit/59cd332))
+* **config:** write config atomically with owner-only permissions ([242c1cf](https://github.com/suho-han/one-click-ai-tools/commit/242c1cf))
+* **config:** split comma-joined tool entries in config surfaces ([4ea2d2f](https://github.com/suho-han/one-click-ai-tools/commit/4ea2d2f))
+* **schedule:** propagate setup errors and write the launchd plist atomically ([1156073](https://github.com/suho-han/one-click-ai-tools/commit/1156073))
+* **schedule:** lock crontab updates and report launchctl failures honestly ([79d4a96](https://github.com/suho-han/one-click-ai-tools/commit/79d4a96))
+* **notify:** serialize alert state writes across processes ([526ee53](https://github.com/suho-han/one-click-ai-tools/commit/526ee53))
+* **menubar:** don't auto-show the settings window at launch ([b1f1f7c](https://github.com/suho-han/one-click-ai-tools/commit/b1f1f7c))
+* **menubar:** warn when falling back to the legacy menubar ([3c0df7d](https://github.com/suho-han/one-click-ai-tools/commit/3c0df7d))
+* **macos:** pipe-capacity-safe subprocess handling and async settings I/O ([888c033](https://github.com/suho-han/one-click-ai-tools/commit/888c033))
+* **usage:** enforce context deadlines across fetch and install ([99e2b78](https://github.com/suho-han/one-click-ai-tools/commit/99e2b78))
+* **usage:** parse the Claude CLI usage fallback ([64887fe](https://github.com/suho-han/one-click-ai-tools/commit/64887fe))
+* **usage:** read the Antigravity keychain token and parse its quota output ([da3607c](https://github.com/suho-han/one-click-ai-tools/commit/da3607c), [3870e01](https://github.com/suho-han/one-click-ai-tools/commit/3870e01))
+* **usage:** treat kimi empty usage payload as warn and short-circuit on expired oauth ([514ceea](https://github.com/suho-han/one-click-ai-tools/commit/514ceea), [db17d4e](https://github.com/suho-han/one-click-ai-tools/commit/db17d4e))
+* **quota:** subtract cached tokens from codex input and honor CODEX_HOME ([3c3f489](https://github.com/suho-han/one-click-ai-tools/commit/3c3f489))
+* **netclient:** reset POST bodies via GetBody on retries ([b0c9077](https://github.com/suho-han/one-click-ai-tools/commit/b0c9077))
+* **netclient:** strip control characters from error body excerpts ([386ca3f](https://github.com/suho-han/one-click-ai-tools/commit/386ca3f))
+* **release:** sign and verify release asset attestations ([b996e69](https://github.com/suho-han/one-click-ai-tools/commit/b996e69))
+
+
+### Code Refactoring
+
+* **cli:** remove the legacy quota and completion commands ([e62ed51](https://github.com/suho-han/one-click-ai-tools/commit/e62ed51))
+* **usage:** always show remaining quota (drop usage_display_mode) ([c3f4f3a](https://github.com/suho-han/one-click-ai-tools/commit/c3f4f3a))
+
+### [0.1.4](https://github.com/suho-han/one-click-ai-tools/compare/v0.1.3...v0.1.4) (2026-08-19)
+
+
+### Bug Fixes
+
+* **menubar:** make the Swift menubar honor usage_display_mode consistently ([ec030ab](https://github.com/suho-han/one-click-ai-tools/commit/ec030ab))
+* **menubar:** make the legacy menubar title and body honor usage_display_mode ([d54e843](https://github.com/suho-han/one-click-ai-tools/commit/d54e843))
+* **monitor:** resolve display mode via a shared helper and label the used/remaining column ([5ee4876](https://github.com/suho-han/one-click-ai-tools/commit/5ee4876))
+* **usage:** unify used/remaining display mode behind shared helpers ([0a646a9](https://github.com/suho-han/one-click-ai-tools/commit/0a646a9))
+
+### [0.1.3](https://github.com/suho-han/one-click-ai-tools/compare/v0.1.2...v0.1.3) (2026-08-19)
+
+
+### Features
+
+* **release:** auto-release on main push when commits are release-worthy ([1874ba7](https://github.com/suho-han/one-click-ai-tools/commit/1874ba7))
+* **release:** add commit-message-driven automatic version bump ([78bf945](https://github.com/suho-han/one-click-ai-tools/commit/78bf945))
+* **opencode:** surface the 1m quota bucket and replace log parsing with OpenCode Go API calls ([8b2189e](https://github.com/suho-han/one-click-ai-tools/commit/8b2189e), [70047eb](https://github.com/suho-han/one-click-ai-tools/commit/70047eb))
+* **claude:** add OAuth token expiry detection ([364ac42](https://github.com/suho-han/one-click-ai-tools/commit/364ac42))
+* **menubar:** add configurable title mode ([56d1c82](https://github.com/suho-han/one-click-ai-tools/commit/56d1c82))
+* **menubar:** add accessibility labels and a title mode picker ([06aec1b](https://github.com/suho-han/one-click-ai-tools/commit/06aec1b))
+
+
+### Bug Fixes
+
+* **menubar:** show the OpenCode monthly (1m) quota bucket ([8f5507e](https://github.com/suho-han/one-click-ai-tools/commit/8f5507e))
+
+
+### Documentation
+
+* document the push-batching policy and auto-release disabled status ([cd464ae](https://github.com/suho-han/one-click-ai-tools/commit/cd464ae))
+
+### [0.1.2](https://github.com/suho-han/one-click-ai-tools/compare/v0.1.1...v0.1.2) (2026-08-04)
+
+
+### Features
+
+* **usage:** add compact remaining output ([530fea7](https://github.com/suho-han/one-click-ai-tools/commit/530fea7))
+* **usage:** improve quota sources ([6bf2dc0](https://github.com/suho-han/one-click-ai-tools/commit/6bf2dc0))
+* **update:** add a GitHub release self-updater ([2a94ab6](https://github.com/suho-han/one-click-ai-tools/commit/2a94ab6))
+* **update:** add native updater paths ([5e6c3d1](https://github.com/suho-han/one-click-ai-tools/commit/5e6c3d1))
+* **settings:** support provider ordering ([bc1baac](https://github.com/suho-han/one-click-ai-tools/commit/bc1baac))
+* **schedule:** add a fixed interval config command ([b47f6ba](https://github.com/suho-han/one-click-ai-tools/commit/b47f6ba))
+* **installer:** run config after install ([6f02a04](https://github.com/suho-han/one-click-ai-tools/commit/6f02a04))
+
+
+### Bug Fixes
+
+* **menubar:** keep the status title as oct ([3f4b336](https://github.com/suho-han/one-click-ai-tools/commit/3f4b336))
+* **menubar:** show legacy Codex hourly usage ([dd28f2c](https://github.com/suho-han/one-click-ai-tools/commit/dd28f2c))
+* **usage:** improve quota reset reporting ([e45a6cd](https://github.com/suho-han/one-click-ai-tools/commit/e45a6cd))
+* **alert:** validate usage alert config ([addd82f](https://github.com/suho-han/one-click-ai-tools/commit/addd82f))
+
+### 0.1.1 (2026-07-14)
+
+First release of the renamed `one-click-ai-tools` project; the version line restarts at 0.1.x after the 0.4.x line of `one-click-tools`.
+
 ### [0.4.19](https://github.com/suho-han/one-click-tools/compare/v0.4.18...v0.4.19) (2026-07-05)
 
 
