@@ -9,6 +9,7 @@ final class StatusBarController: NSObject, NSApplicationDelegate {
     private let configurationStore = ConfigurationStore()
     private lazy var viewModel = UsageViewModel(service: OctCLIService(), configurationStore: configurationStore)
     private var cancellables: Set<AnyCancellable> = []
+    private let releaseMonitor = ReleaseUpdateMonitor()
     private var updateStatusItem: UpdateStatusItemController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -18,8 +19,9 @@ final class StatusBarController: NSObject, NSApplicationDelegate {
         bindSnapshot()
         suppressAutoShownSettingsWindow()
         signalReadyIfRequested()
-        updateStatusItem = UpdateStatusItemController()
+        updateStatusItem = UpdateStatusItemController(monitor: releaseMonitor)
         updateStatusItem?.start()
+        releaseMonitor.start()
     }
 
     /// SwiftUI auto-shows the Settings window at launch when the app has no
@@ -60,7 +62,7 @@ final class StatusBarController: NSObject, NSApplicationDelegate {
         popover.behavior = .transient
         popover.animates = true
         popover.contentSize = PopoverView.preferredSize(for: UsageSnapshot.placeholder.providers.count)
-        popover.contentViewController = NSHostingController(rootView: PopoverView(viewModel: viewModel))
+        popover.contentViewController = NSHostingController(rootView: PopoverView(viewModel: viewModel, releaseMonitor: releaseMonitor))
     }
 
     private func bindSnapshot() {
