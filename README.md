@@ -49,6 +49,9 @@ curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/sc
 
 # 메뉴바 자동 실행 건너뛰기
 curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | OCT_INSTALL_RUN_MENUBAR=0 sh
+
+# 이미 설치된 바이너리 제거 (재설치 전)
+rm -f ~/.local/bin/oct ~/.local/bin/OctMenubarApp
 ```
 
 </details>

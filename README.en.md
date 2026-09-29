@@ -49,6 +49,9 @@ curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/sc
 
 # Skip menubar auto-launch
 curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | OCT_INSTALL_RUN_MENUBAR=0 sh
+
+# Remove an existing install (before reinstalling)
+rm -f ~/.local/bin/oct ~/.local/bin/OctMenubarApp
 ```
 
 </details>
