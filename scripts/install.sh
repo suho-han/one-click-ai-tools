@@ -13,6 +13,12 @@ SKIP_ATTESTATION=${OCT_INSTALL_SKIP_ATTESTATION:-0}
 REQUIRE_ATTESTATION=${OCT_INSTALL_REQUIRE_ATTESTATION:-0}
 DRY_RUN=${OCT_INSTALL_DRY_RUN:-0}
 RUN_CONFIG=${OCT_INSTALL_RUN_CONFIG:-1}
+# PATH is registered automatically for the login shell (marker-commented rc
+# edit). Opt out with =1 to keep shell config files untouched.
+SKIP_PATH=${OCT_INSTALL_SKIP_PATH:-0}
+# After the interactive part of the install, the darwin menubar helper is
+# launched automatically. Opt out with =0.
+RUN_MENUBAR=${OCT_INSTALL_RUN_MENUBAR:-1}
 
 ui_line() {
     printf '%s\n' "$*"
@@ -57,6 +63,7 @@ print_install_summary() {
     print_summary_row "Version: ${release_version}"
     print_summary_row "Platform: ${os_name}/${arch_name}"
     print_summary_row "Binary: ${INSTALL_DIR}/${BIN_NAME}"
+    print_summary_row "Shell PATH: ${path_summary}"
     print_summary_row "Menubar helper: ${helper_summary}"
     print_summary_row "Install config: $(install_config_status)"
     ui_line "│                                                         │"
@@ -104,6 +111,94 @@ install_menubar_helper() {
         ui_note "Menubar helper install failed; continuing without it."
     fi
     return 0
+}
+
+# ensure_path_configured registers INSTALL_DIR on PATH for the user's login
+# shell ($SHELL, not the shell piping this script): zsh -> ~/.zshrc, bash ->
+# ~/.bash_profile on darwin / ~/.bashrc elsewhere, anything else -> ~/.profile.
+# uv/rustup-style: a marker-commented append, so a rerun is a no-op and the
+# block is easy to find and remove; fish gets a fish_add_path hint instead
+# (different PATH syntax). Best-effort like install_menubar_helper: any
+# failure only notes and continues, and OCT_INSTALL_SKIP_PATH=1 touches no
+# rc file. Sets path_summary for the installation summary box.
+ensure_path_configured() {
+    path_summary=''
+    if [ "$SKIP_PATH" = "1" ]; then
+        path_summary='skipped (OCT_INSTALL_SKIP_PATH=1)'
+        return 0
+    fi
+    case ":$PATH:" in
+        *":${INSTALL_DIR}:"*)
+            path_summary='already on PATH'
+            return 0
+            ;;
+    esac
+
+    marker='# added by one-click-ai-tools installer'
+    case "$(basename "${SHELL:-sh}")" in
+        zsh) rc_file="${ZDOTDIR:-$HOME}/.zshrc" ;;
+        bash)
+            if [ "$os_name" = "darwin" ]; then
+                rc_file="$HOME/.bash_profile"
+            else
+                rc_file="$HOME/.bashrc"
+            fi
+            ;;
+        fish)
+            path_summary='not updated (fish)'
+            ui_note "fish shell detected: run 'fish_add_path ${INSTALL_DIR}' once to persist PATH."
+            return 0
+            ;;
+        *) rc_file="$HOME/.profile" ;;
+    esac
+
+    if [ -f "$rc_file" ] && grep -qF "$marker" "$rc_file" 2>/dev/null; then
+        path_summary="already in ${rc_file}"
+        ui_note "PATH entry already present in ${rc_file}; restart the shell to pick it up."
+        return 0
+    fi
+
+    # The leading blank line also guards against gluing our comment onto a
+    # rc file whose last line lacks a trailing newline.
+    if ! {
+        printf '\n%s\n' "$marker"
+        printf 'export PATH="%s:$PATH"\n' "$INSTALL_DIR"
+    } >> "$rc_file" 2>/dev/null; then
+        path_summary='not updated (write failed)'
+        ui_note "Could not write to ${rc_file}; add ${INSTALL_DIR} to PATH manually."
+        return 0
+    fi
+
+    path_summary="added to ${rc_file}"
+    ui_done "PATH updated: added ${INSTALL_DIR} to ${rc_file}"
+    ui_note "Run 'source ${rc_file}' or open a new terminal to use '${BIN_NAME}' right away."
+}
+
+# launch_menubar_app starts the Swift menubar helper placed by
+# install_menubar_helper once the interactive part of the install is over.
+# The helper is a user-session app: darwin-only, and a rerun must not stack
+# duplicate instances, so an already-running one is kept. Opt out with
+# OCT_INSTALL_RUN_MENUBAR=0. Best-effort like the rest of the install: a
+# failure here never aborts the install.
+launch_menubar_app() {
+    if [ "$os_name" != "darwin" ]; then
+        return 0
+    fi
+    if [ "$RUN_MENUBAR" = "0" ]; then
+        ui_note "Menubar auto-launch skipped because OCT_INSTALL_RUN_MENUBAR=0."
+        return 0
+    fi
+    if [ -z "$helper_installed" ]; then
+        ui_note "Menubar helper not installed; skipping auto-launch."
+        return 0
+    fi
+    if command -v pgrep >/dev/null 2>&1 && pgrep -x OctMenubarApp >/dev/null 2>&1; then
+        ui_note "Menubar helper already running; keeping the existing instance."
+        return 0
+    fi
+    ui_step "Launching menubar helper"
+    nohup "$helper_installed" >/dev/null 2>&1 &
+    ui_done "Menubar helper launched"
 }
 
 run_installed_config() {
@@ -294,13 +389,15 @@ fi
 
 install_menubar_helper
 
+ensure_path_configured
+
 print_install_summary
-case ":$PATH:" in
-    *":${INSTALL_DIR}:"*) ;;
-    *) ui_note "Add ${INSTALL_DIR} to PATH to run '${BIN_NAME}' from any shell." ;;
-esac
 "${INSTALL_DIR}/${BIN_NAME}" --version || true
 ui_line "│"
 run_installed_config
+ui_line "│"
+launch_menubar_app
+ui_step "Quick reference: oct -h"
+"${INSTALL_DIR}/${BIN_NAME}" -h || true
 ui_line "│"
 ui_line "└  Enjoy!"

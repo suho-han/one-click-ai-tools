@@ -29,20 +29,26 @@ oct는 흩어져 있는 AI 코딩 도구 관리를 하나로 모으는 단일 Go
 curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | sh
 ```
 
-스크립트는 현재 OS/CPU에 맞는 바이너리를 내려받고, 릴리스 checksum 항목이 있으면 검증한 뒤 기본적으로 `~/.local/bin/oct`에 설치합니다. 터미널에서 실행하면 설치 직후 `oct config`가 자동으로 열립니다.
+스크립트는 현재 OS/CPU에 맞는 바이너리를 내려받고, 릴리스 checksum 항목이 있으면 검증한 뒤 기본적으로 `~/.local/bin/oct`에 설치합니다. 터미널에서 실행하면 설치 직후 `oct config`가 자동으로 열리고, config가 끝나면 macOS 메뉴바 헬퍼를 자동으로 띄운 뒤 `oct -h` 명령 요약을 출력합니다. `~/.local/bin`이 PATH에 없으면 로그인 셸 설정 파일(zsh는 `~/.zshrc`, bash는 `~/.bash_profile`) 끝에 `# added by one-click-ai-tools installer` 마커와 함께 PATH를 자동 추가하며, 다시 실행해도 중복되지 않습니다.
 
 <details>
-<summary><b>🔧 설치 옵션 — 특정 버전 · 경로 변경 · config 건너뛰기</b></summary>
+<summary><b>🔧 설치 옵션 — 특정 버전 · 경로 변경 · config/PATH/메뉴바 건너뛰기</b></summary>
 
 ```bash
 # 특정 버전 설치
-curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | OCT_VERSION=v0.1.5 sh
+curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | OCT_VERSION=v0.1.6 sh
 
 # 설치 경로 변경
 curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | OCT_INSTALL_DIR=/usr/local/bin sh
 
 # 설치 후 config 단계 건너뛰기
 curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | OCT_INSTALL_RUN_CONFIG=0 sh
+
+# PATH 자동 등록 건너뛰기 (셸 설정 파일을 수정하지 않음)
+curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | OCT_INSTALL_SKIP_PATH=1 sh
+
+# 메뉴바 자동 실행 건너뛰기
+curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | OCT_INSTALL_RUN_MENUBAR=0 sh
 ```
 
 </details>
