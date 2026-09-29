@@ -1,5 +1,10 @@
 # Provider Plan Detection Plan
 
+> **Status (archived 2026-09-30, merged from `PROJECT_CONTEXT/`):** executed.
+> `internal/usage/plan.go` (+ `plan_test.go`) implements the
+> `plan`/`plan_source` schema and per-provider detection described here; the
+> provider roster has since grown well past the six listed below.
+
 > **For Hermes:** Use subagent-driven-development skill to implement this plan task-by-task.
 
 **Goal:** `oct usage`/menubar가 각 provider의 현재 usage뿐 아니라 "어떤 plan/tier로 해석했는지"를 함께 보여주도록 만든다.

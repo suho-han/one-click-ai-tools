@@ -47,3 +47,19 @@ instead.
 - [code_review_2026-09-10.md](code_review_2026-09-10.md): first audit pass (top-10 backlog; v0.1.5 baseline)
 - [improvement_plan_2026-09-10.md](improvement_plan_2026-09-10.md): execution plan for the first pass's Top 10 (executed; still-open 4-B / 4-C release items)
 - [code_review_2026-09-11.md](code_review_2026-09-11.md): second audit pass (error handling + inefficiencies); fixes landed and pushed
+
+## Planning & Execution Archives — 2026-06 (completed)
+
+Merged from the former `PROJECT_CONTEXT/` directory (2026-09-30). Every plan
+below has been executed and the code has moved past it; each doc carries a
+status banner stating what shipped and where the current doc lives. Kept as
+dated records of what was decided and why — resume work from
+[roadmap_2026-09-12.md](roadmap_2026-09-12.md) / [todo.md](todo.md), not from
+these.
+
+- [menubar_improvement_plan_2026-06.md](menubar_improvement_plan_2026-06.md): state-model menubar rework (executed; superseded by the Swift popover UI)
+- [menubar_ux_design_2026-06.md](menubar_ux_design_2026-06.md): legacy `NSMenu` menubar UX design (superseded by the custom popover)
+- [menubar_custom_ui_plan_2026-06.md](menubar_custom_ui_plan_2026-06.md): `NSStatusItem + NSPopover + SwiftUI` migration plan (executed; `macos/OctMenubar`)
+- [oct_improvement_phases_2026-06.md](oct_improvement_phases_2026-06.md): release / menubar / CLI-trust hardening phases (all shipped)
+- [provider_plan_detection_plan_2026-06.md](provider_plan_detection_plan_2026-06.md): `plan`/`plan_source` schema + per-provider detection (executed; `internal/usage/plan.go`)
+- [remote_macos_validation_status_2026-06.md](remote_macos_validation_status_2026-06.md): remote macOS install/validation record (historical)

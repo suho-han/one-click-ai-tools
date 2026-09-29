@@ -1,5 +1,11 @@
 # Menubar Custom UI (NSPopover/SwiftUI) Implementation Plan
 
+> **Status (archived 2026-09-30, merged from `PROJECT_CONTEXT/`):** executed.
+> `macos/OctMenubar` (NSStatusItem + NSPopover + SwiftUI) shipped, the helper
+> is bundled in darwin tarballs and installed on self-update, and the UI has
+> evolved well past this plan (settings window, provider cards, service
+> logos). Ops guide: [menubar_helper_operations.md](menubar_helper_operations.md).
+
 > **For Hermes:** Use subagent-driven-development skill to implement this plan task-by-task.
 
 **Goal:** `oct menubar`를 기본 `NSMenu` 목록형에서 벗어나, `NSStatusItem + NSPopover + SwiftUI` 기반의 custom menubar UI로 전환한다.
@@ -114,8 +120,8 @@ Suggested model split:
 **Objective:** custom popover app과 기존 `oct` binary 사이 책임 경계를 고정한다.
 
 **Files:**
-- Modify: `PROJECT_CONTEXT/menubar-ux-design.md`
-- Modify: `PROJECT_CONTEXT/menubar-custom-ui-plan.md`
+- Modify: `context/menubar_ux_design_2026-06.md`
+- Modify: `context/menubar_custom_ui_plan_2026-06.md`
 
 **Step 1: Record launch modes**
 - `oct menubar` 는 Swift helper (`OctMenubarApp`)를 우선 실행하고, helper를 찾지 못하면 legacy systray/NSMenu path로 fallback 한다.
@@ -130,7 +136,7 @@ Suggested model split:
 
 **Step 3: Commit**
 ```bash
-git add PROJECT_CONTEXT/menubar-ux-design.md PROJECT_CONTEXT/menubar-custom-ui-plan.md
+git add context/menubar_ux_design_2026-06.md context/menubar_custom_ui_plan_2026-06.md
 git commit -m "docs(menubar): plan custom popover migration"
 ```
 

@@ -1,5 +1,11 @@
 # Menubar Improvement Implementation Plan
 
+> **Status (archived 2026-09-30, merged from `PROJECT_CONTEXT/`):** executed.
+> The state-model split (`cmd/menubar_state.go`), current-executable launch,
+> and status menubar all shipped; the menubar has since moved on to the Swift
+> popover UI. Current ops guide: [menubar_helper_operations.md](menubar_helper_operations.md).
+> Current planning: [roadmap_2026-09-12.md](roadmap_2026-09-12.md).
+
 > **For Hermes:** Use subagent-driven-development skill to implement this plan task-by-task.
 
 **Goal:** `oct menubar`를 단순 launcher에서 상태형 macOS status item으로 끌어올려, usage 상태를 즉시 보여주고 refresh/action 진입을 더 짧게 만든다.

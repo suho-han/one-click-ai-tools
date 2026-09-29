@@ -94,9 +94,12 @@ Meaning:
 
 ## Remote macOS validation procedure
 
-Example remote host:
-- host: `100.114.89.25`
+Primary macOS work host:
+- host: `100.73.225.85`
 - user: `suhohan`
+
+(`100.114.89.25` is the original remote-validation macmini; it is kept as an
+archive/secondary validation host only.)
 
 Example fresh workspace:
 - `/tmp/oct-remote-validate`
@@ -154,6 +157,6 @@ You cannot validate helper builds on this Linux host.
 ## Related docs
 
 - `README.md` (repo root): user-facing quick start and command overview
-- `PROJECT_CONTEXT/remote-macos-validation-status.md`: detailed remote validation record
+- `remote_macos_validation_status_2026-06.md`: detailed remote validation record (archived 2026-06 doc)
 - `context/local_test.md`: general local build/test guide
 - `context/macbook_air_smoke_test.md`: quick smoke-test flow for the primary macOS host
