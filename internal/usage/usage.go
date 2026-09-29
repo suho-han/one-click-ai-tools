@@ -45,8 +45,36 @@ func SelectedTools() []update.Tool {
 
 // usageFetchTimeout bounds the whole provider fan-out. It is kept below the
 // Swift menubar's 20s process timeout (OctCLIService) so the menubar receives
-// partial results instead of a killed subprocess. Swappable in tests.
+// partial results instead of a killed subprocess. OCT_USAGE_FETCH_TIMEOUT
+// (e.g. "8s") overrides it; effectiveFetchTimeout clamps the override so even
+// a mistuned value keeps that invariant. Swappable in tests.
 var usageFetchTimeout = 15 * time.Second
+
+const (
+	fetchTimeoutFloor   = 5 * time.Second
+	fetchTimeoutCeiling = 18 * time.Second
+)
+
+// effectiveFetchTimeout resolves the fan-out deadline: the in-code default,
+// overridden by the OCT_USAGE_FETCH_TIMEOUT env var (e.g. "8s"). Read from
+// the environment directly rather than through viper so the override works
+// identically everywhere, including tests that never run the CLI's config
+// bootstrap. Only the user-facing override is clamped — tests and future
+// retuning of the default may set the package var freely.
+func effectiveFetchTimeout() time.Duration {
+	if raw := strings.TrimSpace(os.Getenv("OCT_USAGE_FETCH_TIMEOUT")); raw != "" {
+		if parsed, err := time.ParseDuration(raw); err == nil {
+			if parsed < fetchTimeoutFloor {
+				return fetchTimeoutFloor
+			}
+			if parsed > fetchTimeoutCeiling {
+				return fetchTimeoutCeiling
+			}
+			return parsed
+		}
+	}
+	return usageFetchTimeout
+}
 
 // fetchJob pairs a provider label with its fetch entrypoint for the
 // concurrent fan-out in GetUsage.
@@ -169,7 +197,7 @@ func GetUsage(ctx context.Context) ([]UsageResult, error) {
 
 	results := make([]UsageResult, len(jobs))
 	g, gctx := errgroup.WithContext(ctx)
-	gctx, cancel := context.WithTimeout(gctx, usageFetchTimeout)
+	gctx, cancel := context.WithTimeout(gctx, effectiveFetchTimeout())
 	defer cancel()
 
 	for i, job := range jobs {

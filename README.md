@@ -202,6 +202,8 @@ oct menubar build-helper   # Swift helper build
 oct menubar install-helper # ~/.local/bin/OctMenubarApp 로 설치
 ```
 
+`oct usage --json`의 전체 페치 deadline(기본 15초)은 `OCT_USAGE_FETCH_TIMEOUT` 환경변수로 조정할 수 있습니다 (예: `OCT_USAGE_FETCH_TIMEOUT=8s oct usage`). 5~18초 범위로 클램프되어 menubar helper의 20초 프로세스 타임아웃 안에 항상 부분 결과가 도착합니다.
+
 ## Manager Support Matrix
 
 | Manager | 감지 기준 | 설치 경로 | built-in 사용처 |

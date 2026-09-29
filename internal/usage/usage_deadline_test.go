@@ -2,6 +2,7 @@ package usage
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"strings"
 	"testing"
@@ -99,6 +100,41 @@ func TestGetUsageMixedFastAndSlow(t *testing.T) {
 	}
 	if len(results) != 3 {
 		t.Fatalf("GetUsage() returned %d results, want 3 (all providers present)", len(results))
+	}
+}
+
+// TestEffectiveFetchTimeoutClampsOverride pins the override contract for
+// OCT_USAGE_FETCH_TIMEOUT: honored within the clamp window, clamped outside
+// it (the menubar helper kills oct past ~20s, so a large override would trade
+// partial results for a killed subprocess), and ignored when unparseable.
+func TestEffectiveFetchTimeoutClampsOverride(t *testing.T) {
+	orig := usageFetchTimeout
+	usageFetchTimeout = 15 * time.Second
+	t.Cleanup(func() { usageFetchTimeout = orig })
+
+	cases := []struct {
+		name  string
+		value string
+		want  time.Duration
+	}{
+		{"override within clamp", "8s", 8 * time.Second},
+		{"override above ceiling", "60s", fetchTimeoutCeiling},
+		{"override below floor", "1s", fetchTimeoutFloor},
+		{"unparseable falls back to default", "soon", 15 * time.Second},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("OCT_USAGE_FETCH_TIMEOUT", tc.value)
+			if got := effectiveFetchTimeout(); got != tc.want {
+				t.Fatalf("effectiveFetchTimeout() with %q = %v, want %v", tc.value, got, tc.want)
+			}
+		})
+	}
+
+	t.Setenv("OCT_USAGE_FETCH_TIMEOUT", "")
+	os.Unsetenv("OCT_USAGE_FETCH_TIMEOUT")
+	if got := effectiveFetchTimeout(); got != 15*time.Second {
+		t.Fatalf("effectiveFetchTimeout() without override = %v, want default %v", got, 15*time.Second)
 	}
 }
 
