@@ -51,7 +51,7 @@ Notes:
 - Alert logic applies when `--notify` is set or `usage_alert_enabled=true`.
 - Selected providers are filtered by `enabled_tools`, and output order follows `agent_order`.
 - Claude Code falls back to parsing `claude --print /usage` for 5h/weekly quota when the OAuth API reports no utilization.
-- Antigravity parses quota from `agy --print /usage` without reading tokens or keychain data directly.
+- Antigravity parses quota from `agy --print /usage` without reading tokens or keychain data directly. The agy run is detached from the controlling terminal (new session, no TTY) so an expired token fails with an auth error instead of opening a browser login window, live runs are rate-limited to one per 5 minutes with the last good numbers served from the OS user cache (`~/Library/Caches/one-click-tools/antigravity-usage.json` on macOS) in between, and an auth-problem run pauses live checks for 30 minutes (message says to re-authenticate with `agy` in a terminal; a later successful run clears the pause).
 - Command Code reads 5h/7d/monthly buckets from the billing API using `COMMAND_CODE_API_KEY` or `~/.commandcode/auth.json`.
 - Kimi Code reads weekly + 5-hour request windows from `api.kimi.com/coding/v1/usages` (`KIMI_CODE_API_KEY`, `~/.kimi-code/credentials/kimi-code.json`, or the rotated `kimi-code-env-*.json` files the current CLI writes; access tokens expire after ~15 minutes and are only refreshed by the kimi CLI itself).
 - Qwen Code has no public usage API; oct counts today's local token-usage records (`~/.qwen/**/usage/token-usage-*.jsonl`) against `qwen_daily_limit` (default 100, this machine only).

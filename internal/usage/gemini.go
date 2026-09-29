@@ -24,7 +24,7 @@ func baseAntigravityUsageResult() UsageResult {
 	}
 }
 
-var antigravityUsageCommandOutput = commandOutput
+var antigravityUsageCommandOutput = commandOutputDetached
 
 // describeAntigravityCredential reports the agy CLI delegation: oct never
 // holds Antigravity credentials, the `agy` binary manages them itself, so the
@@ -62,7 +62,28 @@ type antigravityCLIUsageRow struct {
 }
 
 func fetchAntigravityCLIUsage(ctx context.Context, base UsageResult) (UsageResult, bool) {
+	now := time.Now()
+	// Rate-limit the live agy run (min interval / auth backoff) and fall
+	// back to the last good numbers; see antigravity_cache.go for why the
+	// per-minute menubar poll must not reach agy every time.
+	if holdReason, onHold := antigravityFetchHold(now); onHold {
+		if result, ok := serveAntigravityCachedUsage(base, now, holdReason); ok {
+			return result, true
+		}
+		noData := base
+		noData.Message = "No data: " + holdReason
+		return noData, true
+	}
+
 	out, err := antigravityUsageCommandOutput(ctx, 20*time.Second, "agy", "--print", "/usage")
+	if isAntigravityAuthFailure(out, err) {
+		detail := antigravityAuthFailureDetail(out, err)
+		markAntigravityAuthFailure(now, detail)
+		failed := base
+		failed.Status = "error"
+		failed.Message = fmt.Sprintf("Antigravity auth failed (%s); run `agy` once in a terminal to re-authenticate. Retrying in %s.", detail, antigravityAuthBackoff)
+		return failed, true
+	}
 	if err != nil || strings.TrimSpace(out) == "" {
 		return base, false
 	}
@@ -103,6 +124,7 @@ func fetchAntigravityCLIUsage(ctx context.Context, base UsageResult) (UsageResul
 	if osDebugEnabled() {
 		result.SourceDetail = strings.Join(debugParts, ";")
 	}
+	saveAntigravityLastGoodUsage(result.Buckets, result.BucketResets, now)
 	return result, true
 }
 
