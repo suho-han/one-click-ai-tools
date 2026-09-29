@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -79,7 +80,9 @@ func TestInstallMenubarHelperFromArchive(t *testing.T) {
 	if err != nil {
 		t.Fatalf("helper not installed at %s: %v", dst, err)
 	}
-	if info.IsDir() || info.Mode()&0o111 == 0 {
+	// Windows has no executable bit: the 0755 chmod only clears the
+	// read-only attribute, so the mode check would never pass there.
+	if info.IsDir() || (runtime.GOOS != "windows" && info.Mode()&0o111 == 0) {
 		t.Fatalf("installed helper mode = %s, want executable file", info.Mode())
 	}
 	data, err := os.ReadFile(dst)

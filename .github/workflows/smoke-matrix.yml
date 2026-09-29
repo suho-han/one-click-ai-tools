@@ -12,7 +12,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-2025-vs2026]
+        # ubuntu-26.04 stays in the matrix until ubuntu-latest finishes its
+        # rollover to 26.04 (2026-11-19, actions/runner-images#14748), so the
+        # new image is exercised here before latest flips underneath us.
+        os: [ubuntu-latest, ubuntu-26.04, macos-latest, windows-2025-vs2026]
     steps:
       - uses: actions/checkout@v5
 
