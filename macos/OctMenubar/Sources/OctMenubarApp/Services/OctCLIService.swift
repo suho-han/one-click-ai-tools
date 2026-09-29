@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 struct OctCLIService {
@@ -5,17 +6,28 @@ struct OctCLIService {
     let searchedPaths: [String]
     var refreshInterval: TimeInterval = 60
     var processTimeout: TimeInterval = 20
+    /// Grace between SIGTERM and SIGKILL, and the poll window for settling
+    /// the exit state. SIGTERM can sit pending in an uninterruptible child or
+    /// be trapped by a wrapper, so the watchdog always escalates.
+    static let exitGrace: TimeInterval = 2
+    /// Wall-clock budget of one fetch: the process timeout plus the SIGKILL
+    /// and exit-settle grace windows plus headroom. Consumers that gate
+    /// refreshes (UsageViewModel) use it as their completion deadline so a
+    /// wedged subprocess can never wedge the menubar.
+    var refreshDeadline: TimeInterval
 
     init(
         executableURL: URL? = nil,
         refreshInterval: TimeInterval = 60,
         processTimeout: TimeInterval = 20,
+        refreshDeadline: TimeInterval? = nil,
         environment: [String: String] = ProcessInfo.processInfo.environment,
         currentDirectoryURL: URL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath),
         processExecutableURL: URL = URL(fileURLWithPath: CommandLine.arguments[0])
     ) {
         self.refreshInterval = refreshInterval
         self.processTimeout = processTimeout
+        self.refreshDeadline = refreshDeadline ?? processTimeout + Self.exitGrace * 2 + 6
         if let executableURL {
             self.executableURL = executableURL
             self.searchedPaths = [executableURL.path]
@@ -228,10 +240,15 @@ struct OctCLIService {
     /// Runs a process off the caller's thread and collects its output without
     /// deadlock: pipes are drained continuously from the moment the process
     /// starts (so output beyond the pipe buffer capacity cannot block the
-    /// child on write), and the call resolves only after the process has
-    /// terminated AND both pipes reached EOF, so trailing output is never
-    /// lost. A watchdog terminates the process at `processTimeout`; the
-    /// continuation resumes exactly once.
+    /// child on write), and every wait is deadline-bounded. The two-stage
+    /// watchdog sends SIGTERM at `processTimeout` and SIGKILL after
+    /// `exitGrace`; the pipe-EOF wait and the exit settle are polled against
+    /// deadlines because both can stall indefinitely — a grandchild inheriting
+    /// the pipe holds it open past termination, and Foundation's termination
+    /// bookkeeping can miss a child's exit entirely, leaving waitUntilExit
+    /// blocked forever on a dead child (observed in the field as a menubar
+    /// that never refreshed again). Every stall path fails the refresh
+    /// instead of hanging.
     private func runProcess(
         executableURL: URL,
         arguments: [String],
@@ -289,41 +306,111 @@ struct OctCLIService {
             throw OctCLIServiceError.launchFailed(path: executableURL.path, underlying: error)
         }
 
-        let timeoutWorkItem = DispatchWorkItem {
+        let terminateWorkItem = DispatchWorkItem {
             timedOut.set()
             if process.isRunning {
                 process.terminate()
             }
         }
-        DispatchQueue.global().asyncAfter(
-            deadline: .now() + processTimeout,
-            execute: timeoutWorkItem
-        )
-        defer { timeoutWorkItem.cancel() }
-
-        // Wait for both pipes to reach EOF (guaranteed after termination).
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            pipesEOF.notify(queue: .global()) {
-                continuation.resume()
+        let killWorkItem = DispatchWorkItem {
+            timedOut.set()
+            if process.isRunning {
+                // Process exposes no SIGKILL API; escalate via the kernel
+                // directly because terminate() (SIGTERM) can sit pending in
+                // an uninterruptible child or be trapped by a wrapper.
+                kill(process.processIdentifier, SIGKILL)
             }
         }
-        process.waitUntilExit()
-
-        if timedOut.isSet {
-            throw OctCLIServiceError.timeout(path: executableURL.path, timeout: processTimeout)
+        DispatchQueue.global().asyncAfter(deadline: .now() + processTimeout, execute: terminateWorkItem)
+        DispatchQueue.global().asyncAfter(deadline: .now() + processTimeout + Self.exitGrace, execute: killWorkItem)
+        defer {
+            terminateWorkItem.cancel()
+            killWorkItem.cancel()
         }
+
+        // Both pipes closed => the child and anything holding its stdout or
+        // stderr is gone. Bounded: a grandchild inheriting the pipe could
+        // otherwise hold it open well past the watchdog.
+        let pipesClosed = await waitForPipesEOF(pipesEOF, deadline: refreshDeadline)
 
         let stdoutText = String(data: stdoutBuffer.snapshot(), encoding: .utf8) ?? ""
         let stderrText = String(data: stderrBuffer.snapshot(), encoding: .utf8) ?? ""
 
-        guard process.terminationStatus == 0 else {
+        guard let exitStatus = await reapExitStatus(process, grace: Self.exitGrace) else {
+            // The child's fate is unknown even after SIGKILL and both grace
+            // windows — fail this refresh instead of waiting forever.
+            throw OctCLIServiceError.timeout(path: executableURL.path, timeout: refreshDeadline)
+        }
+        if timedOut.isSet {
+            throw OctCLIServiceError.timeout(path: executableURL.path, timeout: processTimeout)
+        }
+        guard pipesClosed else {
+            // EOF never arrived: something outside the child still holds the
+            // pipes, so the output cannot be trusted as complete.
+            throw OctCLIServiceError.timeout(path: executableURL.path, timeout: refreshDeadline)
+        }
+        guard exitStatus == 0 else {
             throw OctCLIServiceError.nonZeroExit(
-                status: process.terminationStatus,
+                status: exitStatus,
                 stderr: stderrText.trimmingCharacters(in: .whitespacesAndNewlines)
             )
         }
 
         return ProcessOutput(stdout: stdoutText, stderr: stderrText)
+    }
+
+    /// Returns true when both pipes hit EOF; false when the deadline elapsed
+    /// first (something outside the child — typically a grandchild — still
+    /// holds the pipes).
+    private func waitForPipesEOF(_ pipesEOF: DispatchGroup, deadline: TimeInterval) async -> Bool {
+        let gate = OneShotGate()
+        pipesEOF.notify(queue: .global()) { gate.finish(pipesClosed: true) }
+        DispatchQueue.global().asyncAfter(deadline: .now() + deadline) { gate.finish(pipesClosed: false) }
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            gate.arm(continuation)
+        }
+        return gate.didPipesClose
+    }
+
+    /// Collects the child's exit status without Foundation: waitpid polls the
+    /// kernel directly and cannot hang, while waitUntilExit can block forever
+    /// on a dead child when Foundation's launch handshake races a fast exit
+    /// (observed in the field; reproduced in tests). A live child gets a
+    /// grace window, then SIGKILL, then one more bounded reap. An ECHILD
+    /// result means Foundation already reaped the child, whose
+    /// terminationStatus is then the authoritative outcome. Returns nil when
+    /// the status cannot be determined within the budget. The wait status is
+    /// decoded by hand (sys/wait.h's WIFEXITED & friends are function-like
+    /// macros Swift cannot import): low 7 bits carry the signal, high 8 the
+    /// exit code.
+    private func reapExitStatus(_ process: Process, grace: TimeInterval) async -> Int32? {
+        let pid = process.processIdentifier
+        guard pid > 0 else { return nil }
+        for phase in 0..<2 {
+            if phase == 1 {
+                kill(pid, SIGKILL)
+            }
+            var status: Int32 = 0
+            var deadline = Date().addingTimeInterval(grace)
+            while Date() < deadline {
+                let result = waitpid(pid, &status, WNOHANG)
+                if result == pid {
+                    let signal = status & 0x7F
+                    if signal == 0 {
+                        return (status >> 8) & 0xFF
+                    }
+                    if signal != 0x7F {
+                        return 128 + signal
+                    }
+                    return nil
+                }
+                if result == -1 && errno == ECHILD {
+                    return process.terminationStatus
+                }
+                try? await Task.sleep(nanoseconds: 10_000_000)
+            }
+        }
+        return nil
     }
 
     static func shellQuote(_ value: String) -> String {
@@ -366,6 +453,48 @@ private final class AtomicFlag: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return value
+    }
+}
+
+/// Resumes exactly one continuation, from whichever waiter (pipe EOF or the
+/// overall deadline) finishes first, and records the winner; a later fire is
+/// a no-op. Lock-guarded: notify and the deadline fire on arbitrary
+/// global-queue threads, and either may win the race against the arming call.
+private final class OneShotGate: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Void, Never>?
+    private var finished = false
+    private var pipesClosed = false
+
+    func finish(pipesClosed: Bool) {
+        lock.lock()
+        guard !finished else {
+            lock.unlock()
+            return
+        }
+        finished = true
+        self.pipesClosed = pipesClosed
+        let continuation = self.continuation
+        self.continuation = nil
+        lock.unlock()
+        continuation?.resume()
+    }
+
+    func arm(_ continuation: CheckedContinuation<Void, Never>) {
+        lock.lock()
+        if finished {
+            lock.unlock()
+            continuation.resume()
+            return
+        }
+        self.continuation = continuation
+        lock.unlock()
+    }
+
+    var didPipesClose: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return pipesClosed
     }
 }
 
