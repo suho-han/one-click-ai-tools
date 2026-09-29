@@ -9,6 +9,7 @@ final class StatusBarController: NSObject, NSApplicationDelegate {
     private let configurationStore = ConfigurationStore()
     private lazy var viewModel = UsageViewModel(service: OctCLIService(), configurationStore: configurationStore)
     private var cancellables: Set<AnyCancellable> = []
+    private var updateStatusItem: UpdateStatusItemController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
@@ -17,6 +18,8 @@ final class StatusBarController: NSObject, NSApplicationDelegate {
         bindSnapshot()
         suppressAutoShownSettingsWindow()
         signalReadyIfRequested()
+        updateStatusItem = UpdateStatusItemController()
+        updateStatusItem?.start()
     }
 
     /// SwiftUI auto-shows the Settings window at launch when the app has no
