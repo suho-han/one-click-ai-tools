@@ -126,6 +126,13 @@ func Run(ctx context.Context, opts ...Options) error {
 			failureCount++
 			continue
 		}
+		// A manager whose backing binary (npm, brew, ...) is itself absent
+		// can only fail with a cryptic exec error — guide instead of running.
+		if missing := manager.missingBinary(); missing != "" {
+			fmt.Fprintf(out, "[%d/%d] %s ✗ Skipped: %s\n", current, total, tool.Colorize(tool.Name), missingManagerGuidance(missing, tool))
+			failureCount++
+			continue
+		}
 		versionBefore := plan.VersionBefore
 		start := time.Now()
 		output, err := runInstallWithFallback(ctx, manager, tool)
@@ -215,6 +222,20 @@ func defaultConfirmInstallPrompt(in *bufio.Reader, out io.Writer, plan Plan) (bo
 	return answer == "" || answer == "y" || answer == "yes", nil
 }
 
+// missingManagerGuidance explains why an install cannot run when the
+// manager's backing executable is itself absent, pointing at the lightest
+// way to get it back.
+func missingManagerGuidance(missing string, t Tool) string {
+	switch missing {
+	case "npm", "pnpm", "yarn":
+		return fmt.Sprintf("%s not found in PATH. %s installs via npm and has no standalone installer — install Node.js first (e.g. `brew install node`, nvm, or mise), then re-run `oct agent-update`.", missing, t.Name)
+	case "brew":
+		return "brew not found in PATH. Install Homebrew from https://brew.sh, then re-run `oct agent-update`."
+	default:
+		return fmt.Sprintf("%s not found in PATH — install it first, then re-run `oct agent-update`.", missing)
+	}
+}
+
 func formatVersionSummary(before, after string) string {
 	before = strings.TrimSpace(before)
 	after = strings.TrimSpace(after)
@@ -289,10 +310,17 @@ func explainResolvedManager(ctx context.Context, t Tool) (Manager, string) {
 			return manager, "installed package lookup"
 		}
 	}
-	if m, ok := defaultManagerForTool(t); ok {
-		return m, "default fallback"
+	m, ok := defaultManagerForTool(t)
+	if !ok {
+		return Unknown, "unknown"
 	}
-	return Unknown, "unknown"
+	if m == Npm && m.missingBinary() != "" {
+		if installer, ok := npmFreeInstallerFor(t); ok {
+			return installer, "official install script (npm not found)"
+		}
+		return m, "npm not found"
+	}
+	return m, "default fallback"
 }
 
 func firstResolvedBinary(t Tool) (string, string) {

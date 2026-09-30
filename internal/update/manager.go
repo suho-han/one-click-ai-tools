@@ -24,8 +24,50 @@ const (
 	CursorAgent          Manager = "cursor-agent"
 	AntigravityUpdater   Manager = "antigravity-updater"
 	AntigravityInstaller Manager = "antigravity-installer"
+	ClaudeInstaller      Manager = "claude-installer"
+	CodexInstaller       Manager = "codex-installer"
+	CopilotInstaller     Manager = "copilot-installer"
+	KimiInstaller        Manager = "kimi-installer"
+	QwenInstaller        Manager = "qwen-installer"
+	OpenCodeInstaller    Manager = "opencode-installer"
 	Unknown              Manager = "unknown"
 )
+
+// npmFreeInstallScripts maps each script installer to the tool's official
+// one-line install script (the upstreams' documented non-npm install path).
+var npmFreeInstallScripts = map[Manager]string{
+	ClaudeInstaller:   "https://claude.ai/install.sh",
+	CodexInstaller:    "https://github.com/openai/codex/releases/latest/download/install.sh",
+	CopilotInstaller:  "https://gh.io/copilot-install",
+	KimiInstaller:     "https://code.kimi.com/kimi-code/install.sh",
+	QwenInstaller:     "https://qwen-code-assets.oss-cn-hangzhou.aliyuncs.com/installation/install-qwen-standalone.sh",
+	OpenCodeInstaller: "https://opencode.ai/install",
+}
+
+// npmFreeInstallerManagers maps the normalized binary names of tools that
+// publish an official standalone install script, used when the default npm
+// install cannot run because npm itself is missing. Tools absent from this
+// map (MiniMax, Command Code) are npm-only upstream and get guidance instead.
+var npmFreeInstallerManagers = map[string]Manager{
+	"claude":   ClaudeInstaller,
+	"codex":    CodexInstaller,
+	"copilot":  CopilotInstaller,
+	"kimi":     KimiInstaller,
+	"qwen":     QwenInstaller,
+	"opencode": OpenCodeInstaller,
+}
+
+// managerProbeBinary names the backing executable of package-manager
+// managers; script installer managers run curl|bash and have none.
+var managerProbeBinary = map[Manager]string{
+	Npm:       "npm",
+	Brew:      "brew",
+	Pnpm:      "pnpm",
+	Yarn:      "yarn",
+	Cargo:     "cargo",
+	GoInstall: "go",
+	Pip:       "python3",
+}
 
 var (
 	binaryLookup          = lookPathWithBootstrap
@@ -98,10 +140,43 @@ func ResolveManagerForInstall(ctx context.Context, t Tool) Manager {
 	if detected := DetectManager(ctx, t); detected != Unknown {
 		return detected
 	}
-	if preferred, ok := defaultManagerForTool(t); ok {
-		return preferred
+	return installDefaultManager(t)
+}
+
+// installDefaultManager resolves the fall-back manager for a tool no
+// detection step claimed. When the default would be npm but npm itself is
+// missing, tools with an official standalone install script use that instead;
+// npm-only tools keep the npm manager so the run reports actionable guidance.
+func installDefaultManager(t Tool) Manager {
+	m, ok := defaultManagerForTool(t)
+	if !ok {
+		return Unknown
 	}
-	return Unknown
+	if m == Npm && m.missingBinary() != "" {
+		if installer, ok := npmFreeInstallerFor(t); ok {
+			return installer
+		}
+	}
+	return m
+}
+
+// missingBinary returns the name of the manager's backing executable when it
+// cannot be found (bootstrap-augmented PATH, same lookup the install command
+// uses), or "" when the manager can run or has no backing binary to probe.
+func (m Manager) missingBinary() string {
+	probe, ok := managerProbeBinary[m]
+	if !ok {
+		return ""
+	}
+	if _, err := binaryLookup(probe); err != nil {
+		return probe
+	}
+	return ""
+}
+
+func npmFreeInstallerFor(t Tool) (Manager, bool) {
+	m, ok := npmFreeInstallerManagers[NormalizeToolName(t.BinaryName)]
+	return m, ok
 }
 
 func (m Manager) InstallCommand(t Tool) *exec.Cmd {
@@ -122,6 +197,8 @@ func (m Manager) InstallCommandCtx(ctx context.Context, t Tool) *exec.Cmd {
 		return commandContextWithEnv(ctx, firstAvailableBinary(t), "update")
 	case AntigravityInstaller:
 		return commandContextWithEnv(ctx, "bash", "-lc", "curl -fsSL https://antigravity.google/cli/install.sh | bash")
+	case ClaudeInstaller, CodexInstaller, CopilotInstaller, KimiInstaller, QwenInstaller, OpenCodeInstaller:
+		return commandContextWithEnv(ctx, "bash", "-lc", "curl -fsSL "+npmFreeInstallScripts[m]+" | bash")
 	case Brew:
 		return commandContextWithEnv(ctx, "brew", "upgrade", t.BrewTarget())
 	case Pnpm:
@@ -141,7 +218,8 @@ func (m Manager) InstallCommandCtx(ctx context.Context, t Tool) *exec.Cmd {
 
 func (m Manager) GetInstalledVersion(ctx context.Context, t Tool) string {
 	switch m {
-	case ClaudeNative, OpenCodeNative, CopilotNative, CursorAgent, AntigravityUpdater, AntigravityInstaller:
+	case ClaudeNative, OpenCodeNative, CopilotNative, CursorAgent, AntigravityUpdater, AntigravityInstaller,
+		ClaudeInstaller, CodexInstaller, CopilotInstaller, KimiInstaller, QwenInstaller, OpenCodeInstaller:
 		return versionFromBinary(ctx, t)
 	case Brew:
 		out, _ := commandContextWithEnv(ctx, "brew", "list", "--versions", t.BrewTarget()).Output()

@@ -459,16 +459,19 @@ func TestBuiltInToolManagerSupportMatrix(t *testing.T) {
 	reset := stubManagerDetection(t)
 	defer reset()
 
+	// stubManagerDetection hides every backing binary, so npm is unavailable:
+	// tools with an official standalone install script resolve to it, while
+	// npm-only tools (MiniMax, Command Code) stay on npm for guidance.
 	wantByBinary := map[string]Manager{
-		"claude":       Npm,
+		"claude":       ClaudeInstaller,
 		"commandcode":  Npm,
 		"cursor-agent": CursorAgent,
-		"opencode":     Npm,
-		"codex":        Npm,
+		"opencode":     OpenCodeInstaller,
+		"codex":        CodexInstaller,
 		"agy":          AntigravityInstaller,
-		"copilot":      Npm,
-		"kimi":         Npm,
-		"qwen":         Npm,
+		"copilot":      CopilotInstaller,
+		"kimi":         KimiInstaller,
+		"qwen":         QwenInstaller,
 		"minimax":      Npm,
 		"mmx":          Npm,
 	}
@@ -480,6 +483,29 @@ func TestBuiltInToolManagerSupportMatrix(t *testing.T) {
 		}
 		if got := ResolveManagerForInstall(t.Context(), tool); got != want {
 			t.Fatalf("ResolveManagerForInstall(t.Context(), %s) = %q, want %q", tool.BinaryName, got, want)
+		}
+	}
+}
+
+// TestResolveManagerForInstallKeepsNpmWhenAvailable pins that the standalone
+// install scripts are only a fallback: with npm present, the npm default is
+// unchanged for every tool.
+func TestResolveManagerForInstallKeepsNpmWhenAvailable(t *testing.T) {
+	reset := stubManagerDetection(t)
+	defer reset()
+	binaryLookup = func(name string) (string, error) {
+		if name == "npm" {
+			return "/usr/local/bin/npm", nil
+		}
+		return "", errExecutableNotFound
+	}
+
+	for _, tool := range Tools {
+		if tool.BinaryName == "cursor-agent" || tool.BinaryName == "agy" {
+			continue // tool-specific installers, independent of npm
+		}
+		if got := ResolveManagerForInstall(t.Context(), tool); got != Npm {
+			t.Fatalf("ResolveManagerForInstall(t.Context(), %s) = %q, want %q with npm available", tool.BinaryName, got, Npm)
 		}
 	}
 }
