@@ -4,7 +4,9 @@ set -eu
 REPO=${OCT_REPO:-suho-han/one-click-ai-tools}
 VERSION=${OCT_VERSION:-latest}
 INSTALL_DIR=${OCT_INSTALL_DIR:-$HOME/.local/bin}
-BIN_NAME=${OCT_BIN_NAME:-oct}
+# Pre-release installs (beta/rc/alpha) land as 'oct-beta' so they coexist
+# with the stable 'oct' instead of clobbering it; override with OCT_BIN_NAME.
+DEFAULT_BIN_NAME=oct
 SKIP_CHECKSUM=${OCT_INSTALL_SKIP_CHECKSUM:-0}
 # Checksum verification is fail-closed by default: a release asset with no
 # checksums.txt entry aborts the install. Opt out with =0 (not recommended).
@@ -285,9 +287,24 @@ normalize_version() {
     esac
 }
 
+# resolve_bin_name picks the installed command name: an explicit
+# OCT_BIN_NAME always wins; otherwise pre-release versions install as
+# oct-beta so a beta can be tried without touching the stable oct.
+resolve_bin_name() {
+    if [ -n "${OCT_BIN_NAME:-}" ]; then
+        printf '%s\n' "$OCT_BIN_NAME"
+        return
+    fi
+    case "$1" in
+        *-beta*|*-rc*|*-alpha*|*-test*|*-dev) printf '%s\n' oct-beta ;;
+        *) printf '%s\n' "$DEFAULT_BIN_NAME" ;;
+    esac
+}
+
 os_name=$(detect_os)
 arch_name=$(detect_arch)
 release_version=$(normalize_version)
+BIN_NAME=$(resolve_bin_name "$release_version")
 asset="one-click-ai-tools_${os_name}_${arch_name}.tar.gz"
 
 if [ "$release_version" = "latest" ]; then
@@ -367,17 +384,20 @@ fi
 ui_step "Extracting archive"
 tar -xzf "$archive_path" -C "$tmpdir"
 
-candidate="${tmpdir}/${BIN_NAME}"
+# The archive always carries the binary as 'oct' regardless of what the
+# installed command will be named (pre-releases install as oct-beta).
+ARCHIVE_BIN_NAME=oct
+candidate="${tmpdir}/${ARCHIVE_BIN_NAME}"
 if [ ! -f "$candidate" ]; then
     candidate=""
-    for path in "$tmpdir"/*/"$BIN_NAME"; do
+    for path in "$tmpdir"/*/"${ARCHIVE_BIN_NAME}"; do
         if [ -f "$path" ]; then
             candidate=$path
             break
         fi
     done
 fi
-[ -n "$candidate" ] && [ -f "$candidate" ] || fail "binary '${BIN_NAME}' not found in archive"
+[ -n "$candidate" ] && [ -f "$candidate" ] || fail "binary '${ARCHIVE_BIN_NAME}' not found in archive"
 
 mkdir -p "$INSTALL_DIR"
 if command -v install >/dev/null 2>&1; then
@@ -397,7 +417,7 @@ ui_line "│"
 run_installed_config
 ui_line "│"
 launch_menubar_app
-ui_step "Quick reference: oct -h"
+ui_step "Quick reference: ${BIN_NAME} -h"
 "${INSTALL_DIR}/${BIN_NAME}" -h || true
 ui_line "│"
 ui_line "└  Enjoy!"

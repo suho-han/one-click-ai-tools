@@ -38,6 +38,9 @@ curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/sc
 # 특정 버전 설치
 curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | OCT_VERSION=v0.1.6 sh
 
+# 베타/prerelease 설치 — 안정판 oct를 덮지 않고 oct-beta 명령으로 함께 설치됩니다
+curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | OCT_VERSION=v0.1.6-beta.1 sh
+
 # 설치 경로 변경
 curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | OCT_INSTALL_DIR=/usr/local/bin sh
 
