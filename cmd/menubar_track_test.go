@@ -1,9 +1,19 @@
 package cmd
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+// stubMenubarTrack pins the menubar track for a test. The test binary's
+// basename is never oct-beta, so the version string decides the track.
+func stubMenubarTrack(t *testing.T, version string) {
+	t.Helper()
+	orig := rootCmd.Version
+	rootCmd.Version = version
+	t.Cleanup(func() { rootCmd.Version = orig })
+}
 
 func TestMenubarProcessTrack(t *testing.T) {
 	tests := []struct {
@@ -106,5 +116,65 @@ func TestMenubarStopTargetsFromOutputExcludesCurrentPID(t *testing.T) {
 	targets := menubarStopTargetsFromOutput(psOutput, 42, menubarTrackStable)
 	if len(targets) != 1 || targets[0].pid != 100 {
 		t.Fatalf("targets = %v, want only pid 100 (the current pid 42 excluded)", targets)
+	}
+}
+
+func TestMenubarProcessTrackRecognizesBetaHelper(t *testing.T) {
+	if got := menubarProcessTrack("/Users/me/.local/bin/OctMenubarApp-beta"); got != menubarTrackBeta {
+		t.Fatalf("menubarProcessTrack(beta helper) = %q, want %q", got, menubarTrackBeta)
+	}
+}
+
+func TestIsMenubarStopTargetIncludesBetaHelper(t *testing.T) {
+	if !isMenubarStopTarget(200, 42, "/Users/me/.local/bin/OctMenubarApp-beta") {
+		t.Fatal("isMenubarStopTarget(beta helper) = false, want true")
+	}
+}
+
+func TestMenubarHelperCandidatesBetaTrackUseOwnHelperName(t *testing.T) {
+	stubMenubarTrack(t, "0.1.6-beta.1")
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", "")
+
+	candidates := menubarHelperCandidates(nil, filepath.Join(home, ".local", "bin", "oct-beta"), "")
+	if !candidateListContains(candidates, filepath.Join(home, ".local", "bin", betaHelperName)) {
+		t.Fatalf("beta candidates missing the beta helper install location:\n%s", strings.Join(candidates, "\n"))
+	}
+	for _, candidate := range candidates {
+		if filepath.Base(candidate) == stableHelperName {
+			t.Fatalf("beta candidates must not include the stable helper name:\n%s", strings.Join(candidates, "\n"))
+		}
+	}
+}
+
+// candidateListContains matches whole candidate paths, not substrings —
+// OctMenubarApp-beta contains OctMenubarApp as a substring.
+func candidateListContains(candidates []string, want string) bool {
+	for _, candidate := range candidates {
+		if candidate == want {
+			return true
+		}
+	}
+	return false
+}
+
+func TestMenubarHelperCandidatesStableTrackKeepSourceTreePaths(t *testing.T) {
+	stubMenubarTrack(t, "0.1.6")
+
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("PATH", "")
+	workDir := filepath.Join(home, "repo", "sub")
+
+	candidates := menubarHelperCandidates(nil, filepath.Join(home, "repo", "oct"), workDir)
+	if !candidateListContains(candidates, filepath.Join(home, "repo", "macos", "OctMenubar", ".build", "debug", stableHelperName)) {
+		t.Fatalf("stable candidates missing the source-tree build path:\n%s", strings.Join(candidates, "\n"))
+	}
+	for _, candidate := range candidates {
+		if filepath.Base(candidate) == betaHelperName {
+			t.Fatalf("stable candidates must not include the beta helper name:\n%s", strings.Join(candidates, "\n"))
+		}
 	}
 }

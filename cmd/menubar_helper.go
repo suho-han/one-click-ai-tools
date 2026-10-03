@@ -30,6 +30,13 @@ func resolveMenubarHelperLaunch(env map[string]string, execPath string, workingD
 		return menubarHelperLaunch{Executable: helperPath, Mode: "swift-helper"}, searched
 	}
 
+	// The swift-package fallback runs the product named OctMenubarApp — a
+	// stable-track process — so the beta track skips it and falls through to
+	// the legacy Go menubar (its own process, correctly in the beta track).
+	if currentMenubarTrack() == menubarTrackBeta {
+		return menubarHelperLaunch{}, searched
+	}
+
 	projectDir, projectSearched, err := resolveMenubarProjectDir(execPath, workingDir)
 	searched = append(searched, projectSearched...)
 	if err != nil {
@@ -87,6 +94,9 @@ func menubarHelperCandidates(env map[string]string, execPath string, workingDir 
 		appendCandidate(explicit)
 	}
 
+	track := currentMenubarTrack()
+	helperName := menubarHelperNameForTrack(track)
+
 	baseDirs := []string{}
 	if workingDir = strings.TrimSpace(workingDir); workingDir != "" {
 		baseDirs = append(baseDirs, workingDir)
@@ -95,20 +105,26 @@ func menubarHelperCandidates(env map[string]string, execPath string, workingDir 
 		baseDirs = append(baseDirs, filepath.Dir(execPath))
 	}
 
-	for _, base := range baseDirs {
-		cursor := filepath.Clean(base)
-		for i := 0; i < 6; i++ {
-			appendCandidate(filepath.Join(cursor, "OctMenubarApp"))
-			appendCandidate(filepath.Join(cursor, "macos", "OctMenubar", ".build", "debug", "OctMenubarApp"))
-			// Release-config builds (used by the release workflow) land in
-			// .build/release; checked after debug so dev worktrees keep
-			// preferring the freshly-built debug helper.
-			appendCandidate(filepath.Join(cursor, "macos", "OctMenubar", ".build", "release", "OctMenubarApp"))
-			parent := filepath.Dir(cursor)
-			if parent == cursor {
-				break
+	// Source-tree build artifacts carry the Swift package product name
+	// (OctMenubarApp), a stable-track process, so only the stable track
+	// ever resolves them; an installed beta looks for its own helper name
+	// in the install locations only.
+	if track == menubarTrackStable {
+		for _, base := range baseDirs {
+			cursor := filepath.Clean(base)
+			for i := 0; i < 6; i++ {
+				appendCandidate(filepath.Join(cursor, stableHelperName))
+				appendCandidate(filepath.Join(cursor, "macos", "OctMenubar", ".build", "debug", stableHelperName))
+				// Release-config builds (used by the release workflow) land in
+				// .build/release; checked after debug so dev worktrees keep
+				// preferring the freshly-built debug helper.
+				appendCandidate(filepath.Join(cursor, "macos", "OctMenubar", ".build", "release", stableHelperName))
+				parent := filepath.Dir(cursor)
+				if parent == cursor {
+					break
+				}
+				cursor = parent
 			}
-			cursor = parent
 		}
 	}
 
@@ -117,7 +133,7 @@ func menubarHelperCandidates(env map[string]string, execPath string, workingDir 
 			if strings.TrimSpace(dir) == "" {
 				continue
 			}
-			appendCandidate(filepath.Join(dir, "OctMenubarApp"))
+			appendCandidate(filepath.Join(dir, helperName))
 		}
 	}
 
@@ -128,7 +144,7 @@ func menubarHelperCandidates(env map[string]string, execPath string, workingDir 
 		}
 	}
 	if home != "" {
-		appendCandidate(filepath.Join(home, ".local", "bin", "OctMenubarApp"))
+		appendCandidate(filepath.Join(home, ".local", "bin", helperName))
 	}
 
 	return candidates
@@ -261,13 +277,13 @@ func isMenubarStopTarget(pid int, currentPID int, command string) bool {
 	}
 
 	executableName := filepath.Base(fields[0])
-	if executableName == "OctMenubarApp" {
+	if executableName == stableHelperName || executableName == betaHelperName {
 		return true
 	}
-	if strings.Contains(fields[0], "/OctMenubarApp") {
+	if strings.Contains(fields[0], "/"+stableHelperName) || strings.Contains(fields[0], "/"+betaHelperName) {
 		return true
 	}
-	if executableName == "swift" && len(fields) >= 2 && fields[1] == "run" && fields[len(fields)-1] == "OctMenubarApp" {
+	if executableName == "swift" && len(fields) >= 2 && fields[1] == "run" && fields[len(fields)-1] == stableHelperName {
 		return true
 	}
 	if !containsMenubarArgument(fields) {
@@ -311,12 +327,27 @@ const (
 
 const betaExecutableName = "oct-beta"
 
-// menubarProcessTrack classifies a process command line by track. Anything
-// that does not name the beta executable counts as stable — including the
-// OctMenubarApp helper, which is shared between tracks.
+// Each track owns its own helper binary name, so an installed beta and the
+// stable oct launch, observe, and stop separate menubar apps.
+const (
+	stableHelperName = "OctMenubarApp"
+	betaHelperName   = "OctMenubarApp-beta"
+)
+
+func menubarHelperNameForTrack(track string) string {
+	if track == menubarTrackBeta {
+		return betaHelperName
+	}
+	return stableHelperName
+}
+
+// menubarProcessTrack classifies a process command line by track. The beta
+// executable and the beta helper name belong to the beta track; everything
+// else — including the shared-name Swift package product — is stable.
 func menubarProcessTrack(command string) string {
 	for _, field := range strings.Fields(command) {
-		if filepath.Base(field) == betaExecutableName {
+		base := filepath.Base(field)
+		if base == betaExecutableName || base == betaHelperName {
 			return menubarTrackBeta
 		}
 	}

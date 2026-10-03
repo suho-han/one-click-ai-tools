@@ -112,6 +112,8 @@ func TestProbeMenubarHelperVersionScansBinary(t *testing.T) {
 }
 
 func TestMenubarHelperCandidatesIncludeReleaseBuild(t *testing.T) {
+	stubMenubarTrack(t, "0.1.6")
+
 	candidates := menubarHelperCandidates(map[string]string{"HOME": "/tmp/fake-home"}, "/usr/bin/oct", "/tmp/work")
 	want := filepath.Join("/tmp/work", "macos", "OctMenubar", ".build", "release", "OctMenubarApp")
 	found := false

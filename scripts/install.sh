@@ -7,6 +7,11 @@ INSTALL_DIR=${OCT_INSTALL_DIR:-$HOME/.local/bin}
 # Pre-release installs (beta/rc/alpha) land as 'oct-beta' so they coexist
 # with the stable 'oct' instead of clobbering it; override with OCT_BIN_NAME.
 DEFAULT_BIN_NAME=oct
+# Each track installs its own menubar helper next to its binary: the stable
+# OctMenubarApp and a beta OctMenubarApp-beta run and are observed as
+# separate menubar apps.
+STABLE_HELPER_NAME=OctMenubarApp
+BETA_HELPER_NAME=OctMenubarApp-beta
 SKIP_CHECKSUM=${OCT_INSTALL_SKIP_CHECKSUM:-0}
 # Checksum verification is fail-closed by default: a release asset with no
 # checksums.txt entry aborts the install. Opt out with =0 (not recommended).
@@ -84,25 +89,25 @@ install_menubar_helper() {
         helper_summary='n/a (macOS only)'
         return 0
     fi
-    helper_candidate="${tmpdir}/OctMenubarApp"
+    helper_candidate="${tmpdir}/${STABLE_HELPER_NAME}"
     if [ ! -f "$helper_candidate" ]; then
         helper_summary='not bundled in this asset'
         ui_note "Menubar helper not found in the archive; skipping (older releases do not bundle it)."
         return 0
     fi
-    ui_step "Installing menubar helper"
+    ui_step "Installing menubar helper (${HELPER_NAME})"
     if ! mkdir -p "$INSTALL_DIR" 2>/dev/null; then
         helper_summary='install failed (legacy menubar still works)'
         ui_note "Menubar helper install failed; continuing without it."
         return 0
     fi
     if command -v install >/dev/null 2>&1; then
-        if install -m 0755 "$helper_candidate" "${INSTALL_DIR}/OctMenubarApp"; then
-            helper_installed="${INSTALL_DIR}/OctMenubarApp"
+        if install -m 0755 "$helper_candidate" "${INSTALL_DIR}/${HELPER_NAME}"; then
+            helper_installed="${INSTALL_DIR}/${HELPER_NAME}"
         fi
     else
-        if cp "$helper_candidate" "${INSTALL_DIR}/OctMenubarApp" && chmod 0755 "${INSTALL_DIR}/OctMenubarApp"; then
-            helper_installed="${INSTALL_DIR}/OctMenubarApp"
+        if cp "$helper_candidate" "${INSTALL_DIR}/${HELPER_NAME}" && chmod 0755 "${INSTALL_DIR}/${HELPER_NAME}"; then
+            helper_installed="${INSTALL_DIR}/${HELPER_NAME}"
         fi
     fi
     if [ -n "$helper_installed" ]; then
@@ -194,7 +199,7 @@ launch_menubar_app() {
         ui_note "Menubar helper not installed; skipping auto-launch."
         return 0
     fi
-    if command -v pgrep >/dev/null 2>&1 && pgrep -x OctMenubarApp >/dev/null 2>&1; then
+    if command -v pgrep >/dev/null 2>&1 && pgrep -x "$HELPER_NAME" >/dev/null 2>&1; then
         ui_note "Menubar helper already running; keeping the existing instance."
         return 0
     fi
@@ -305,6 +310,10 @@ os_name=$(detect_os)
 arch_name=$(detect_arch)
 release_version=$(normalize_version)
 BIN_NAME=$(resolve_bin_name "$release_version")
+case "$BIN_NAME" in
+    oct-beta) HELPER_NAME=$BETA_HELPER_NAME ;;
+    *) HELPER_NAME=$STABLE_HELPER_NAME ;;
+esac
 asset="one-click-ai-tools_${os_name}_${arch_name}.tar.gz"
 
 if [ "$release_version" = "latest" ]; then

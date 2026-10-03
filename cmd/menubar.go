@@ -311,7 +311,7 @@ func defaultMenubarInstallPath() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".local", "bin", "OctMenubarApp"), nil
+	return filepath.Join(home, ".local", "bin", menubarHelperNameForTrack(currentMenubarTrack())), nil
 }
 
 func dedupeStrings(values []string) []string {

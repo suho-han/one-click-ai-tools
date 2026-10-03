@@ -31,6 +31,8 @@ func TestResolveMenubarHelperPathPrefersExplicitOverride(t *testing.T) {
 }
 
 func TestResolveMenubarHelperPathFindsRepoBuildFromWorkingDir(t *testing.T) {
+	stubMenubarTrack(t, "0.1.6")
+
 	temp := t.TempDir()
 	repo := filepath.Join(temp, "repo")
 	workingDir := filepath.Join(repo, "subdir")
@@ -62,6 +64,8 @@ func TestResolveMenubarHelperPathFindsRepoBuildFromWorkingDir(t *testing.T) {
 }
 
 func TestResolveMenubarHelperLaunchRunsSwiftPackageWhenHelperBinaryIsMissing(t *testing.T) {
+	stubMenubarTrack(t, "0.1.6")
+
 	temp := t.TempDir()
 	repo := filepath.Join(temp, "repo")
 	workingDir := filepath.Join(repo, "subdir")
@@ -107,6 +111,8 @@ func TestResolveMenubarHelperLaunchRunsSwiftPackageWhenHelperBinaryIsMissing(t *
 }
 
 func TestResolveMenubarHelperLaunchPrefersBuiltHelperOverSwiftPackage(t *testing.T) {
+	stubMenubarTrack(t, "0.1.6")
+
 	temp := t.TempDir()
 	repo := filepath.Join(temp, "repo")
 	workingDir := filepath.Join(repo, "subdir")
