@@ -289,7 +289,7 @@ func commandLooksLikeOctProcess(fields []string) bool {
 	for _, field := range fields {
 		base := filepath.Base(field)
 		switch base {
-		case "oct", "one-click-tools", "main.go":
+		case "oct", betaExecutableName, "one-click-tools", "main.go":
 			return true
 		}
 		if strings.Contains(field, "one-click-tools") {
@@ -297,6 +297,43 @@ func commandLooksLikeOctProcess(fields []string) bool {
 		}
 	}
 	return false
+}
+
+// Menubar instances run in one of two tracks: beta installs (the oct-beta
+// command install.sh creates for pre-release versions) and stable installs
+// (oct). The single-instance observation and stop targets only ever cover
+// the caller's own track, so a beta menubar and the stable one coexist
+// without offering to replace each other.
+const (
+	menubarTrackBeta   = "beta"
+	menubarTrackStable = "stable"
+)
+
+const betaExecutableName = "oct-beta"
+
+// menubarProcessTrack classifies a process command line by track. Anything
+// that does not name the beta executable counts as stable — including the
+// OctMenubarApp helper, which is shared between tracks.
+func menubarProcessTrack(command string) string {
+	for _, field := range strings.Fields(command) {
+		if filepath.Base(field) == betaExecutableName {
+			return menubarTrackBeta
+		}
+	}
+	return menubarTrackStable
+}
+
+// currentMenubarTrack classifies the running oct itself. An installed beta
+// is recognized by its basename; a dev binary (go run main.go) falls back
+// to its version string, which carries the -beta suffix.
+func currentMenubarTrack() string {
+	if execPath, err := os.Executable(); err == nil && filepath.Base(execPath) == betaExecutableName {
+		return menubarTrackBeta
+	}
+	if strings.Contains(rootCmd.Version, "beta") {
+		return menubarTrackBeta
+	}
+	return menubarTrackStable
 }
 
 func buildMenubarHelper(ctx context.Context, projectDir string, stdout, stderr io.Writer) error {
