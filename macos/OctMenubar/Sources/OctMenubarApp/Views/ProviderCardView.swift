@@ -74,6 +74,13 @@ struct ProviderCardView: View {
         .onChange(of: isRefreshing) { _, refreshing in
             setBarPulsing(refreshing)
         }
+        // Lift the whole card above its sibling cards while the bubble is
+        // visible: the bubble hangs below the badge and overflows past this
+        // card's bottom edge, and the next card in the column paints later,
+        // so without this card-level zIndex its lower half is swallowed by
+        // the card underneath. (The title row's zIndex only settles
+        // bubble-vs-metric-strip order inside this card.)
+        .zIndex(showsMessage ? 1 : 0)
     }
 
     /// Provider service logo where the status dot used to sit — 14pt so the

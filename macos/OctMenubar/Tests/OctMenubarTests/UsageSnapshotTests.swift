@@ -625,6 +625,7 @@ final class UsageSnapshotTests: XCTestCase {
             "session_refresh_enabled",
             "session_refresh_interval",
             "session_refresh_hour",
+            "agent_update_schedule",
             "agent_order",
             "alert",
         ])
@@ -795,6 +796,31 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertTrue(source.contains("provider.plan"), "Provider card should still render the plan value")
         XCTAssertFalse(source.contains("Text(\"PLAN\")"), "Provider card should not render the old full-width PLAN label")
         XCTAssertFalse(source.contains("private var planStrip"), "Provider card should remove the old full-width plan strip")
+    }
+
+    func testMessageBubbleRaisesWholeCardAboveLaterSiblingCards() throws {
+        let testFile = URL(fileURLWithPath: #filePath)
+        let packageRoot = testFile
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let providerPath = packageRoot.appendingPathComponent("Sources/OctMenubarApp/Views/ProviderCardView.swift")
+        let source = try String(contentsOf: providerPath, encoding: .utf8)
+
+        // The bubble hangs below the badge and overflows past the card's
+        // bottom edge, so it must win paint order twice: against the metric
+        // strip inside the card (title-row zIndex) and against the next
+        // card in the column, which paints later and would otherwise cover
+        // the overflow (card-root zIndex).
+        let zIndexRanges = source.ranges(of: ".zIndex(showsMessage ? 1 : 0)")
+        XCTAssertEqual(zIndexRanges.count, 2, "Provider card needs the bubble's zIndex at both the title row and the card root")
+        if zIndexRanges.count == 2, let cardRootRange = source.range(of: ".onChange(of: isRefreshing)") {
+            XCTAssertLessThan(
+                cardRootRange.lowerBound,
+                zIndexRanges[1].lowerBound,
+                "The card-root zIndex must sit on the card body itself (after the refresh handlers), not just the title row"
+            )
+        }
     }
 
     func testRefreshMetadataRendersBelowProviderSection() throws {
