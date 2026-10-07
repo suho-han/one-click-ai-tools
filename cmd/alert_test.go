@@ -26,8 +26,8 @@ func TestAlertSettingsModel_HasRequiredRows_whenCreated(t *testing.T) {
 
 	// Then
 	want := []string{
-		"enabled", "threshold_percent", "critical_percent", "cooldown_minutes",
-		"quiet", "threshold.default", "threshold.5h", "threshold.7d", "confirm",
+		"enabled", "threshold_percent", "cooldown_minutes",
+		"quiet", "threshold.default", "threshold.5h", "threshold.7d", "threshold.1m", "confirm",
 	}
 	if strings.Join(got, ",") != strings.Join(want, ",") {
 		t.Fatalf("rows = %v, want %v", got, want)
@@ -152,7 +152,7 @@ func TestAlertSettingsModel_KeepsInvalidScalarEditing_whenInputRejected(t *testi
 	if !m.editing {
 		t.Fatal("editing should remain active after invalid input")
 	}
-	if !strings.Contains(m.validationError, "must be > 0 and <= 100") {
+	if !strings.Contains(m.validationError, "must be > 0 and <= 99") {
 		t.Fatalf("validation error = %q", m.validationError)
 	}
 }
@@ -244,8 +244,8 @@ func TestApplyAlertSettingsDraft_PersistsAllRows_whenConfirmed(t *testing.T) {
 	viper.SetConfigFile(configPath)
 	draft := alertSettingsDraft{
 		values: map[string]string{
-			"enabled": "true", "threshold_percent": "82", "critical_percent": "97", "cooldown_minutes": "45",
-			"quiet": "2h", "threshold.default": "81", "threshold.5h": "83", "threshold.7d": "84",
+			"enabled": "true", "threshold_percent": "82", "cooldown_minutes": "45",
+			"quiet": "2h", "threshold.default": "81", "threshold.5h": "83", "threshold.7d": "84", "threshold.1m": "85",
 		},
 	}
 
@@ -287,8 +287,8 @@ func TestApplyAlertSettingsDraft_SkipsQuietRow_whenTimerUntouched(t *testing.T) 
 	viper.Set("usage_alert_quiet_until", armed)
 	draft := alertSettingsDraft{
 		values: map[string]string{
-			"enabled": "true", "threshold_percent": "80", "critical_percent": "98", "cooldown_minutes": "360",
-			"quiet": "on (1h 59m left)", "threshold.default": "80", "threshold.5h": "80", "threshold.7d": "80",
+			"enabled": "true", "threshold_percent": "80", "cooldown_minutes": "360",
+			"quiet": "on (1h 59m left)", "threshold.default": "80", "threshold.5h": "80", "threshold.7d": "80", "threshold.1m": "80",
 		},
 		initialQuiet: "on (1h 59m left)",
 	}
@@ -313,8 +313,8 @@ func TestApplyAlertSettingsDraft_UpdatesQuietTimer_whenCycledToChoice(t *testing
 	viper.Set("usage_alert_quiet_until", armed)
 	draft := alertSettingsDraft{
 		values: map[string]string{
-			"enabled": "true", "threshold_percent": "80", "critical_percent": "98", "cooldown_minutes": "360",
-			"quiet": "off", "threshold.default": "80", "threshold.5h": "80", "threshold.7d": "80",
+			"enabled": "true", "threshold_percent": "80", "cooldown_minutes": "360",
+			"quiet": "off", "threshold.default": "80", "threshold.5h": "80", "threshold.7d": "80", "threshold.1m": "80",
 		},
 		initialQuiet: "on (1h 59m left)",
 	}
@@ -448,12 +448,11 @@ func TestSetAlertConfigValueRejectsNonFinitePercentWithoutMutation(t *testing.T)
 			// Given
 			viper.Reset()
 			viper.Set("usage_alert_threshold_percent", 80.0)
-			viper.Set("usage_alert_critical_percent", 98.0)
 			viper.Set("usage_alert_thresholds", map[string]any{"5h": 85.0})
 			viper.Set("usage_alert_provider_thresholds", map[string]any{"codex": map[string]any{"5h": 90.0}})
 
 			// When
-			keys := []string{"threshold_percent", "critical_percent", "threshold.5h", "provider.codex.5h"}
+			keys := []string{"threshold_percent", "threshold.5h", "provider.codex.5h"}
 			for _, key := range keys {
 				if err := setAlertConfigValue(key, value); err == nil {
 					t.Fatalf("setAlertConfigValue(%q, %q) accepted non-finite percent", key, value)
@@ -463,9 +462,6 @@ func TestSetAlertConfigValueRejectsNonFinitePercentWithoutMutation(t *testing.T)
 			// Then
 			if got := viper.GetFloat64("usage_alert_threshold_percent"); got != 80 {
 				t.Fatalf("threshold_percent = %v, want unchanged 80", got)
-			}
-			if got := viper.GetFloat64("usage_alert_critical_percent"); got != 98 {
-				t.Fatalf("critical_percent = %v, want unchanged 98", got)
 			}
 			if got := viper.GetFloat64("usage_alert_thresholds.5h"); got != 85 {
 				t.Fatalf("thresholds.5h = %v, want unchanged 85", got)
@@ -485,9 +481,12 @@ func TestParseAlertPercentPreservesDecimalsAndRejectsNonFiniteValues(t *testing.
 		want  float64
 	}{
 		{name: "decimal", value: "12.5", want: 12.5},
+		{name: "upper bound", value: "99", want: 99},
 		{name: "nan", value: "NaN"},
 		{name: "positive infinity", value: "+Inf"},
 		{name: "negative infinity", value: "-Inf"},
+		{name: "over upper bound", value: "99.5"},
+		{name: "100 rejected", value: "100"},
 	}
 
 	for _, tt := range tests {
@@ -516,7 +515,6 @@ func TestSetAlertConfigValueRejectsInvalidScalars(t *testing.T) {
 		"enabled":           "truthy",
 		"cooldown_minutes":  "0",
 		"threshold_percent": "101",
-		"critical_percent":  "-1",
 		"quiet":             "3h",
 	} {
 		if err := setAlertConfigValue(key, value); err == nil {
@@ -525,13 +523,14 @@ func TestSetAlertConfigValueRejectsInvalidScalars(t *testing.T) {
 	}
 }
 
-func TestBuildAlertConfigFromViperIncludesCriticalPercent(t *testing.T) {
+func TestBuildAlertConfigFromViperIncludesWindows(t *testing.T) {
 	viper.Reset()
-	viper.Set("usage_alert_critical_percent", 95.0)
+	t.Cleanup(viper.Reset)
+	viper.Set("usage_alert_thresholds", map[string]any{"default": 80.0, "5h": 85.0, "7d": 90.0, "1m": 95.0})
 
 	cfg := buildAlertConfigFromViper(true)
-	if cfg.CriticalPct != 95 {
-		t.Fatalf("expected critical percent 95, got %v", cfg.CriticalPct)
+	if cfg.GlobalThresholds["1m"] != 95 {
+		t.Fatalf("expected 1m window threshold 95, got %v", cfg.GlobalThresholds["1m"])
 	}
 }
 
@@ -595,13 +594,10 @@ func TestProviderOptionsCoverDefaultAndOptInProviders(t *testing.T) {
 }
 
 func TestAlertPriorityLabel(t *testing.T) {
-	if got := alertPriorityLabel(99, 90, 98); got != "CRITICAL" {
-		t.Fatalf("expected CRITICAL, got %s", got)
-	}
-	if got := alertPriorityLabel(92, 90, 98); got != "HIGH" {
+	if got := alertPriorityLabel(92, 90); got != "HIGH" {
 		t.Fatalf("expected HIGH, got %s", got)
 	}
-	if got := alertPriorityLabel(89, 90, 98); got != "NORMAL" {
+	if got := alertPriorityLabel(89, 90); got != "NORMAL" {
 		t.Fatalf("expected NORMAL, got %s", got)
 	}
 }

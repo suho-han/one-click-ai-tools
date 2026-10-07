@@ -23,10 +23,9 @@ type UsageAlertConfig struct {
 	CooldownMinutes int
 	StatePath       string
 
-	QuietUntil        time.Time // zero value = quiet timer off
-	GlobalThresholds  map[string]float64
+	QuietUntil        time.Time                     // zero value = quiet timer off
+	GlobalThresholds  map[string]float64            // window -> threshold
 	ProviderThreshold map[string]map[string]float64 // provider -> window -> threshold
-	CriticalPct       float64
 }
 
 type alertState struct {
@@ -44,9 +43,8 @@ type alertHit struct {
 type alertPriority string
 
 const (
-	alertPriorityNormal   alertPriority = "normal"
-	alertPriorityHigh     alertPriority = "high"
-	alertPriorityCritical alertPriority = "critical"
+	alertPriorityNormal alertPriority = "normal"
+	alertPriorityHigh   alertPriority = "high"
 )
 
 var notifyFn = sendOSNotification
@@ -85,8 +83,7 @@ func MaybeSendUsageAlerts(results []usage.UsageResult, cfg UsageAlertConfig, now
 	for _, r := range results {
 		hits := overThresholdKeys(r, cfg)
 		for _, h := range hits {
-			priority := computeAlertPriority(h.Value, h.Threshold, cfg.CriticalPct)
-			if isSnoozed(st, r.Provider, h.Window, now) && priority != alertPriorityCritical {
+			if isSnoozed(st, r.Provider, h.Window, now) {
 				continue
 			}
 			key := strings.ToLower(r.Provider) + ":" + h.Window
@@ -100,10 +97,11 @@ func MaybeSendUsageAlerts(results []usage.UsageResult, cfg UsageAlertConfig, now
 				}
 			}
 
-			if cfg.QuietUntil.After(now) && priority != alertPriorityCritical {
+			if cfg.QuietUntil.After(now) {
 				continue
 			}
 
+			priority := computeAlertPriority(h.Value, h.Threshold)
 			msg := fmt.Sprintf("[%s] %s %s usage %.1f%% (threshold %.1f%%)", strings.ToUpper(string(priority)), r.Provider, h.Window, h.Value, h.Threshold)
 			if err := notifyFn("oct usage alert", msg); err == nil {
 				st.LastSent[key] = now
@@ -137,9 +135,6 @@ func normalizeConfig(cfg UsageAlertConfig) UsageAlertConfig {
 	}
 	if cfg.ProviderThreshold == nil {
 		cfg.ProviderThreshold = map[string]map[string]float64{}
-	}
-	if cfg.CriticalPct <= 0 {
-		cfg.CriticalPct = 98
 	}
 	return cfg
 }
@@ -283,10 +278,7 @@ func parsePercent(s string) (float64, bool) {
 	return v, true
 }
 
-func computeAlertPriority(value, threshold, criticalPct float64) alertPriority {
-	if value >= criticalPct {
-		return alertPriorityCritical
-	}
+func computeAlertPriority(value, threshold float64) alertPriority {
 	if value >= threshold {
 		return alertPriorityHigh
 	}

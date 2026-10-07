@@ -149,8 +149,8 @@ var alertTestCmd = &cobra.Command{
 			}
 		}
 
-		priority := alertPriorityLabel(value, threshold, cfg.CriticalPct)
-		fmt.Fprintf(cmd.OutOrStdout(), "provider=%s window=%s value=%.1f threshold=%.1f priority=%s quiet=%s critical=%.1f\n", provider, window, value, threshold, priority, alertQuietDisplay(cfg, now), cfg.CriticalPct)
+		priority := alertPriorityLabel(value, threshold)
+		fmt.Fprintf(cmd.OutOrStdout(), "provider=%s window=%s value=%.1f threshold=%.1f priority=%s quiet=%s\n", provider, window, value, threshold, priority, alertQuietDisplay(cfg, now))
 		fmt.Fprintln(cmd.OutOrStdout(), "test executed (notification may be suppressed by cooldown/quiet timer/snooze).")
 		return nil
 	},
@@ -255,13 +255,6 @@ func setAlertConfigValue(key, val string) error {
 		}
 		viper.Set("usage_alert_threshold_percent", f)
 		return nil
-	case "critical_percent":
-		f, err := parseAlertPercent("critical_percent", val)
-		if err != nil {
-			return err
-		}
-		viper.Set("usage_alert_critical_percent", f)
-		return nil
 	case "quiet":
 		until, err := alertQuietUntilFromChoice(val)
 		if err != nil {
@@ -314,7 +307,7 @@ func setAlertConfigValue(key, val string) error {
 		return nil
 	}
 
-	return fmt.Errorf("supported keys: enabled, cooldown_minutes, threshold_percent, critical_percent, quiet, threshold.<window>, provider.<name>.<window|default>")
+	return fmt.Errorf("supported keys: enabled, cooldown_minutes, threshold_percent, quiet, threshold.<window>, provider.<name>.<window|default>")
 }
 
 func parseAlertBool(val string) (bool, error) {
@@ -336,8 +329,8 @@ func parseAlertPercent(name, val string) (float64, error) {
 	if math.IsNaN(f) || math.IsInf(f, 0) {
 		return 0, fmt.Errorf("invalid %s %q: must be finite", name, val)
 	}
-	if f <= 0 || f > 100 {
-		return 0, fmt.Errorf("invalid %s %.1f: must be > 0 and <= 100", name, f)
+	if f <= 0 || f > 99 {
+		return 0, fmt.Errorf("invalid %s %.1f: must be > 0 and <= 99", name, f)
 	}
 	return f, nil
 }
@@ -446,10 +439,7 @@ func snoozeDisplayKey(provider, window string) string {
 	return "provider:" + provider + ":window:" + window
 }
 
-func alertPriorityLabel(value, threshold, critical float64) string {
-	if value >= critical {
-		return "CRITICAL"
-	}
+func alertPriorityLabel(value, threshold float64) string {
 	if value >= threshold {
 		return "HIGH"
 	}
@@ -507,7 +497,6 @@ func buildAlertConfigFromViper(enabled bool) notify.UsageAlertConfig {
 		CooldownMinutes:   viper.GetInt("usage_alert_cooldown_minutes"),
 		StatePath:         viper.GetString("usage_alert_state_path"),
 		QuietUntil:        quietUntil,
-		CriticalPct:       viper.GetFloat64("usage_alert_critical_percent"),
 		GlobalThresholds:  parseThresholdMap(viper.GetStringMap("usage_alert_thresholds")),
 		ProviderThreshold: parseProviderThresholdMap(viper.GetStringMap("usage_alert_provider_thresholds")),
 	}

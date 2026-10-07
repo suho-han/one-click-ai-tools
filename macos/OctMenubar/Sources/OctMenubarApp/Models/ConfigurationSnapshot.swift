@@ -61,18 +61,47 @@ struct AlertThresholds: Codable, Equatable {
     var defaultThreshold: Double
     var fiveHours: Double
     var sevenDays: Double
+    var monthly: Double
 
     enum CodingKeys: String, CodingKey {
         case defaultThreshold = "default"
         case fiveHours = "5h"
         case sevenDays = "7d"
+        case monthly = "1m"
+    }
+
+    static let goDefaults = AlertThresholds(defaultThreshold: 80, fiveHours: 80, sevenDays: 80, monthly: 80)
+
+    init(
+        defaultThreshold: Double,
+        fiveHours: Double,
+        sevenDays: Double,
+        monthly: Double
+    ) {
+        self.defaultThreshold = defaultThreshold
+        self.fiveHours = fiveHours
+        self.sevenDays = sevenDays
+        self.monthly = monthly
+    }
+
+    /// Tolerant decoding: snapshots from an older oct CLI carry no `1m`
+    /// (and legacy ones may omit other window keys), and the alerts screen
+    /// must still load instead of failing with a missing-data error.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = AlertThresholds.goDefaults
+        self.init(
+            defaultThreshold: try container.decodeIfPresent(Double.self, forKey: .defaultThreshold) ?? defaults.defaultThreshold,
+            fiveHours: try container.decodeIfPresent(Double.self, forKey: .fiveHours) ?? defaults.fiveHours,
+            sevenDays: try container.decodeIfPresent(Double.self, forKey: .sevenDays) ?? defaults.sevenDays,
+            monthly: try container.decodeIfPresent(Double.self, forKey: .monthly) ?? defaults.monthly
+        )
     }
 }
 
 struct AlertSettings: Codable, Equatable {
     var enabled: Bool
     var thresholdPercent: Double
-    var criticalPercent: Double
     var cooldownMinutes: Int
     var quietUntil: String
     var thresholds: AlertThresholds
@@ -80,14 +109,37 @@ struct AlertSettings: Codable, Equatable {
     static let goDefaults = AlertSettings(
         enabled: false,
         thresholdPercent: 80,
-        criticalPercent: 98,
         cooldownMinutes: 360,
         quietUntil: "",
-        thresholds: AlertThresholds(defaultThreshold: 80, fiveHours: 80, sevenDays: 80)
+        thresholds: .goDefaults
     )
 
     /// Preset quiet timer durations in hours, mirroring the Go CLI choices.
     static let quietChoices: [Int] = [1, 2, 4, 6, 12]
+
+    /// Preset cooldown durations in minutes offered by the settings picker.
+    /// Every preset satisfies the CLI payload contract (positive, ≤ 24h).
+    static let cooldownChoices: [Int] = [15, 30, 60, 120, 180, 360, 720, 1440]
+
+    /// Picker choices for cooldown: the presets plus the configured value when
+    /// the CLI wrote a custom duration, so an out-of-preset selection still
+    /// has a matching tag instead of rendering as a blank menu item.
+    static func cooldownMenuChoices(current: Int) -> [Int] {
+        guard current > 0, !cooldownChoices.contains(current) else { return cooldownChoices }
+        return (cooldownChoices + [current]).sorted()
+    }
+
+    /// Human label for a cooldown duration: minutes below an hour, otherwise
+    /// hours with a single decimal for fractional values ("15 min", "6 hr",
+    /// "1.5 hr").
+    static func cooldownLabel(for minutes: Int) -> String {
+        guard minutes >= 60 else { return "\(minutes) min" }
+        let hours = Double(minutes) / 60
+        if hours == hours.rounded() {
+            return "\(Int(hours)) hr"
+        }
+        return String(format: "%.1f hr", hours)
+    }
 
     /// Maps a quiet_until timestamp to the picker bucket shown for it: 0 when
     /// the timer is off or expired, otherwise the smallest preset covering the
@@ -118,7 +170,6 @@ struct AlertSettings: Codable, Equatable {
     enum CodingKeys: String, CodingKey {
         case enabled
         case thresholdPercent = "threshold_percent"
-        case criticalPercent = "critical_percent"
         case cooldownMinutes = "cooldown_minutes"
         case quietUntil = "quiet_until"
         case thresholds
@@ -127,14 +178,12 @@ struct AlertSettings: Codable, Equatable {
     init(
         enabled: Bool,
         thresholdPercent: Double,
-        criticalPercent: Double,
         cooldownMinutes: Int,
         quietUntil: String,
         thresholds: AlertThresholds
     ) {
         self.enabled = enabled
         self.thresholdPercent = thresholdPercent
-        self.criticalPercent = criticalPercent
         self.cooldownMinutes = cooldownMinutes
         self.quietUntil = quietUntil
         self.thresholds = thresholds
@@ -143,13 +192,14 @@ struct AlertSettings: Codable, Equatable {
     /// Tolerant decoding: snapshots from an older oct CLI carry no
     /// `quiet_until` (they still had quiet_hours/timezone), and the alerts
     /// screen must still load instead of failing with a missing-data error.
+    /// `critical_percent` was removed from the payload; older Go snapshots
+    /// that still carry it decode fine because extra keys are ignored.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let defaults = AlertSettings.goDefaults
         self.init(
             enabled: try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? defaults.enabled,
             thresholdPercent: try container.decodeIfPresent(Double.self, forKey: .thresholdPercent) ?? defaults.thresholdPercent,
-            criticalPercent: try container.decodeIfPresent(Double.self, forKey: .criticalPercent) ?? defaults.criticalPercent,
             cooldownMinutes: try container.decodeIfPresent(Int.self, forKey: .cooldownMinutes) ?? defaults.cooldownMinutes,
             quietUntil: try container.decodeIfPresent(String.self, forKey: .quietUntil) ?? "",
             thresholds: try container.decodeIfPresent(AlertThresholds.self, forKey: .thresholds) ?? defaults.thresholds

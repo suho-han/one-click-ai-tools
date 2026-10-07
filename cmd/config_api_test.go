@@ -175,13 +175,13 @@ func TestConfigSnapshot_marshalJSONIncludesSafeAlertSettings(t *testing.T) {
 	viper.Reset()
 	viper.Set("usage_alert_enabled", true)
 	viper.Set("usage_alert_threshold_percent", 80.0)
-	viper.Set("usage_alert_critical_percent", 98.0)
 	viper.Set("usage_alert_cooldown_minutes", 120)
 	viper.Set("usage_alert_quiet_until", "2026-05-09T08:00:00Z")
 	viper.Set("usage_alert_thresholds", map[string]any{
 		"default": 80,
 		"5h":      85,
 		"7d":      90,
+		"1m":      95,
 	})
 	viper.Set("usage_alert_provider_thresholds", map[string]map[string]float64{"codex": {"5h": 95}})
 	viper.Set("usage_alert_state_path", "/private/state.json")
@@ -212,12 +212,12 @@ func TestConfigSnapshot_marshalJSONIncludesSafeAlertSettings(t *testing.T) {
 	if !ok {
 		t.Fatalf("alert.thresholds = %#v, want object", alert["thresholds"])
 	}
-	for key, want := range map[string]float64{"default": 80, "5h": 85, "7d": 90} {
+	for key, want := range map[string]float64{"default": 80, "5h": 85, "7d": 90, "1m": 95} {
 		if got := thresholds[key]; got != want {
 			t.Fatalf("alert.thresholds.%s = %#v, want %v", key, got, want)
 		}
 	}
-	for _, forbidden := range []string{"provider_thresholds", "state_path", "snooze_state", "token", "private"} {
+	for _, forbidden := range []string{"provider_thresholds", "state_path", "snooze_state", "token", "private", "critical_percent"} {
 		if _, ok := alert[forbidden]; ok {
 			t.Fatalf("alert JSON leaked forbidden key %q: %s", forbidden, data)
 		}
@@ -228,7 +228,7 @@ func TestConfigUpdatePayload_applyConfigUpdatePersistsAlertSettings(t *testing.T
 	t.Cleanup(viper.Reset)
 	viper.Reset()
 
-	payload, err := parseConfigUpdatePayload(`{"alert":{"enabled":true,"threshold_percent":85,"critical_percent":98,"cooldown_minutes":120,"quiet_until":"2026-05-09T08:00:00Z","thresholds":{"default":80,"5h":85,"7d":90}}}`)
+	payload, err := parseConfigUpdatePayload(`{"alert":{"enabled":true,"threshold_percent":85,"cooldown_minutes":120,"quiet_until":"2026-05-09T08:00:00Z","thresholds":{"default":80,"5h":85,"7d":90,"1m":95}}}`)
 	if err != nil {
 		t.Fatalf("parseConfigUpdatePayload() error = %v", err)
 	}
@@ -242,16 +242,13 @@ func TestConfigUpdatePayload_applyConfigUpdatePersistsAlertSettings(t *testing.T
 	if got := viper.GetFloat64("usage_alert_threshold_percent"); got != 85 {
 		t.Fatalf("usage_alert_threshold_percent = %v, want 85", got)
 	}
-	if got := viper.GetFloat64("usage_alert_critical_percent"); got != 98 {
-		t.Fatalf("usage_alert_critical_percent = %v, want 98", got)
-	}
 	if got := viper.GetInt("usage_alert_cooldown_minutes"); got != 120 {
 		t.Fatalf("usage_alert_cooldown_minutes = %d, want 120", got)
 	}
 	if got := viper.GetString("usage_alert_quiet_until"); got != "2026-05-09T08:00:00Z" {
 		t.Fatalf("usage_alert_quiet_until = %q, want 2026-05-09T08:00:00Z", got)
 	}
-	for key, want := range map[string]float64{"default": 80, "5h": 85, "7d": 90} {
+	for key, want := range map[string]float64{"default": 80, "5h": 85, "7d": 90, "1m": 95} {
 		if got := viper.GetFloat64("usage_alert_thresholds." + key); got != want {
 			t.Fatalf("usage_alert_thresholds.%s = %v, want %v", key, got, want)
 		}
@@ -300,14 +297,13 @@ func TestConfigUpdatePayload_rejectsNonFiniteAlertPercentWithoutMutation(t *test
 			t.Cleanup(viper.Reset)
 			viper.Reset()
 			viper.Set("usage_alert_threshold_percent", 80.0)
-			viper.Set("usage_alert_critical_percent", 98.0)
 			viper.Set("usage_alert_thresholds", map[string]any{"default": 81.0, "5h": 82.0, "7d": 83.0})
 			payloads := []configUpdatePayload{
 				{Alert: &configAlertUpdatePayload{ThresholdPercent: floatPtr(value)}},
-				{Alert: &configAlertUpdatePayload{CriticalPercent: floatPtr(value)}},
 				{Alert: &configAlertUpdatePayload{Thresholds: &configAlertThresholdPayload{Default: floatPtr(value)}}},
 				{Alert: &configAlertUpdatePayload{Thresholds: &configAlertThresholdPayload{FiveHours: floatPtr(value)}}},
 				{Alert: &configAlertUpdatePayload{Thresholds: &configAlertThresholdPayload{SevenDays: floatPtr(value)}}},
+				{Alert: &configAlertUpdatePayload{Thresholds: &configAlertThresholdPayload{Monthly: floatPtr(value)}}},
 			}
 
 			// When
@@ -320,9 +316,6 @@ func TestConfigUpdatePayload_rejectsNonFiniteAlertPercentWithoutMutation(t *test
 			// Then
 			if got := viper.GetFloat64("usage_alert_threshold_percent"); got != 80 {
 				t.Fatalf("threshold_percent = %v, want unchanged 80", got)
-			}
-			if got := viper.GetFloat64("usage_alert_critical_percent"); got != 98 {
-				t.Fatalf("critical_percent = %v, want unchanged 98", got)
 			}
 			for key, want := range map[string]float64{"default": 81, "5h": 82, "7d": 83} {
 				if got := viper.GetFloat64("usage_alert_thresholds." + key); got != want {
@@ -536,7 +529,6 @@ func TestBuildConfigAlertSnapshot_NormalizesZeroScalarsToEffectiveDefaults(t *te
 	t.Cleanup(viper.Reset)
 	viper.Reset()
 	viper.Set("usage_alert_threshold_percent", 0.0)
-	viper.Set("usage_alert_critical_percent", 0.0)
 	viper.Set("usage_alert_cooldown_minutes", 0)
 
 	// When
@@ -545,9 +537,6 @@ func TestBuildConfigAlertSnapshot_NormalizesZeroScalarsToEffectiveDefaults(t *te
 	// Then
 	if got.ThresholdPercent != 80 {
 		t.Fatalf("ThresholdPercent = %v, want 80", got.ThresholdPercent)
-	}
-	if got.CriticalPercent != 98 {
-		t.Fatalf("CriticalPercent = %v, want 98", got.CriticalPercent)
 	}
 	if got.CooldownMinutes != 360 {
 		t.Fatalf("CooldownMinutes = %v, want 360", got.CooldownMinutes)

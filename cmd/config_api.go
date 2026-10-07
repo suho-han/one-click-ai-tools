@@ -50,7 +50,6 @@ type configSnapshot struct {
 type configAlertSnapshot struct {
 	Enabled          bool                  `json:"enabled"`
 	ThresholdPercent float64               `json:"threshold_percent"`
-	CriticalPercent  float64               `json:"critical_percent"`
 	CooldownMinutes  int                   `json:"cooldown_minutes"`
 	QuietUntil       string                `json:"quiet_until"`
 	Thresholds       configAlertThresholds `json:"thresholds"`
@@ -60,6 +59,7 @@ type configAlertThresholds struct {
 	Default   float64 `json:"default"`
 	FiveHours float64 `json:"5h"`
 	SevenDays float64 `json:"7d"`
+	Monthly   float64 `json:"1m"`
 }
 
 // configScheduleUpdatePayload carries the settings UI's desired agent-update
@@ -84,7 +84,6 @@ type configUpdatePayload struct {
 type configAlertUpdatePayload struct {
 	Enabled          *bool                        `json:"enabled"`
 	ThresholdPercent *float64                     `json:"threshold_percent"`
-	CriticalPercent  *float64                     `json:"critical_percent"`
 	CooldownMinutes  *int                         `json:"cooldown_minutes"`
 	QuietUntil       *string                      `json:"quiet_until"`
 	Thresholds       *configAlertThresholdPayload `json:"thresholds"`
@@ -94,12 +93,12 @@ type configAlertThresholdPayload struct {
 	Default   *float64 `json:"default"`
 	FiveHours *float64 `json:"5h"`
 	SevenDays *float64 `json:"7d"`
+	Monthly   *float64 `json:"1m"`
 }
 
 type configAlertUpdate struct {
 	Enabled          *bool
 	ThresholdPercent *float64
-	CriticalPercent  *float64
 	CooldownMinutes  *int
 	QuietUntil       *string
 	Thresholds       *configAlertThresholdUpdate
@@ -109,6 +108,7 @@ type configAlertThresholdUpdate struct {
 	Default   *float64
 	FiveHours *float64
 	SevenDays *float64
+	Monthly   *float64
 }
 
 func parseConfigUpdatePayload(raw string) (configUpdatePayload, error) {
@@ -364,15 +364,11 @@ func buildConfigAlertSnapshot() configAlertSnapshot {
 	if threshold <= 0 {
 		threshold = 80
 	}
-	critical := alert.CriticalPct
-	if critical <= 0 {
-		critical = 98
-	}
 	cooldown := alert.CooldownMinutes
 	if cooldown <= 0 {
 		cooldown = 360
 	}
-	// Runtime evaluation inherits 5h/7d windows from the global default
+	// Runtime evaluation inherits window thresholds from the global default
 	// (thresholdFor: window -> default -> legacy percent). The Swift settings
 	// payload always sends the complete alert object, so reporting the legacy
 	// percent here would persist it as an explicit window override on save.
@@ -384,13 +380,13 @@ func buildConfigAlertSnapshot() configAlertSnapshot {
 	return configAlertSnapshot{
 		Enabled:          alert.Enabled,
 		ThresholdPercent: threshold,
-		CriticalPercent:  critical,
 		CooldownMinutes:  cooldown,
 		QuietUntil:       quietUntil,
 		Thresholds: configAlertThresholds{
 			Default:   effectiveDefault,
 			FiveHours: configAlertThreshold(alert.GlobalThresholds, "5h", effectiveDefault),
 			SevenDays: configAlertThreshold(alert.GlobalThresholds, "7d", effectiveDefault),
+			Monthly:   configAlertThreshold(alert.GlobalThresholds, "1m", effectiveDefault),
 		},
 	}
 }
@@ -407,10 +403,6 @@ func normalizeConfigAlertUpdate(payload *configAlertUpdatePayload) (configAlertU
 		return configAlertUpdate{}, nil
 	}
 	thresholdPercent, err := normalizeConfigAlertPercent("threshold_percent", payload.ThresholdPercent)
-	if err != nil {
-		return configAlertUpdate{}, err
-	}
-	criticalPercent, err := normalizeConfigAlertPercent("critical_percent", payload.CriticalPercent)
 	if err != nil {
 		return configAlertUpdate{}, err
 	}
@@ -436,7 +428,6 @@ func normalizeConfigAlertUpdate(payload *configAlertUpdatePayload) (configAlertU
 	return configAlertUpdate{
 		Enabled:          payload.Enabled,
 		ThresholdPercent: thresholdPercent,
-		CriticalPercent:  criticalPercent,
 		CooldownMinutes:  payload.CooldownMinutes,
 		QuietUntil:       quietUntil,
 		Thresholds:       thresholds,
@@ -470,10 +461,15 @@ func normalizeConfigAlertThresholds(payload *configAlertThresholdPayload) (*conf
 	if err != nil {
 		return nil, err
 	}
+	monthly, err := normalizeConfigAlertPercent("thresholds.1m", payload.Monthly)
+	if err != nil {
+		return nil, err
+	}
 	return &configAlertThresholdUpdate{
 		Default:   defaultThreshold,
 		FiveHours: fiveHours,
 		SevenDays: sevenDays,
+		Monthly:   monthly,
 	}, nil
 }
 
@@ -483,9 +479,6 @@ func applyConfigAlertUpdate(alert configAlertUpdate) {
 	}
 	if alert.ThresholdPercent != nil {
 		viper.Set("usage_alert_threshold_percent", *alert.ThresholdPercent)
-	}
-	if alert.CriticalPercent != nil {
-		viper.Set("usage_alert_critical_percent", *alert.CriticalPercent)
 	}
 	if alert.CooldownMinutes != nil {
 		viper.Set("usage_alert_cooldown_minutes", *alert.CooldownMinutes)
@@ -504,6 +497,9 @@ func applyConfigAlertUpdate(alert configAlertUpdate) {
 	}
 	if alert.Thresholds.SevenDays != nil {
 		viper.Set("usage_alert_thresholds.7d", *alert.Thresholds.SevenDays)
+	}
+	if alert.Thresholds.Monthly != nil {
+		viper.Set("usage_alert_thresholds.1m", *alert.Thresholds.Monthly)
 	}
 }
 

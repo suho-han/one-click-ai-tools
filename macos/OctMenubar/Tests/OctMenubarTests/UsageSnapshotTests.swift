@@ -454,13 +454,13 @@ final class UsageSnapshotTests: XCTestCase {
           "alert": {
             "enabled": true,
             "threshold_percent": 82.5,
-            "critical_percent": 97.5,
             "cooldown_minutes": 120,
             "quiet_until": "2026-09-26T22:00:00Z",
             "thresholds": {
               "default": 81,
               "5h": 82.5,
-              "7d": 90
+              "7d": 90,
+              "1m": 95
             }
           },
           "tools": [
@@ -493,10 +493,9 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.alert, AlertSettings(
             enabled: true,
             thresholdPercent: 82.5,
-            criticalPercent: 97.5,
             cooldownMinutes: 120,
             quietUntil: "2026-09-26T22:00:00Z",
-            thresholds: AlertThresholds(defaultThreshold: 81, fiveHours: 82.5, sevenDays: 90)
+            thresholds: AlertThresholds(defaultThreshold: 81, fiveHours: 82.5, sevenDays: 90, monthly: 95)
         ))
         XCTAssertEqual(snapshot.tools.map(\.binaryName), ["codex", "commandcode", "claude"])
         XCTAssertEqual(snapshot.tools.map(\.enabled), [true, true, false])
@@ -592,12 +591,12 @@ final class UsageSnapshotTests: XCTestCase {
         draft.moveTool("claude", by: -1)
         draft.alert.enabled = true
         draft.alert.thresholdPercent = 82.5
-        draft.alert.criticalPercent = 97.5
         draft.alert.cooldownMinutes = 120
         draft.alert.quietUntil = "2026-09-26T22:00:00Z"
         draft.alert.thresholds.defaultThreshold = 81
         draft.alert.thresholds.fiveHours = 82.5
         draft.alert.thresholds.sevenDays = 90
+        draft.alert.thresholds.monthly = 95
 
         let payload = draft.updatePayload()
 
@@ -609,12 +608,12 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertEqual(payload.agentOrder, ["codex", "claude", "commandcode"])
         XCTAssertTrue(payload.alert.enabled)
         XCTAssertEqual(payload.alert.thresholdPercent, 82.5)
-        XCTAssertEqual(payload.alert.criticalPercent, 97.5)
         XCTAssertEqual(payload.alert.cooldownMinutes, 120)
         XCTAssertEqual(payload.alert.quietUntil, "2026-09-26T22:00:00Z")
         XCTAssertEqual(payload.alert.thresholds.defaultThreshold, 81)
         XCTAssertEqual(payload.alert.thresholds.fiveHours, 82.5)
         XCTAssertEqual(payload.alert.thresholds.sevenDays, 90)
+        XCTAssertEqual(payload.alert.thresholds.monthly, 95)
 
         let encoded = try JSONEncoder().encode(payload)
         let json = try JSONSerialization.jsonObject(with: encoded) as! [String: Any]
@@ -632,12 +631,11 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertEqual(Set(alert.keys), [
             "enabled",
             "threshold_percent",
-            "critical_percent",
             "cooldown_minutes",
             "quiet_until",
             "thresholds",
         ])
-        XCTAssertEqual(Set(thresholds.keys), ["default", "5h", "7d"])
+        XCTAssertEqual(Set(thresholds.keys), ["default", "5h", "7d", "1m"])
         XCTAssertEqual(json["enabled_tools"] as? [String], ["codex", "claude", "commandcode"])
         XCTAssertEqual(json["menubar_title_mode"] as? String, "oct")
         XCTAssertEqual(json["session_refresh_enabled"] as? Bool, true)
@@ -646,12 +644,12 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertEqual(json["agent_order"] as? [String], ["codex", "claude", "commandcode"])
         XCTAssertEqual(alert["enabled"] as? Bool, true)
         XCTAssertEqual(alert["threshold_percent"] as? Double, 82.5)
-        XCTAssertEqual(alert["critical_percent"] as? Double, 97.5)
         XCTAssertEqual(alert["cooldown_minutes"] as? Int, 120)
         XCTAssertEqual(alert["quiet_until"] as? String, "2026-09-26T22:00:00Z")
         XCTAssertEqual(thresholds["default"] as? Double, 81)
         XCTAssertEqual(thresholds["5h"] as? Double, 82.5)
         XCTAssertEqual(thresholds["7d"] as? Double, 90)
+        XCTAssertEqual(thresholds["1m"] as? Double, 95)
     }
 
     func testConfigurationSnapshotRejectsMalformedAlertJSON() {
