@@ -6,6 +6,8 @@ import (
 	"errors"
 	"io"
 	"time"
+
+	"github.com/spf13/cobra"
 )
 
 func runMenubar() error {
@@ -30,6 +32,14 @@ func enableMenubarDaemon(out io.Writer) error {
 
 func disableMenubarDaemon(out io.Writer) error {
 	return errors.New("menubar daemon management requires cgo-enabled darwin build")
+}
+
+func runMenubarDefaultCommand(cmd *cobra.Command) error {
+	return errors.New("menubar requires cgo-enabled darwin build")
+}
+
+func menubarDaemonStatusJSON() (string, error) {
+	return "", errors.New("menubar daemon management requires cgo-enabled darwin build")
 }
 
 func menubarDaemonSummary() string { return "" }

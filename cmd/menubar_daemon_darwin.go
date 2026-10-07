@@ -3,6 +3,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/spf13/cobra"
 	"github.com/suho-han/one-click-ai-tools/internal/schedule"
 )
 
@@ -44,18 +46,17 @@ func enableMenubarDaemon(out io.Writer) error {
 	track := currentMenubarTrack()
 	label := menubarDaemonLabel(track)
 
-	octPath, err := os.Executable()
+	helperPath, err := resolveInstalledMenubarHelper()
 	if err != nil {
-		return fmt.Errorf("resolve oct path: %w", err)
-	}
-	workingDir, _ := os.Getwd()
-	helperPath, _ := resolveMenubarHelperPath(menubarEnvironmentMap(), octPath, workingDir)
-	if helperPath == "" {
-		return errors.New("no installed menubar helper found; build and install it first with 'oct menubar install-helper' (see 'oct menubar doctor')")
+		return err
 	}
 	// launchd sessions have no user shell PATH and the helper locates oct by
 	// env (OCT_MENUBAR_OCT_PATH first, then PATH), so both are pinned at
 	// enable time. Re-run 'daemon enable' after moving either binary.
+	octPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("resolve oct path: %w", err)
+	}
 	item := schedule.LaunchItem{
 		Label:            label,
 		ProgramArguments: []string{helperPath},
@@ -78,6 +79,59 @@ func enableMenubarDaemon(out io.Writer) error {
 	}
 	fmt.Fprintf(out, "menubar daemon enabled (%s): starts at login, running now\n", label)
 	return nil
+}
+
+// resolveInstalledMenubarHelper locates the Swift helper the same way a
+// real launch would, so the daemon registration always launches exactly
+// what `oct menubar` would have launched.
+func resolveInstalledMenubarHelper() (string, error) {
+	octPath, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("resolve oct path: %w", err)
+	}
+	workingDir, _ := os.Getwd()
+	helperPath, _ := resolveMenubarHelperPath(menubarEnvironmentMap(), octPath, workingDir)
+	if helperPath == "" {
+		return "", errors.New("no installed menubar helper found; build and install it first with 'oct menubar install-helper' (see 'oct menubar doctor')")
+	}
+	return helperPath, nil
+}
+
+// runMenubarDefaultCommand is bare `oct menubar`: register launch-at-login
+// and start the menubar now via launchd. Without an installed Swift helper
+// there is nothing to register, so the legacy detached menubar takes over
+// and the user is pointed at install-helper.
+func runMenubarDefaultCommand(cmd *cobra.Command) error {
+	if _, err := resolveInstalledMenubarHelper(); err != nil {
+		warnLegacyMenubarFallback(cmd.OutOrStdout())
+		if err := startMenubarDetachedCommand(); err != nil {
+			return fmt.Errorf("menubar start failed: %w", err)
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "menubar started (legacy). Install the Swift helper to get launch-at-login: oct menubar install-helper")
+		return nil
+	}
+	return enableMenubarDaemon(cmd.OutOrStdout())
+}
+
+// menubarDaemonStatus is the machine-readable daemon state the settings
+// toggle consumes (`oct menubar daemon --json`).
+type menubarDaemonStatus struct {
+	Enabled bool   `json:"enabled"`
+	Loaded  bool   `json:"loaded"`
+	Label   string `json:"label"`
+}
+
+func menubarDaemonStatusJSON() (string, error) {
+	label := menubarDaemonLabel(currentMenubarTrack())
+	state, err := launchItemStatusCmd(label)
+	if err != nil {
+		return "", err
+	}
+	payload, err := json.Marshal(menubarDaemonStatus{Enabled: state.Installed, Loaded: state.Loaded, Label: label})
+	if err != nil {
+		return "", err
+	}
+	return string(payload), nil
 }
 
 func disableMenubarDaemon(out io.Writer) error {

@@ -207,6 +207,30 @@ final class SettingsTabTests: XCTestCase {
         XCTAssertTrue(configurationSource.contains(".disabled(isAgentUpdating)"), "the row button only bows to a run-all sweep")
     }
 
+    /// The General section's launch-at-login toggle is wired end to end:
+    /// the tab renders it from store state (disabled while unknown), the
+    /// toggle routes through the store, and the store talks to
+    /// `oct menubar daemon --json` / enable / disable.
+    func testLaunchAtLoginToggleWiring() throws {
+        let configurationSource = try sourceFile("Sources/OctMenubarApp/Views/Settings/SettingsConfigurationTab.swift")
+        let settingsSource = try sourceFile("Sources/OctMenubarApp/Views/SettingsView.swift")
+        let storeSource = try sourceFile("Sources/OctMenubarApp/Services/ConfigurationStore.swift")
+        let serviceSource = try sourceFile("Sources/OctMenubarApp/Services/OctCLIService.swift")
+
+        XCTAssertTrue(configurationSource.contains("Toggle(\"Launch at login\""), "the General section must carry the launch-at-login toggle")
+        XCTAssertTrue(configurationSource.contains(".disabled(menubarDaemonState == nil)"), "the toggle must be disabled while the state is unknown")
+        XCTAssertTrue(configurationSource.contains("get: { menubarDaemonState?.enabled ?? false }"))
+
+        XCTAssertTrue(settingsSource.contains("configurationStore.setMenubarDaemonEnabled(enabled)"))
+        XCTAssertTrue(settingsSource.contains("configurationStore.loadMenubarDaemonState()"), "opening settings must refresh the daemon state")
+
+        XCTAssertTrue(storeSource.contains("func setMenubarDaemonEnabled"))
+        XCTAssertTrue(storeSource.contains("func loadMenubarDaemonState"))
+        XCTAssertTrue(serviceSource.contains("fetchMenubarDaemonState"))
+        XCTAssertTrue(serviceSource.contains("\"menubar\", \"daemon\", \"--json\""))
+        XCTAssertTrue(serviceSource.contains("\"menubar\", \"daemon\", enabled ? \"enable\" : \"disable\""))
+    }
+
     private var packageRoot: URL {
         URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()

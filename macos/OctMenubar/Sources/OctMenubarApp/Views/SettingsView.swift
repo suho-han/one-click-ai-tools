@@ -22,6 +22,7 @@ struct SettingsView: View {
             Task {
                 await configurationStore.loadDraft()
                 await configurationStore.checkAgentVersions()
+                await configurationStore.loadMenubarDaemonState()
             }
         }
         .onDisappear {
@@ -69,6 +70,10 @@ struct SettingsView: View {
                         },
                         onDismissFailureReport: {
                             configurationStore.dismissFailureReport()
+                        },
+                        menubarDaemonState: configurationStore.menubarDaemonState,
+                        onMenubarDaemonToggle: { enabled in
+                            Task { await configurationStore.setMenubarDaemonEnabled(enabled) }
                         },
                         onAction: runAction
                     )

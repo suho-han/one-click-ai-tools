@@ -103,6 +103,19 @@ struct OctCLIService {
             || lowered.contains("flag provided but not defined: -payload")
     }
 
+    /// Launch-at-login registration for this track's menubar daemon, as
+    /// reported by `oct menubar daemon --json`. The oct binary discovered
+    /// here owns the same track as this helper (beta helper → oct-beta), so
+    /// the toggle never touches the other track's registration.
+    func fetchMenubarDaemonState() async throws -> MenubarDaemonState {
+        let output = try await runAndCapture(arguments: ["menubar", "daemon", "--json"])
+        return try JSONDecoder().decode(MenubarDaemonState.self, from: Data(output.utf8))
+    }
+
+    func setMenubarDaemonEnabled(_ enabled: Bool) async throws {
+        _ = try await runProcess(executableURL: executableURL, arguments: ["menubar", "daemon", enabled ? "enable" : "disable"])
+    }
+
     /// Restarts the menubar helper by handing stop→start to a detached shell:
     /// `oct menubar stop` SIGTERMs every helper instance (this one included),
     /// then `oct menubar --daemon` starts a fresh one. The sequence must
@@ -721,6 +734,15 @@ private final class OneShotGate: @unchecked Sendable {
 struct ProcessOutput {
     let stdout: String
     let stderr: String
+}
+
+/// `oct menubar daemon --json`: whether this track's menubar is registered
+/// to start at login (enabled) and currently loaded into launchd (loaded).
+/// `label` identifies the registration (com.oct.menubar / com.oct-beta.menubar).
+struct MenubarDaemonState: Codable, Equatable {
+    var enabled: Bool
+    var loaded: Bool
+    var label: String?
 }
 
 enum OctCLIServiceError: LocalizedError {

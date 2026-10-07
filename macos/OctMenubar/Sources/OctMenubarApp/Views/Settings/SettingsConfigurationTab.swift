@@ -35,6 +35,13 @@ struct SettingsConfigurationTab: View {
     let onUpdateProvider: (String) -> Void
     /// The failure alert was dismissed.
     let onDismissFailureReport: () -> Void
+    /// Launch-at-login registration for this track's menubar daemon. Nil
+    /// means unknown (not loaded yet, or the installed oct is too old to
+    /// report it) — the toggle renders disabled.
+    let menubarDaemonState: MenubarDaemonState?
+    /// Toggles launch-at-login; the store settles the state and surfaces
+    /// failures as feedback.
+    let onMenubarDaemonToggle: (Bool) -> Void
     /// Terminal-tool actions routed through the same runner the Tools tab
     /// uses, so feedback lines stay uniform.
     let onAction: (OctMenubarAction) -> Void
@@ -96,6 +103,7 @@ struct SettingsConfigurationTab: View {
             displaySection
             alertSection
             sessionRefreshSection
+            generalSection
         }
     }
 
@@ -563,6 +571,39 @@ struct SettingsConfigurationTab: View {
                 }
             }
         }
+    }
+
+    /// App-level behavior (not part of the oct config draft): whether this
+    /// track's menubar daemon is registered to start at login. The toggle
+    /// acts immediately — no unsaved-changes round-trip.
+    private var generalSection: some View {
+        SettingsSectionCard(
+            title: "General",
+            systemImage: "gearshape",
+            description: "App behavior."
+        ) {
+            VStack(alignment: .leading, spacing: 6) {
+                Toggle("Launch at login", isOn: menubarDaemonBinding)
+                    .disabled(menubarDaemonState == nil)
+                Text(menubarDaemonCaption)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private var menubarDaemonCaption: String {
+        guard menubarDaemonState != nil else {
+            return "The installed oct binary does not report launch-at-login support."
+        }
+        return "Start the menubar automatically when you log in."
+    }
+
+    private var menubarDaemonBinding: Binding<Bool> {
+        Binding(
+            get: { menubarDaemonState?.enabled ?? false },
+            set: { onMenubarDaemonToggle($0) }
+        )
     }
 
     private var menubarTitleModeBinding: Binding<MenubarTitleMode> {

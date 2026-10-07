@@ -35,6 +35,10 @@ final class ConfigurationStore: ObservableObject {
     /// Why the last run's providers failed, presented as one alert when the
     /// run finishes. Nil after dismissal or when the settings window closes.
     @Published private(set) var failureReport: AgentUpdateFailureReport?
+    /// Launch-at-login registration for this track's menubar daemon. Nil
+    /// means unknown: the state has not loaded yet, or the installed oct is
+    /// too old to report it (the toggle then renders disabled).
+    @Published private(set) var menubarDaemonState: MenubarDaemonState?
 
     private let service: OctCLIService
     /// Guards against a late-arriving load overwriting a newer draft: only
@@ -120,6 +124,31 @@ final class ConfigurationStore: ObservableObject {
         guard let snapshot else { return }
         draft = ConfigurationDraft(snapshot: snapshot)
         feedback = .informational("Reverted to the last loaded configuration.")
+    }
+
+    /// Reads the launch-at-login registration. Kept out of loadDraft so a
+    /// CLI without daemon support cannot fail the whole configuration load.
+    func loadMenubarDaemonState() async {
+        do {
+            menubarDaemonState = try await service.fetchMenubarDaemonState()
+        } catch {
+            menubarDaemonState = nil
+        }
+    }
+
+    /// Toggles launch-at-login. Optimistic so the toggle tracks the user's
+    /// click immediately; the follow-up read (which also refreshes the
+    /// loaded bit) or the error revert settles the truth.
+    func setMenubarDaemonEnabled(_ enabled: Bool) async {
+        let previous = menubarDaemonState
+        menubarDaemonState?.enabled = enabled
+        do {
+            try await service.setMenubarDaemonEnabled(enabled)
+            menubarDaemonState = try await service.fetchMenubarDaemonState()
+        } catch {
+            menubarDaemonState = previous
+            feedback = .error("Failed to \(enabled ? "enable" : "disable") launch at login: \(error.localizedDescription)")
+        }
     }
 
     /// Runs `oct agent-update --check --json` and publishes per-provider

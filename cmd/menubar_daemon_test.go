@@ -217,3 +217,91 @@ func TestMenubarDaemonCommandRendersStatus(t *testing.T) {
 		t.Fatalf("output = %q, want the status line", out.String())
 	}
 }
+
+func TestMenubarDaemonStatusJSON(t *testing.T) {
+	_, _, _ = stubDaemonSeams(t)
+	stubMenubarTrack(t, "0.1.6")
+	launchItemStatusCmd = func(string) (schedule.LaunchItemState, error) {
+		return schedule.LaunchItemState{Installed: true, Loaded: true}, nil
+	}
+
+	payload, err := menubarDaemonStatusJSON()
+	if err != nil {
+		t.Fatalf("menubarDaemonStatusJSON: %v", err)
+	}
+	want := `{"enabled":true,"loaded":true,"label":"com.oct.menubar"}`
+	if payload != want {
+		t.Fatalf("status json = %s, want %s", payload, want)
+	}
+}
+
+func TestMenubarDaemonCommandJSONFlag(t *testing.T) {
+	_, _, _ = stubDaemonSeams(t)
+	stubMenubarTrack(t, "0.1.6")
+	launchItemStatusCmd = func(string) (schedule.LaunchItemState, error) {
+		return schedule.LaunchItemState{}, nil
+	}
+	origJSON := menubarDaemonJSON
+	menubarDaemonJSON = true
+	t.Cleanup(func() { menubarDaemonJSON = origJSON })
+
+	var out bytes.Buffer
+	menubarDaemonCmd.SetOut(&out)
+	if err := menubarDaemonCmd.RunE(menubarDaemonCmd, nil); err != nil {
+		t.Fatalf("daemon RunE --json: %v", err)
+	}
+	if !strings.Contains(out.String(), `"enabled":false`) {
+		t.Fatalf("output = %q, want the JSON payload", out.String())
+	}
+}
+
+func TestMenubarDefaultCommandEnablesDaemonWhenHelperPresent(t *testing.T) {
+	pointMenubarHelperAtFake(t)
+	stubMenubarTrack(t, "0.1.6")
+	enabled, _, _ := stubDaemonSeams(t)
+	origDetached := startMenubarDetachedCommand
+	detachedCalls := 0
+	startMenubarDetachedCommand = func() error { detachedCalls++; return nil }
+	t.Cleanup(func() { startMenubarDetachedCommand = origDetached })
+
+	var out bytes.Buffer
+	menubarCmd.SetOut(&out)
+	if err := runMenubarDefaultCommand(menubarCmd); err != nil {
+		t.Fatalf("runMenubarDefaultCommand: %v", err)
+	}
+	if len(*enabled) != 1 {
+		t.Fatalf("EnableLaunchItem calls = %d, want 1 (the default registers at login)", len(*enabled))
+	}
+	if detachedCalls != 0 {
+		t.Fatalf("legacy detached start calls = %d, want 0 when a helper is installed", detachedCalls)
+	}
+	if !strings.Contains(out.String(), "starts at login, running now") {
+		t.Fatalf("output = %q, want the running-now confirmation", out.String())
+	}
+}
+
+func TestMenubarDefaultCommandFallsBackToLegacyWithoutHelper(t *testing.T) {
+	// The beta track skips source-tree helper search, so an empty HOME and
+	// PATH make resolution fail deterministically even inside the repo.
+	stubMenubarTrack(t, "0.1.6-beta.1")
+	_, _, _ = stubDaemonSeams(t)
+	t.Setenv("OCT_MENUBAR_HELPER_PATH", "")
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("PATH", "")
+	origDetached := startMenubarDetachedCommand
+	detachedCalls := 0
+	startMenubarDetachedCommand = func() error { detachedCalls++; return nil }
+	t.Cleanup(func() { startMenubarDetachedCommand = origDetached })
+
+	var out bytes.Buffer
+	menubarCmd.SetOut(&out)
+	if err := runMenubarDefaultCommand(menubarCmd); err != nil {
+		t.Fatalf("runMenubarDefaultCommand: %v", err)
+	}
+	if detachedCalls != 1 {
+		t.Fatalf("legacy detached start calls = %d, want 1 (no helper to register)", detachedCalls)
+	}
+	if !strings.Contains(out.String(), "install-helper") {
+		t.Fatalf("output = %q, want the install-helper pointer", out.String())
+	}
+}

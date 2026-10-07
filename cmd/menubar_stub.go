@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"time"
+
+	"github.com/spf13/cobra"
 )
 
 func runMenubar() error {
@@ -30,6 +32,14 @@ func enableMenubarDaemon(out io.Writer) error {
 
 func disableMenubarDaemon(out io.Writer) error {
 	return fmt.Errorf("menubar daemon management is currently supported only on macOS")
+}
+
+func runMenubarDefaultCommand(cmd *cobra.Command) error {
+	return fmt.Errorf("menubar is currently supported only on macOS")
+}
+
+func menubarDaemonStatusJSON() (string, error) {
+	return "", fmt.Errorf("menubar daemon management is currently supported only on macOS")
 }
 
 func menubarDaemonSummary() string { return "" }

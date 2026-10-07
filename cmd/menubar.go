@@ -15,6 +15,8 @@ import (
 
 var menubarDaemon bool
 var menubarLegacy bool
+var menubarForeground bool
+var menubarDaemonJSON bool
 
 // warnLegacyMenubarFallback makes the otherwise-silent demotion to the legacy
 // Go menubar visible: without a Swift helper, users could not tell why their
@@ -56,6 +58,14 @@ var menubarCmd = &cobra.Command{
 	Short:        "🖥️ Run macOS menu bar app (status item)",
 	SilenceUsage: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Bare `oct menubar` is the full setup: register launch-at-login and
+		// start the menubar now. The explicit flags keep their historical
+		// semantics — --daemon detaches without touching the registration,
+		// --foreground/--legacy run the interactive modes.
+		if !menubarDaemon && !menubarForeground && !menubarLegacy {
+			return runMenubarDefaultCommand(cmd)
+		}
+
 		proceed, err := handleExistingMenubarInstance(cmd)
 		if err != nil {
 			return err
@@ -183,12 +193,21 @@ var menubarDaemonCmd = &cobra.Command{
 	Short: "Show the menubar daemon's launch-at-login status",
 	Long: `Register the menubar helper with the OS service manager so it starts at
 every login (launchd on macOS, the same role systemd plays on Linux).
-'oct menubar --daemon' starts it for this session; this manages the
-persistent registration.`,
+'oct menubar' enables this by default; this command inspects and
+controls the registration directly.`,
 	Example: `  oct menubar daemon              show status
+  oct menubar daemon --json       status as JSON
   oct menubar daemon enable       register (starts at login, and now if idle)
   oct menubar daemon disable      unregister`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		if menubarDaemonJSON {
+			payload, err := menubarDaemonStatusJSON()
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), payload)
+			return nil
+		}
 		summary := menubarDaemonSummary()
 		if summary == "" {
 			return fmt.Errorf("menubar daemon management is currently supported only on macOS")
@@ -374,8 +393,10 @@ func dedupeStrings(values []string) []string {
 }
 
 func init() {
-	menubarCmd.Flags().BoolVar(&menubarDaemon, "daemon", false, "start menubar in background and return")
+	menubarCmd.Flags().BoolVar(&menubarDaemon, "daemon", false, "start menubar in background and return (does not change launch-at-login)")
 	menubarCmd.Flags().BoolVar(&menubarLegacy, "legacy", false, "force legacy systray/NSMenu menubar instead of Swift helper")
+	menubarCmd.Flags().BoolVar(&menubarForeground, "foreground", false, "run the menubar in this terminal (development mode; does not change launch-at-login)")
+	menubarDaemonCmd.Flags().BoolVar(&menubarDaemonJSON, "json", false, "output the daemon status as JSON")
 	menubarCmd.AddCommand(menubarDoctorCmd)
 	menubarCmd.AddCommand(menubarBuildHelperCmd)
 	menubarCmd.AddCommand(menubarInstallHelperCmd)
