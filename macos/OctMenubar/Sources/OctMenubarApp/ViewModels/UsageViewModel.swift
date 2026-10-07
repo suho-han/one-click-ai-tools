@@ -140,4 +140,5 @@ enum OctMenubarAction {
     case openMonitor
     case runSessionRefresh
     case runAlertCheck
+    case runAgentUpdate
 }

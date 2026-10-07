@@ -62,8 +62,16 @@ struct OctCLIService {
         )
     }
 
-    func fetchConfigurationSnapshot() async throws -> ConfigurationSnapshot {
-        let output = try await runAndCapture(arguments: ["config", "list", "--json"])
+    /// - Parameter probeVersions: also ask the oct CLI to probe each tool's
+    ///   installed version. The probe shells out per tool, so only surfaces
+    ///   that show versions (the settings load/save) should pay for it — the
+    ///   popover reload path keeps the plain snapshot.
+    func fetchConfigurationSnapshot(probeVersions: Bool = false) async throws -> ConfigurationSnapshot {
+        var arguments = ["config", "list", "--json"]
+        if probeVersions {
+            arguments.append("--probe-versions")
+        }
+        let output = try await runAndCapture(arguments: arguments)
         let data = Data(output.utf8)
         return try JSONDecoder().decode(ConfigurationSnapshot.self, from: data)
     }
@@ -125,7 +133,184 @@ struct OctCLIService {
             try await runInTerminal(arguments: ["session-refresh"])
         case .runAlertCheck:
             try await runInTerminal(arguments: ["usage", "--notify"])
+        case .runAgentUpdate:
+            try await runInTerminal(arguments: ["agent-update"])
         }
+    }
+
+    /// Arguments for the background agent update: `--json` streams NDJSON
+    /// update events the app parses, and JSON mode never prompts — the
+    /// app asked the user beforehand, so missing providers are either
+    /// installed (`--install-missing`) or skipped (`--skip-missing`).
+    /// `only` restricts the run to the named providers (CLI `--only`).
+    static func agentUpdateArguments(installMissing: Bool, only: [String]? = nil) -> [String] {
+        var arguments = ["agent-update", "--json", installMissing ? "--install-missing" : "--skip-missing"]
+        if let only, !only.isEmpty {
+            arguments.append("--only")
+            arguments.append(contentsOf: only)
+        }
+        return arguments
+    }
+
+    /// The CLI caps its install phase at 10 minutes internally; the app-side
+    /// watchdog only guards against a wedged process, so it sits above that.
+    static let agentUpdateTimeout: TimeInterval = 12 * 60
+
+    /// The check mode shells out to npm/brew outdated probes per provider but
+    /// never installs anything; the CLI caps itself at 45 seconds, and this
+    /// watchdog sits above that.
+    static let agentUpdateCheckTimeout: TimeInterval = 90
+
+    /// Runs `oct agent-update --json` in the background and streams each
+    /// decoded update event to `onEvent` from a pipe-drain thread (hop to the
+    /// main actor at the call site). Returns when the process exits.
+    /// Infrastructure failures — missing binary, launch failure, watchdog
+    /// timeout, undeterminable fate — throw; per-tool failures arrive as events.
+    func runAgentUpdate(
+        installMissing: Bool = false,
+        only: [String]? = nil,
+        timeout: TimeInterval = OctCLIService.agentUpdateTimeout,
+        eofGrace: TimeInterval = 120,
+        onEvent: @escaping @Sendable (AgentUpdateEvent) -> Void
+    ) async throws -> AgentUpdateRunResult {
+        try await runEventStream(
+            arguments: Self.agentUpdateArguments(installMissing: installMissing, only: only),
+            timeout: timeout,
+            eofGrace: eofGrace,
+            onEvent: onEvent
+        )
+    }
+
+    /// Runs `oct agent-update --check --json` and streams the version-check
+    /// events (check_start / tool_check / check_done) without updating
+    /// anything. Never prompts, so no stdin handling beyond the null device.
+    func runAgentUpdateCheck(
+        timeout: TimeInterval = OctCLIService.agentUpdateCheckTimeout,
+        eofGrace: TimeInterval = 30,
+        onEvent: @escaping @Sendable (AgentUpdateEvent) -> Void
+    ) async throws -> AgentUpdateRunResult {
+        try await runEventStream(
+            arguments: ["agent-update", "--check", "--json"],
+            timeout: timeout,
+            eofGrace: eofGrace,
+            onEvent: onEvent
+        )
+    }
+
+    /// Shared streaming core for the agent-update run and check modes: spawns
+    /// `oct` with the given arguments, drains stdout line-by-line into decoded
+    /// events, and applies the same two-stage watchdog as runProcess.
+    private func runEventStream(
+        arguments: [String],
+        timeout: TimeInterval,
+        eofGrace: TimeInterval,
+        onEvent: @escaping @Sendable (AgentUpdateEvent) -> Void
+    ) async throws -> AgentUpdateRunResult {
+        let fileManager = FileManager.default
+        guard fileManager.isExecutableFile(atPath: executableURL.path) else {
+            throw OctCLIServiceError.missingExecutable(path: executableURL.path, searchedPaths: searchedPaths)
+        }
+
+        let process = Process()
+        process.executableURL = executableURL
+        process.arguments = arguments
+
+        let stdout = Pipe()
+        let stderr = Pipe()
+        process.standardOutput = stdout
+        process.standardError = stderr
+        // stdin pinned to the null device: --json never prompts, and an open
+        // but silent pipe could stall a prompted run indefinitely.
+        process.standardInput = FileHandle.nullDevice
+
+        let stderrBuffer = LockedBuffer()
+        let lineBuffer = LockedLineBuffer()
+        let timedOut = AtomicFlag()
+
+        // Drain stdout line-by-line as data arrives so install output beyond
+        // the pipe buffer capacity can never block the child on write, and
+        // each event reaches the UI the moment its line completes.
+        let pipesEOF = DispatchGroup()
+        pipesEOF.enter()
+        pipesEOF.enter()
+        stdout.fileHandleForReading.readabilityHandler = { handle in
+            let chunk = handle.availableData
+            if chunk.isEmpty {
+                handle.readabilityHandler = nil
+                for line in lineBuffer.flush() {
+                    if let event = AgentUpdateEvent.decode(line: line) {
+                        onEvent(event)
+                    }
+                }
+                pipesEOF.leave()
+            } else {
+                for line in lineBuffer.append(chunk) {
+                    if let event = AgentUpdateEvent.decode(line: line) {
+                        onEvent(event)
+                    }
+                }
+            }
+        }
+        stderr.fileHandleForReading.readabilityHandler = { handle in
+            let chunk = handle.availableData
+            if chunk.isEmpty {
+                handle.readabilityHandler = nil
+                pipesEOF.leave()
+            } else {
+                stderrBuffer.append(chunk)
+            }
+        }
+
+        do {
+            try process.run()
+        } catch {
+            stdout.fileHandleForReading.readabilityHandler = nil
+            stderr.fileHandleForReading.readabilityHandler = nil
+            throw OctCLIServiceError.launchFailed(path: executableURL.path, underlying: error)
+        }
+
+        // Same two-stage watchdog as runProcess, scaled to the update budget:
+        // SIGTERM at `timeout`, SIGKILL one grace window later.
+        let terminateWorkItem = DispatchWorkItem {
+            timedOut.set()
+            if process.isRunning {
+                process.terminate()
+            }
+        }
+        let killWorkItem = DispatchWorkItem {
+            timedOut.set()
+            if process.isRunning {
+                kill(process.processIdentifier, SIGKILL)
+            }
+        }
+        DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: terminateWorkItem)
+        DispatchQueue.global().asyncAfter(deadline: .now() + timeout + Self.exitGrace, execute: killWorkItem)
+        defer {
+            terminateWorkItem.cancel()
+            killWorkItem.cancel()
+        }
+
+        // Both pipes closed => the child (and anything holding its stdout) is
+        // gone. Bounded well past the watchdog (a grandchild inheriting the
+        // pipe could otherwise hold it open indefinitely); `eofGrace` exists
+        // so tests can tighten the bound.
+        let eofDeadline = timeout + Self.exitGrace * 2 + eofGrace
+        let pipesClosed = await waitForPipesEOF(pipesEOF, deadline: eofDeadline)
+
+        guard let exitStatus = await reapExitStatus(process, grace: Self.exitGrace) else {
+            throw OctCLIServiceError.timeout(path: executableURL.path, timeout: timeout)
+        }
+        if timedOut.isSet {
+            throw OctCLIServiceError.timeout(path: executableURL.path, timeout: timeout)
+        }
+        guard pipesClosed else {
+            throw OctCLIServiceError.timeout(path: executableURL.path, timeout: eofDeadline)
+        }
+
+        return AgentUpdateRunResult(
+            exitStatus: exitStatus,
+            stderr: String(data: stderrBuffer.snapshot(), encoding: .utf8) ?? ""
+        )
     }
 
     static func resolveExecutable(
@@ -435,6 +620,41 @@ private final class LockedBuffer: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return data
+    }
+}
+
+/// Lock-guarded NDJSON line splitter for the streaming stdout reader: chunks
+/// arrive on pipe threads and may split a line (or a multi-byte character)
+/// mid-way, so bytes accumulate until a newline. The trailing partial line —
+/// a crash can die mid-record — flushes at EOF.
+private final class LockedLineBuffer: @unchecked Sendable {
+    private let lock = NSLock()
+    private var data = Data()
+
+    /// Appends a chunk and returns every completed line (without newlines).
+    func append(_ chunk: Data) -> [String] {
+        lock.lock()
+        data.append(chunk)
+        var lines: [String] = []
+        while let newline = data.firstIndex(of: UInt8(ascii: "\n")) {
+            let lineData = data.subdata(in: data.startIndex..<newline)
+            data.removeSubrange(data.startIndex...newline)
+            if let line = String(data: lineData, encoding: .utf8), !line.isEmpty {
+                lines.append(line)
+            }
+        }
+        lock.unlock()
+        return lines
+    }
+
+    /// Returns and clears trailing bytes that never saw a newline.
+    func flush() -> [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !data.isEmpty else { return [] }
+        let line = String(data: data, encoding: .utf8)
+        data = Data()
+        return (line?.isEmpty == false) ? [line!] : []
     }
 }
 

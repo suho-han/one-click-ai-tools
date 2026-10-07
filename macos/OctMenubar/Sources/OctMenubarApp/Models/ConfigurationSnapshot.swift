@@ -47,6 +47,12 @@ struct ConfigTool: Codable, Equatable, Identifiable {
     let name: String
     let binaryName: String
     var enabled: Bool
+    /// Installed version, present only in snapshots that probed for it
+    /// (`config list --json --probe-versions`, used by the settings load).
+    /// nil = the installed oct is too old to report versions; "" = probed but
+    /// not installed. Synthesized Codable decoding reads optionals with
+    /// decodeIfPresent, so older snapshots decode unchanged.
+    var version: String?
 
     var id: String { binaryName }
 
@@ -54,7 +60,73 @@ struct ConfigTool: Codable, Equatable, Identifiable {
         case name
         case binaryName = "binary_name"
         case enabled
+        case version
     }
+}
+
+/// The platform scheduler's persisted agent-update schedule, mirrored from
+/// the oct snapshot (`agent_update_schedule`). `interval` is empty when the
+/// schedule is off or its interval cannot be recovered from the platform
+/// (hand-edited schedules) — that state round-trips unchanged instead of
+/// being rewritten to a guessed value.
+struct AgentUpdateSchedule: Codable, Equatable {
+    var enabled: Bool
+    var interval: String
+    var hour: Int
+
+    static let off = AgentUpdateSchedule(enabled: false, interval: "", hour: 9)
+
+    enum CodingKeys: String, CodingKey {
+        case enabled
+        case interval
+        case hour
+    }
+
+    init(enabled: Bool, interval: String, hour: Int) {
+        self.enabled = enabled
+        self.interval = interval
+        self.hour = hour
+    }
+
+    /// Tolerant decoding: snapshots from an older oct CLI carry no
+    /// `agent_update_schedule`.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            enabled: try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? false,
+            interval: try container.decodeIfPresent(String.self, forKey: .interval) ?? "",
+            hour: try container.decodeIfPresent(Int.self, forKey: .hour) ?? 9
+        )
+    }
+
+    /// Sentinel picker tag for "on with an unrecoverable interval".
+    static let customTag = "custom"
+    /// Sentinel picker tag for "off".
+    static let offTag = "off"
+
+    var isCustom: Bool { enabled && interval.isEmpty }
+
+    /// Picker tag for the current state: off, a concrete interval, or the
+    /// custom sentinel for an enabled-but-unknown schedule.
+    var pickerValue: String {
+        guard enabled else { return Self.offTag }
+        return interval.isEmpty ? Self.customTag : interval
+    }
+
+    /// Applies a picker tag. "custom" keeps the interval empty so an unknown
+    /// schedule round-trips instead of being rewritten.
+    mutating func setPickerValue(_ value: String) {
+        if value == Self.offTag {
+            self = .off
+            return
+        }
+        enabled = true
+        if value != Self.customTag {
+            interval = value
+        }
+    }
+
+    var usesHour: Bool { SessionRefreshIntervalOption.usesHour(interval) }
 }
 
 struct AlertThresholds: Codable, Equatable {
@@ -214,7 +286,10 @@ struct ConfigurationSnapshot: Codable, Equatable {
     let sessionRefreshEnabled: Bool
     let sessionRefreshInterval: String
     let sessionRefreshHour: Int
-    let tools: [ConfigTool]
+    let agentUpdateSchedule: AgentUpdateSchedule
+    /// Mutable so a background agent update can publish fresh tool versions
+    /// into the snapshot (in lockstep with the draft) without a re-probe.
+    var tools: [ConfigTool]
     let alert: AlertSettings
 
     enum CodingKeys: String, CodingKey {
@@ -224,6 +299,7 @@ struct ConfigurationSnapshot: Codable, Equatable {
         case sessionRefreshEnabled = "session_refresh_enabled"
         case sessionRefreshInterval = "session_refresh_interval"
         case sessionRefreshHour = "session_refresh_hour"
+        case agentUpdateSchedule = "agent_update_schedule"
         case tools
         case alert
     }
@@ -235,6 +311,7 @@ struct ConfigurationSnapshot: Codable, Equatable {
         sessionRefreshEnabled: Bool,
         sessionRefreshInterval: String,
         sessionRefreshHour: Int,
+        agentUpdateSchedule: AgentUpdateSchedule = .off,
         tools: [ConfigTool],
         alert: AlertSettings = .goDefaults
     ) {
@@ -244,6 +321,7 @@ struct ConfigurationSnapshot: Codable, Equatable {
         self.sessionRefreshEnabled = sessionRefreshEnabled
         self.sessionRefreshInterval = sessionRefreshInterval
         self.sessionRefreshHour = sessionRefreshHour
+        self.agentUpdateSchedule = agentUpdateSchedule
         self.tools = tools
         self.alert = alert
     }
@@ -257,6 +335,7 @@ struct ConfigurationSnapshot: Codable, Equatable {
             sessionRefreshEnabled: try container.decode(Bool.self, forKey: .sessionRefreshEnabled),
             sessionRefreshInterval: try container.decode(String.self, forKey: .sessionRefreshInterval),
             sessionRefreshHour: try container.decode(Int.self, forKey: .sessionRefreshHour),
+            agentUpdateSchedule: try container.decodeIfPresent(AgentUpdateSchedule.self, forKey: .agentUpdateSchedule) ?? .off,
             tools: try container.decode([ConfigTool].self, forKey: .tools),
             alert: try container.decodeIfPresent(AlertSettings.self, forKey: .alert) ?? .goDefaults
         )
@@ -320,6 +399,7 @@ struct ConfigurationUpdatePayload: Codable, Equatable {
     let sessionRefreshEnabled: Bool
     let sessionRefreshInterval: String
     let sessionRefreshHour: Int
+    let agentUpdateSchedule: AgentUpdateSchedule
     let agentOrder: [String]
     let alert: AlertSettings
 
@@ -329,6 +409,7 @@ struct ConfigurationUpdatePayload: Codable, Equatable {
         case sessionRefreshEnabled = "session_refresh_enabled"
         case sessionRefreshInterval = "session_refresh_interval"
         case sessionRefreshHour = "session_refresh_hour"
+        case agentUpdateSchedule = "agent_update_schedule"
         case agentOrder = "agent_order"
         case alert
     }
@@ -340,6 +421,7 @@ struct ConfigurationDraft: Equatable {
     var sessionRefreshEnabled: Bool
     var sessionRefreshInterval: String
     var sessionRefreshHour: Int
+    var agentUpdateSchedule: AgentUpdateSchedule
     var tools: [ConfigTool]
     var alert: AlertSettings
 
@@ -349,6 +431,7 @@ struct ConfigurationDraft: Equatable {
         sessionRefreshEnabled = snapshot.sessionRefreshEnabled
         sessionRefreshInterval = snapshot.sessionRefreshInterval
         sessionRefreshHour = snapshot.sessionRefreshHour
+        agentUpdateSchedule = snapshot.agentUpdateSchedule
         tools = snapshot.tools
         alert = snapshot.alert
     }
@@ -391,6 +474,7 @@ struct ConfigurationDraft: Equatable {
             sessionRefreshEnabled: sessionRefreshEnabled,
             sessionRefreshInterval: sessionRefreshInterval,
             sessionRefreshHour: sessionRefreshHour,
+            agentUpdateSchedule: agentUpdateSchedule,
             agentOrder: tools.map(\.binaryName),
             alert: alert
         )

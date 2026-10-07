@@ -16,8 +16,19 @@ struct SettingsView: View {
         .onAppear {
             // Reload-on-open policy: picks up external (CLI) config changes.
             // The draft itself lives in the shared store, so closing and
-            // reopening the window never discards unsaved edits.
-            Task { await configurationStore.loadDraft() }
+            // reopening the window never discards unsaved edits. The version
+            // check runs alongside it so the per-provider update buttons are
+            // ready by the time the Providers rows render.
+            Task {
+                await configurationStore.loadDraft()
+                await configurationStore.checkAgentVersions()
+            }
+        }
+        .onDisappear {
+            // The run-outcome chips (Updated!/Latest/Failed) describe the
+            // last run for this viewing session: closing the window clears
+            // them so the next open starts from plain version strings.
+            configurationStore.settingsWindowDidClose()
         }
     }
 
@@ -42,8 +53,24 @@ struct SettingsView: View {
                         configDraft: $configurationStore.draft,
                         isLoading: configurationStore.isLoading,
                         feedback: configurationStore.feedback,
+                        toolUpdateStates: configurationStore.toolUpdateStates,
+                        isAgentUpdating: configurationStore.isAgentUpdating,
+                        singleUpdateBinaries: configurationStore.singleUpdateBinaries,
+                        agentUpdateProgress: configurationStore.agentUpdateProgress,
+                        versionChecks: configurationStore.versionChecks,
+                        failureReport: configurationStore.failureReport,
                         onDraftChange: markConfigurationChanged,
-                        onLoad: { Task { await configurationStore.loadDraft() } }
+                        onLoad: { Task { await configurationStore.loadDraft() } },
+                        onRunAgentUpdate: { installMissing in
+                            Task { await configurationStore.runAgentUpdateNow(installMissing: installMissing) }
+                        },
+                        onUpdateProvider: { binaryName in
+                            Task { await configurationStore.runAgentUpdateNow(installMissing: false, onlyBinary: binaryName) }
+                        },
+                        onDismissFailureReport: {
+                            configurationStore.dismissFailureReport()
+                        },
+                        onAction: runAction
                     )
                 case .tools:
                     SettingsToolsTab(feedback: lastActionFeedback, onAction: runAction)
@@ -95,7 +122,9 @@ struct SettingsView: View {
 
     private func runAction(_ action: OctMenubarAction) {
         // Terminal launches run off the main thread; the window stays
-        // responsive and only the feedback line updates.
+        // responsive and only the feedback line updates. (The agent update
+        // never takes this path — the configuration tab routes it to the
+        // store's background runner via onRunAgentUpdate.)
         Task {
             do {
                 try await OctCLIService().run(action: action)
@@ -138,6 +167,8 @@ private extension OctMenubarAction {
             return "Run alert"
         case .runSessionRefresh:
             return "Session refresh"
+        case .runAgentUpdate:
+            return "Run agent-update"
         }
     }
 }
