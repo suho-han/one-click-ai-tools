@@ -28,6 +28,9 @@ type Scheduler interface {
 	Enable(task Task, interval string, hour int) error
 	Disable(task Task) error
 	Status(task Task) (string, error)
+	// Describe reads back the persisted schedule (interval and hour when the
+	// platform can recover them), complementing Status's enabled/disabled bit.
+	Describe(task Task) (CurrentSchedule, error)
 }
 
 type taskConfig struct {

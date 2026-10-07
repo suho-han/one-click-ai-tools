@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
@@ -1357,9 +1359,13 @@ var configListCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		out := cmd.OutOrStdout()
 		if configListJSON {
+			snapshot := buildConfigSnapshot(configPathForDisplay())
+			if configListProbeVersions {
+				attachToolVersions(cmd.Context(), &snapshot)
+			}
 			encoder := json.NewEncoder(out)
 			encoder.SetIndent("", "  ")
-			return encoder.Encode(buildConfigSnapshot(configPathForDisplay()))
+			return encoder.Encode(snapshot)
 		}
 		fmt.Fprintln(out, "=== one-click-tools config ===")
 		fmt.Fprintf(out, "Config file: %s\n\n", viper.ConfigFileUsed())
@@ -1424,9 +1430,75 @@ var configListCmd = &cobra.Command{
 	},
 }
 
+var configListProbeVersions bool
+
+// attachToolVersions fills each installable tool's installed version by
+// running the same manager-resolution probe agent-update uses (ExplainPlans).
+// Best-effort: individual probe failures leave the version empty (the
+// menubar hides the label), and the whole pass is time-bounded so a wedged
+// probe cannot hang a settings load.
+func attachToolVersions(ctx context.Context, snapshot *configSnapshot) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+
+	var tools []update.Tool
+	for _, status := range snapshot.Tools {
+		if tool, ok := canonicalConfigTool(status.BinaryName); ok {
+			tools = append(tools, tool)
+		}
+	}
+	if len(tools) == 0 {
+		return
+	}
+	versions := make(map[string]string, len(tools))
+	for _, plan := range update.ExplainPlans(ctx, tools) {
+		versions[plan.Tool.BinaryName] = displayVersion(plan.VersionBefore)
+	}
+	for i := range snapshot.Tools {
+		if version, ok := versions[snapshot.Tools[i].BinaryName]; ok {
+			snapshot.Tools[i].Version = version
+		}
+	}
+}
+
+// displayVersion cleans a tool's raw --version output into the short string
+// the settings chip shows: the trailing parenthetical is dropped
+// ("2.1.288 (Claude Code)") and a version-like token is extracted from
+// wordy outputs ("opencode v2.0.20" -> "2.0.20"). The raw string is what
+// agent-update reports, so this cleanup stays in the snapshot layer.
+func displayVersion(raw string) string {
+	version := strings.TrimSpace(raw)
+	if idx := strings.Index(version, " ("); idx > 0 {
+		version = strings.TrimSpace(version[:idx])
+	}
+	for _, token := range strings.Fields(version) {
+		if !versionLike(token) {
+			continue
+		}
+		token = strings.TrimPrefix(strings.TrimPrefix(token, "v"), "V")
+		return strings.TrimRight(token, ".")
+	}
+	return version
+}
+
+// versionLike reports whether a token reads as a version: an optional "v"
+// prefix followed by a digit ("1.2.3", "v2.0.20", "2026.09.18-9a7762b").
+func versionLike(token string) bool {
+	token = strings.TrimPrefix(strings.TrimPrefix(token, "v"), "V")
+	if token == "" || token[0] < '0' || token[0] > '9' {
+		return false
+	}
+	return true
+}
+
 func init() {
 	rootCmd.AddCommand(configCmd)
 	configCmd.AddCommand(configListCmd)
+	configListCmd.Flags().BoolVar(&configListProbeVersions, "probe-versions", false,
+		"with --json, also probe each tool's installed version (slower)")
 	configCmd.AddCommand(configSetCmd)
 	configCmd.AddCommand(configResetCmd)
 	configSetCmd.AddCommand(configSetToolsCmd)

@@ -19,18 +19,32 @@ type configToolStatus struct {
 	Name       string `json:"name"`
 	BinaryName string `json:"binary_name"`
 	Enabled    bool   `json:"enabled"`
+	// Installed version, filled only by snapshots that probed for it
+	// (`config list --json --probe-versions`); empty means not installed.
+	Version string `json:"version,omitempty"`
+}
+
+// configScheduleSnapshot reports the platform scheduler's persisted state for
+// one oct-managed task. Interval is empty when the task is disabled or the
+// interval cannot be recovered from the platform (hand-edited schedules,
+// Windows schtasks); Hour is only meaningful for weekly/daily.
+type configScheduleSnapshot struct {
+	Enabled  bool   `json:"enabled"`
+	Interval string `json:"interval"`
+	Hour     int    `json:"hour"`
 }
 
 type configSnapshot struct {
-	ConfigFile             string              `json:"config_file"`
-	MenubarTitleMode       string              `json:"menubar_title_mode"`
-	MenubarRefreshInterval string              `json:"menubar_refresh_interval"`
-	SessionRefreshEnabled  bool                `json:"session_refresh_enabled"`
-	SessionRefreshInterval string              `json:"session_refresh_interval"`
-	SessionRefreshHour     int                 `json:"session_refresh_hour"`
-	AgentOrder             []string            `json:"agent_order"`
-	Tools                  []configToolStatus  `json:"tools"`
-	Alert                  configAlertSnapshot `json:"alert"`
+	ConfigFile             string                 `json:"config_file"`
+	MenubarTitleMode       string                 `json:"menubar_title_mode"`
+	MenubarRefreshInterval string                 `json:"menubar_refresh_interval"`
+	SessionRefreshEnabled  bool                   `json:"session_refresh_enabled"`
+	SessionRefreshInterval string                 `json:"session_refresh_interval"`
+	SessionRefreshHour     int                    `json:"session_refresh_hour"`
+	AgentUpdateSchedule    configScheduleSnapshot `json:"agent_update_schedule"`
+	AgentOrder             []string               `json:"agent_order"`
+	Tools                  []configToolStatus     `json:"tools"`
+	Alert                  configAlertSnapshot    `json:"alert"`
 }
 
 type configAlertSnapshot struct {
@@ -48,14 +62,23 @@ type configAlertThresholds struct {
 	SevenDays float64 `json:"7d"`
 }
 
+// configScheduleUpdatePayload carries the settings UI's desired agent-update
+// schedule. A nil payload leaves the platform scheduler untouched.
+type configScheduleUpdatePayload struct {
+	Enabled  *bool  `json:"enabled"`
+	Interval string `json:"interval"`
+	Hour     *int   `json:"hour"`
+}
+
 type configUpdatePayload struct {
-	EnabledTools           []string                  `json:"enabled_tools"`
-	MenubarTitleMode       string                    `json:"menubar_title_mode"`
-	SessionRefreshEnabled  *bool                     `json:"session_refresh_enabled"`
-	SessionRefreshInterval string                    `json:"session_refresh_interval"`
-	SessionRefreshHour     *int                      `json:"session_refresh_hour"`
-	AgentOrder             []string                  `json:"agent_order"`
-	Alert                  *configAlertUpdatePayload `json:"alert"`
+	EnabledTools           []string                     `json:"enabled_tools"`
+	MenubarTitleMode       string                       `json:"menubar_title_mode"`
+	SessionRefreshEnabled  *bool                        `json:"session_refresh_enabled"`
+	SessionRefreshInterval string                       `json:"session_refresh_interval"`
+	SessionRefreshHour     *int                         `json:"session_refresh_hour"`
+	AgentUpdateSchedule    *configScheduleUpdatePayload `json:"agent_update_schedule"`
+	AgentOrder             []string                     `json:"agent_order"`
+	Alert                  *configAlertUpdatePayload    `json:"alert"`
 }
 
 type configAlertUpdatePayload struct {
@@ -192,10 +215,40 @@ func buildConfigSnapshot(configFile string) configSnapshot {
 		SessionRefreshEnabled:  viper.GetBool("session_refresh_enabled"),
 		SessionRefreshInterval: normalizedConfigRefreshInterval(viper.GetString("session_refresh_interval")),
 		SessionRefreshHour:     normalizedConfigRefreshHour(viper.GetInt("session_refresh_hour")),
+		AgentUpdateSchedule:    buildAgentUpdateScheduleSnapshot(),
 		AgentOrder:             agentOrder,
 		Tools:                  tools,
 		Alert:                  buildConfigAlertSnapshot(),
 	}
+}
+
+// configScheduleScheduler is the scheduler source for the config API's
+// agent-update schedule surface; a var so tests can stub the platform
+// scheduler.
+var configScheduleScheduler = schedule.GetScheduler
+
+// buildAgentUpdateScheduleSnapshot reads back the persisted agent-update
+// schedule straight from the platform scheduler (launchd plist / crontab /
+// schtasks). A scheduler that cannot be reached or described reports
+// disabled: the settings UI then shows "off" instead of failing the whole
+// snapshot, and a save that does not touch the schedule still no-ops safely.
+func buildAgentUpdateScheduleSnapshot() configScheduleSnapshot {
+	scheduler, err := configScheduleScheduler()
+	if err != nil {
+		return configScheduleSnapshot{}
+	}
+	state, err := scheduler.Describe(schedule.AgentUpdateTask)
+	if err != nil {
+		return configScheduleSnapshot{}
+	}
+	hour := state.Hour
+	if !state.Enabled {
+		// Report the effective default the next enable would use, so the
+		// settings UI's hour control starts somewhere sensible instead of at
+		// midnight just because the schedule is off.
+		hour = 9
+	}
+	return configScheduleSnapshot{Enabled: state.Enabled, Interval: state.Interval, Hour: hour}
 }
 
 func applyConfigUpdate(payload configUpdatePayload) error {
@@ -243,6 +296,62 @@ func applyConfigUpdate(payload configUpdatePayload) error {
 		viper.Set("session_refresh_hour", hour)
 	}
 	applyConfigAlertUpdate(alert)
+	return applyAgentUpdateScheduleUpdate(payload.AgentUpdateSchedule)
+}
+
+// applyAgentUpdateScheduleUpdate syncs the platform scheduler with the
+// payload's desired agent-update schedule. The settings UI sends the full
+// payload on every save, so an update matching the persisted scheduler state
+// is skipped — only a real change runs Enable/Disable (rewriting the launchd
+// plist or crontab). An enabled payload with no usable interval is the
+// round-trip of an "enabled, interval unknown" state: it passes only when the
+// current state matches, never guesses an interval.
+func applyAgentUpdateScheduleUpdate(payload *configScheduleUpdatePayload) error {
+	if payload == nil {
+		return nil
+	}
+	enabled := payload.Enabled != nil && *payload.Enabled
+	scheduler, err := configScheduleScheduler()
+	if err != nil {
+		return fmt.Errorf("scheduler unavailable: %w", err)
+	}
+	current, err := scheduler.Describe(schedule.AgentUpdateTask)
+	if err != nil {
+		return fmt.Errorf("failed to read the current agent-update schedule: %w", err)
+	}
+
+	hour := 9
+	if payload.Hour != nil {
+		if *payload.Hour < 0 || *payload.Hour > 23 {
+			return fmt.Errorf("invalid agent_update_schedule hour %d (must be 0-23)", *payload.Hour)
+		}
+		hour = *payload.Hour
+	}
+	if !enabled {
+		if !current.Enabled {
+			return nil
+		}
+		if err := scheduler.Disable(schedule.AgentUpdateTask); err != nil {
+			return fmt.Errorf("failed to disable the agent-update schedule: %w", err)
+		}
+		return nil
+	}
+
+	interval := strings.TrimSpace(payload.Interval)
+	parsed, err := schedule.ParseInterval(interval)
+	if err != nil {
+		if interval == "" && current.Enabled {
+			return nil
+		}
+		return fmt.Errorf("invalid agent_update_schedule interval: %w", err)
+	}
+	if current.Enabled && current.Interval == parsed &&
+		(!schedule.IntervalUsesHour(parsed) || current.Hour == hour) {
+		return nil
+	}
+	if err := scheduler.Enable(schedule.AgentUpdateTask, parsed, hour); err != nil {
+		return fmt.Errorf("failed to enable the agent-update schedule: %w", err)
+	}
 	return nil
 }
 
