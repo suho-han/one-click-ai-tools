@@ -56,6 +56,9 @@ func withDarwinSelfUpdate(t *testing.T) {
 
 func TestInstallMenubarHelperFromArchive(t *testing.T) {
 	withDarwinSelfUpdate(t)
+	// The source default version is a beta, which would route the install to
+	// OctMenubarApp-beta; this test pins the stable helper name.
+	stubMenubarTrack(t, "0.1.6")
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
