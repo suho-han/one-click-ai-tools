@@ -4,6 +4,7 @@ package cmd
 
 import (
 	"errors"
+	"io"
 	"time"
 )
 
@@ -22,3 +23,13 @@ func stopMenubarInstances() (menubarStopResult, error) {
 func findMenubarInstancePIDs() []int { return nil }
 
 func waitForMenubarExit(pids []string, timeout time.Duration) {}
+
+func enableMenubarDaemon(out io.Writer) error {
+	return errors.New("menubar daemon management requires cgo-enabled darwin build")
+}
+
+func disableMenubarDaemon(out io.Writer) error {
+	return errors.New("menubar daemon management requires cgo-enabled darwin build")
+}
+
+func menubarDaemonSummary() string { return "" }

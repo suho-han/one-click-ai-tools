@@ -47,6 +47,7 @@ type menubarDoctorReport struct {
 	OctVersion    string `json:"oct_version,omitempty"`
 	HelperVersion string `json:"helper_version,omitempty"`
 	VersionSkew   bool   `json:"version_skew"`
+	Daemon        string `json:"daemon,omitempty"`
 }
 
 var menubarCmd = &cobra.Command{
@@ -108,6 +109,9 @@ var menubarDoctorCmd = &cobra.Command{
 			}
 		} else if report.HelperPath != "" {
 			fmt.Fprintln(cmd.OutOrStdout(), "- helper version: unknown")
+		}
+		if report.Daemon != "" {
+			fmt.Fprintf(cmd.OutOrStdout(), "- daemon: %s\n", report.Daemon)
 		}
 		if report.HelperProject != "" {
 			fmt.Fprintf(cmd.OutOrStdout(), "- helper project: %s\n", report.HelperProject)
@@ -171,6 +175,42 @@ var menubarStopCmd = &cobra.Command{
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "stopped %d menubar instance(s): %s\n", result.Stopped, strings.Join(result.PIDs, ", "))
 		return nil
+	},
+}
+
+var menubarDaemonCmd = &cobra.Command{
+	Use:   "daemon",
+	Short: "Show the menubar daemon's launch-at-login status",
+	Long: `Register the menubar helper with the OS service manager so it starts at
+every login (launchd on macOS, the same role systemd plays on Linux).
+'oct menubar --daemon' starts it for this session; this manages the
+persistent registration.`,
+	Example: `  oct menubar daemon              show status
+  oct menubar daemon enable       register (starts at login, and now if idle)
+  oct menubar daemon disable      unregister`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		summary := menubarDaemonSummary()
+		if summary == "" {
+			return fmt.Errorf("menubar daemon management is currently supported only on macOS")
+		}
+		fmt.Fprintf(cmd.OutOrStdout(), "menubar daemon: %s\n", summary)
+		return nil
+	},
+}
+
+var menubarDaemonEnableCmd = &cobra.Command{
+	Use:   "enable",
+	Short: "Register the menubar daemon to start at login",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return enableMenubarDaemon(cmd.OutOrStdout())
+	},
+}
+
+var menubarDaemonDisableCmd = &cobra.Command{
+	Use:   "disable",
+	Short: "Unregister the menubar daemon from starting at login",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return disableMenubarDaemon(cmd.OutOrStdout())
 	},
 }
 
@@ -255,6 +295,7 @@ func collectMenubarDoctorReport() (menubarDoctorReport, error) {
 	if helperPath != "" && launchMode == "swift-helper" {
 		helperVersion = probeMenubarHelperVersion(helperPath)
 	}
+	daemonSummary := menubarDaemonSummary()
 	return menubarDoctorReport{
 		GOOS:          runtime.GOOS,
 		ExecPath:      execPath,
@@ -266,6 +307,7 @@ func collectMenubarDoctorReport() (menubarDoctorReport, error) {
 		OctVersion:    octVersion,
 		HelperVersion: helperVersion,
 		VersionSkew:   helperVersion != "" && helperVersion != octVersion,
+		Daemon:        daemonSummary,
 	}, nil
 }
 
@@ -338,5 +380,8 @@ func init() {
 	menubarCmd.AddCommand(menubarBuildHelperCmd)
 	menubarCmd.AddCommand(menubarInstallHelperCmd)
 	menubarCmd.AddCommand(menubarStopCmd)
+	menubarCmd.AddCommand(menubarDaemonCmd)
+	menubarDaemonCmd.AddCommand(menubarDaemonEnableCmd)
+	menubarDaemonCmd.AddCommand(menubarDaemonDisableCmd)
 	rootCmd.AddCommand(menubarCmd)
 }
