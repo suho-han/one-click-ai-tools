@@ -127,7 +127,7 @@ func TestConfirmMissingToolInstalls(t *testing.T) {
 		{Tool: tools[1], Reason: "active binary path", ActivePath: "/tmp/claude"},
 	}
 
-	confirmedTools, confirmedPlans, err := confirmMissingToolInstalls(strings.NewReader(""), io.Discard, tools, plans)
+	confirmedTools, confirmedPlans, err := confirmMissingToolInstalls(strings.NewReader(""), io.Discard, tools, plans, false, false, newEventEmitter(false, io.Discard))
 	if err != nil {
 		t.Fatalf("confirmMissingToolInstalls() error = %v", err)
 	}
@@ -175,7 +175,7 @@ func TestConfirmMissingToolInstalls_PipedAnswersReachEveryPrompt(t *testing.T) {
 		{Tool: tools[1], Reason: "default fallback", InstallCommand: []string{"npm", "install", "-g", "@anthropic-ai/claude-code"}},
 	}
 
-	confirmed, _, err := confirmMissingToolInstalls(strings.NewReader("n\nn\n"), io.Discard, tools, plans)
+	confirmed, _, err := confirmMissingToolInstalls(strings.NewReader("n\nn\n"), io.Discard, tools, plans, false, false, newEventEmitter(false, io.Discard))
 	if err != nil {
 		t.Fatalf("confirmMissingToolInstalls() error = %v", err)
 	}

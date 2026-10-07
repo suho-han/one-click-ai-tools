@@ -19,8 +19,24 @@ import (
 type Options struct {
 	DryRun  bool
 	Explain bool
-	Input   io.Reader
-	Output  io.Writer
+	// JSON switches stdout to newline-delimited updateEvent records instead
+	// of human-readable lines. JSON mode never prompts: missing tools are
+	// skipped (see SkipMissing) unless InstallMissing is set.
+	JSON bool
+	// SkipMissing declines the "install now?" offer for enabled-but-not-
+	// installed tools without prompting instead of waiting on stdin.
+	SkipMissing bool
+	// InstallMissing includes enabled-but-not-installed tools without
+	// prompting, installing them through their default manager. Wins over
+	// SkipMissing when both are set.
+	InstallMissing bool
+	// Only restricts the run to the named tools (binary names or aliases,
+	// comma-separated entries allowed). When set, enabled_tools is ignored:
+	// an explicit selection is stronger than the enable list, so a disabled
+	// tool can still be updated on demand. Empty means no restriction.
+	Only   []string
+	Input  io.Reader
+	Output io.Writer
 }
 
 type Plan struct {
@@ -56,14 +72,25 @@ func Run(ctx context.Context, opts ...Options) error {
 	if in == nil {
 		in = os.Stdin
 	}
+	emit := newEventEmitter(config.JSON, out)
 
 	enabledTools := viper.GetStringSlice("enabled_tools")
 	agentOrder := viper.GetStringSlice("agent_order")
 
 	orderedTools := GetOrderedTools(agentOrder)
 	toolsToUpdate := GetFilteredTools(enabledTools, orderedTools)
+	if onlyTools, err := resolveOnlyTools(config.Only, orderedTools); err != nil {
+		return err
+	} else if onlyTools != nil {
+		toolsToUpdate = onlyTools
+	}
 
 	if len(toolsToUpdate) == 0 {
+		if config.JSON {
+			emit.runStart(0)
+			emit.runDone(0)
+			return nil
+		}
 		fmt.Fprintln(out, "No tools selected for update.")
 		return nil
 	}
@@ -81,26 +108,37 @@ func Run(ctx context.Context, opts ...Options) error {
 		return nil
 	}
 
-	confirmedTools, confirmedPlans, err := confirmMissingToolInstalls(in, out, toolsToUpdate, plans)
+	confirmedTools, confirmedPlans, err := confirmMissingToolInstalls(in, out, toolsToUpdate, plans, config.SkipMissing || config.JSON, config.InstallMissing, emit)
 	if err != nil {
 		return err
 	}
 	toolsToUpdate = confirmedTools
 	plans = confirmedPlans
 	if len(toolsToUpdate) == 0 {
+		if config.JSON {
+			emit.runStart(0)
+			emit.runDone(0)
+			return nil
+		}
 		fmt.Fprintln(out, "No tools selected for update.")
 		return nil
 	}
 
 	if runtime.GOOS == "darwin" && anyBrewManaged(detectCtx, toolsToUpdate) {
-		fmt.Fprintln(out, "Updating Homebrew...")
+		if !config.JSON {
+			fmt.Fprintln(out, "Updating Homebrew...")
+		}
 		if brewOut, err := commandContextWithEnv(ctx, "brew", "update").CombinedOutput(); err != nil {
 			fmt.Fprintf(os.Stderr, "brew update failed: %v\n%s\n", err, brewOut)
 		}
 	}
 
 	total := len(toolsToUpdate)
-	fmt.Fprintf(out, "Updating %d tools...\n", total)
+	if config.JSON {
+		emit.runStart(total)
+	} else {
+		fmt.Fprintf(out, "Updating %d tools...\n", total)
+	}
 
 	ctx, cancel := context.WithTimeout(ctx, installTimeout)
 	defer cancel()
@@ -111,25 +149,44 @@ func Run(ctx context.Context, opts ...Options) error {
 		manager := plan.Manager
 		current := i + 1
 
-		lines := ui.InlineIconLines(tool.LobeIcon, 6, 3)
-		if len(lines) >= 3 {
-			fmt.Fprintf(out, "      %s\n", lines[0])
-			fmt.Fprintf(out, "[%d/%d] %s %s: Updating... (using %s)\n", current, total, lines[1], tool.Colorize(tool.Name), manager)
-			fmt.Fprintf(out, "      %s\n", lines[2])
+		if config.JSON {
+			emit.toolStart(tool, manager, current, total, plan.VersionBefore)
 		} else {
-			fmt.Fprintf(out, "[%d/%d] %s: Updating... (using %s)\n", current, total, tool.Colorize(tool.Name), manager)
+			lines := ui.InlineIconLines(tool.LobeIcon, 6, 3)
+			if len(lines) >= 3 {
+				fmt.Fprintf(out, "      %s\n", lines[0])
+				fmt.Fprintf(out, "[%d/%d] %s %s: Updating... (using %s)\n", current, total, lines[1], tool.Colorize(tool.Name), manager)
+				fmt.Fprintf(out, "      %s\n", lines[2])
+			} else {
+				fmt.Fprintf(out, "[%d/%d] %s: Updating... (using %s)\n", current, total, tool.Colorize(tool.Name), manager)
+			}
 		}
 
 		// A canceled ceiling must not start new installs or recovery work.
 		if err := ctx.Err(); err != nil {
-			fmt.Fprintf(out, "[%d/%d] %s ✗ Skipped: %v\n", current, total, tool.Colorize(tool.Name), err)
+			if config.JSON {
+				emit.toolDone(tool, EventStatusSkipped, "", 0, err.Error())
+			} else {
+				fmt.Fprintf(out, "[%d/%d] %s ✗ Skipped: %v\n", current, total, tool.Colorize(tool.Name), err)
+			}
 			failureCount++
 			continue
 		}
 		// A manager whose backing binary (npm, brew, ...) is itself absent
 		// can only fail with a cryptic exec error — guide instead of running.
 		if missing := manager.missingBinary(); missing != "" {
-			fmt.Fprintf(out, "[%d/%d] %s ✗ Skipped: %s\n", current, total, tool.Colorize(tool.Name), missingManagerGuidance(missing, tool))
+			guidance := missingManagerGuidance(missing, tool)
+			if config.JSON {
+				status := EventStatusSkipped
+				if missing == "npm" || missing == "pnpm" || missing == "yarn" {
+					// The Node.js toolchain as a whole is absent; consumers
+					// surface a Node.js install link for these.
+					status = EventStatusNpmMissing
+				}
+				emit.toolDone(tool, status, "", 0, guidance)
+			} else {
+				fmt.Fprintf(out, "[%d/%d] %s ✗ Skipped: %s\n", current, total, tool.Colorize(tool.Name), guidance)
+			}
 			failureCount++
 			continue
 		}
@@ -137,28 +194,48 @@ func Run(ctx context.Context, opts ...Options) error {
 		start := time.Now()
 		output, err := runInstallWithFallback(ctx, manager, tool)
 		duration := time.Since(start).Round(time.Second)
+		durationSec := duration.Seconds()
 		versionAfter := manager.GetInstalledVersion(ctx, tool)
 
 		versionSummary := formatVersionSummary(versionBefore, versionAfter)
 		if err != nil {
 			if manager.IsNoChangeOutput(string(output)) {
-				fmt.Fprintf(out, "[%d/%d] %s ✓ Already up to date in %v%s\n", current, total, tool.Colorize(tool.Name), duration, versionSummary)
+				if config.JSON {
+					emit.toolDone(tool, EventStatusUpToDate, versionAfter, durationSec, "")
+				} else {
+					fmt.Fprintf(out, "[%d/%d] %s ✓ Already up to date in %v%s\n", current, total, tool.Colorize(tool.Name), duration, versionSummary)
+				}
 				continue
 			}
-			fmt.Fprintf(out, "[%d/%d] %s ✗ Failed after %v%s: %v\nOutput: %s\n", current, total, tool.Colorize(tool.Name), duration, versionSummary, err, string(output))
+			if config.JSON {
+				emit.toolDone(tool, EventStatusFailed, versionAfter, durationSec, failureDetail(err, output))
+			} else {
+				fmt.Fprintf(out, "[%d/%d] %s ✗ Failed after %v%s: %v\nOutput: %s\n", current, total, tool.Colorize(tool.Name), duration, versionSummary, err, string(output))
+			}
 			failureCount++
 			continue
 		}
 
 		alreadyUpToDate := isAlreadyUpToDate(manager, versionBefore, versionAfter, string(output))
-		if alreadyUpToDate {
+		if config.JSON {
+			if alreadyUpToDate {
+				emit.toolDone(tool, EventStatusUpToDate, versionAfter, durationSec, "")
+			} else {
+				emit.toolDone(tool, EventStatusUpdated, versionAfter, durationSec, "")
+			}
+		} else if alreadyUpToDate {
 			fmt.Fprintf(out, "[%d/%d] %s ✓ Already up to date in %v%s\n", current, total, tool.Colorize(tool.Name), duration, versionSummary)
 		} else {
 			fmt.Fprintf(out, "[%d/%d] %s ✓ Updated successfully in %v%s\n", current, total, tool.Colorize(tool.Name), duration, versionSummary)
 		}
 	}
+	if config.JSON {
+		emit.runDone(failureCount)
+	}
 	if failureCount == 0 {
-		fmt.Fprintln(out, "\nAll tools updated successfully!")
+		if !config.JSON {
+			fmt.Fprintln(out, "\nAll tools updated successfully!")
+		}
 		return nil
 	}
 	return fmt.Errorf("%w: %d tool(s) failed", errors.New("update failed"), failureCount)
@@ -174,7 +251,7 @@ func (p Plan) IsInstalled() bool {
 	return p.Reason == "active binary path" || p.Reason == "installed package lookup"
 }
 
-func confirmMissingToolInstalls(in io.Reader, out io.Writer, tools []Tool, plans []Plan) ([]Tool, []Plan, error) {
+func confirmMissingToolInstalls(in io.Reader, out io.Writer, tools []Tool, plans []Plan, skipMissing bool, installMissing bool, emit *eventEmitter) ([]Tool, []Plan, error) {
 	confirmedTools := make([]Tool, 0, len(tools))
 	confirmedPlans := make([]Plan, 0, len(plans))
 	// One reader shared by every prompt in the run so buffered input is never
@@ -185,6 +262,26 @@ func confirmMissingToolInstalls(in io.Reader, out io.Writer, tools []Tool, plans
 		if plan.IsInstalled() {
 			confirmedTools = append(confirmedTools, tools[i])
 			confirmedPlans = append(confirmedPlans, plan)
+			continue
+		}
+
+		if installMissing {
+			// The caller already asked the user (e.g. the menu bar app's
+			// confirmation dialog); install through the default manager.
+			confirmedTools = append(confirmedTools, tools[i])
+			confirmedPlans = append(confirmedPlans, plan)
+			continue
+		}
+
+		if skipMissing {
+			// No-stdin callers cannot answer a prompt; declining is the safe
+			// default, and the event stream — not prose — reports the skip in
+			// JSON mode.
+			if emit.active() {
+				emit.skippedNotInstalled(plan)
+			} else {
+				fmt.Fprintf(out, "Skipping %s (not installed).\n", plan.Tool.Name)
+			}
 			continue
 		}
 
@@ -258,6 +355,23 @@ func isAlreadyUpToDate(manager Manager, before, after, output string) bool {
 		return false
 	}
 	return (before != "" && before == after) || manager.IsNoChangeOutput(output)
+}
+
+// failureDetail packs the exec error plus a tail of the installer output into
+// a tool_done(failed) error field. `exit status 1` alone tells the menu bar
+// app's failure dialog — and its user — nothing about why the install died;
+// the manager's own error lines do. The tail is capped so one noisy installer
+// cannot balloon the event stream.
+func failureDetail(err error, output []byte) string {
+	detail := strings.TrimSpace(string(output))
+	const maxTail = 600
+	if len(detail) > maxTail {
+		detail = "…" + detail[len(detail)-maxTail:]
+	}
+	if detail == "" {
+		return err.Error()
+	}
+	return err.Error() + "\n" + detail
 }
 
 func ExplainPlans(ctx context.Context, tools []Tool) []Plan {
