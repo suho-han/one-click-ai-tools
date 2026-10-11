@@ -26,10 +26,8 @@ func writeStubExecutable(t *testing.T, path, _ string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Link(source, path); err == nil {
-		return
-	}
-	// A runner may put the test binary and TempDir on different volumes.
+	// Windows keeps the running test image locked; a hard link would make
+	// TempDir cleanup unable to remove any fixture pointing to that image.
 	in, err := os.Open(source)
 	if err != nil {
 		t.Fatal(err)
