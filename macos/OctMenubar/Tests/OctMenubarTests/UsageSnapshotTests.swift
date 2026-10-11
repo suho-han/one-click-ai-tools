@@ -352,6 +352,93 @@ final class UsageSnapshotTests: XCTestCase {
         )
     }
 
+    func testUsageSnapshotSurfacesResetCreditsBadge() throws {
+        // reset_credits flows from `oct usage --json` (Codex
+        // rate_limit_reset_credits.available_count) into the card badge.
+        // Providers without the field decode as nil so the badge is omitted.
+        let json = #"""
+        {
+          "summary": { "total": 2, "ok": 2, "warn": 0, "error": 0 },
+          "results": [
+            {
+              "provider": "codex",
+              "plan": "prolite",
+              "status": "ok",
+              "used": "2.0",
+              "unit": "percent",
+              "buckets": { "7d": "2.0" },
+              "reset_credits": 2,
+              "message": "Usage fetched from Codex backend API (weekly bucket)"
+            },
+            {
+              "provider": "claude-code",
+              "status": "ok",
+              "used": "23.0",
+              "unit": "percent",
+              "buckets": { "7d": "23.0" },
+              "message": "Usage fetched from Anthropic OAuth API"
+            }
+          ]
+        }
+        """#
+
+        let response = try JSONDecoder().decode(UsageResponse.self, from: Data(json.utf8))
+        let snapshot = UsageSnapshot.from(
+            response: response,
+            refreshDate: Date(timeIntervalSince1970: 1_781_284_364),
+            refreshInterval: 60
+        )
+
+        XCTAssertEqual(snapshot.providers[0].resetCredits, 2)
+        XCTAssertNil(snapshot.providers[1].resetCredits)
+    }
+
+    func testResetCreditConsumeResultDecodesCLIJSON() throws {
+        // The shape `oct usage reset-credit --json --yes` emits after a
+        // successful spend; available_count_after drives the badge refresh.
+        let json = #"""
+        {
+          "provider": "codex:han***o36",
+          "available_count_before": 2,
+          "credits": [{"id": "c1", "status": "available", "title": "Full reset", "description": "", "granted_at": "", "expires_at": ""}],
+          "consumed": true,
+          "code": "reset",
+          "windows_reset": 1,
+          "redeem_request_id": "0f4a1f5e-1111-4222-8333-444455556666",
+          "available_count_after": 1,
+          "usage_after": {"7d": "0.0"}
+        }
+        """#
+
+        let result = try JSONDecoder().decode(ResetCreditConsumeResult.self, from: Data(json.utf8))
+        XCTAssertEqual(result.provider, "codex:han***o36")
+        XCTAssertEqual(result.availableCountBefore, 2)
+        XCTAssertTrue(result.consumed)
+        XCTAssertEqual(result.code, "reset")
+        XCTAssertEqual(result.windowsReset, 1)
+        XCTAssertEqual(result.availableCountAfter, 1)
+        XCTAssertEqual(result.usageAfter?["7d"], "0.0")
+        XCTAssertNil(result.error)
+    }
+
+    func testResetCreditConsumeResultDecodesQueryMode() throws {
+        // Query mode (--json without --yes) spends nothing: consumed stays
+        // false and the after-fields are absent.
+        let json = #"""
+        {
+          "provider": "codex",
+          "available_count_before": 3,
+          "credits": [],
+          "consumed": false
+        }
+        """#
+
+        let result = try JSONDecoder().decode(ResetCreditConsumeResult.self, from: Data(json.utf8))
+        XCTAssertFalse(result.consumed)
+        XCTAssertNil(result.code)
+        XCTAssertNil(result.availableCountAfter)
+    }
+
     func testResetCountdownFormatsCompactDurations() {
         XCTAssertEqual(ResetCountdown.text(for: 3 * 3600 + 12 * 60), "3h 12m")
         XCTAssertEqual(ResetCountdown.text(for: 2 * 86400 + 4 * 3600), "2d 4h")

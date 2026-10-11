@@ -119,7 +119,7 @@ var providers = []Provider{
 		DescribeCredential: describeCodexCredential,
 		AccountKind:        AccountKindHome,
 		FetchForAccount: func(ctx context.Context, account Account) UsageResult {
-			return fetchCodexUsageForHome(ctx, account.Home, AccountProviderName(account.Provider, account.Name))
+			return FetchCodexUsageForHome(ctx, account.Home, AccountProviderName(account.Provider, account.Name))
 		},
 		DescribeAccountCredential: func(account Account) CredentialStatus {
 			return describeCodexCredentialForHome(account.Home)

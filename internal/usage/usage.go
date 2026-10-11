@@ -31,6 +31,10 @@ type UsageResult struct {
 	SourceDetail string            `json:"source_detail"`
 	Buckets      map[string]string `json:"buckets"`                 // e.g. {"5h": "10", "7d": "20"}
 	BucketResets map[string]string `json:"bucket_resets,omitempty"` // e.g. {"5h": "2026-07-22T06:09:59Z"}
+	// ResetCredits counts the provider's unused rate-limit reset credits
+	// (Codex "rate_limit_reset_credits.available_count"). Nil when the
+	// provider does not report the concept, so UIs can omit the badge.
+	ResetCredits *int `json:"reset_credits,omitempty"`
 }
 
 func SelectedTools() []update.Tool {
@@ -830,6 +834,7 @@ func PrintJSON(results []UsageResult) error {
 		Unit         string            `json:"unit"`
 		Buckets      map[string]string `json:"buckets,omitempty"`
 		BucketResets map[string]string `json:"bucket_resets,omitempty"`
+		ResetCredits *int              `json:"reset_credits,omitempty"`
 		SourceDetail string            `json:"source_detail,omitempty"`
 		Message      string            `json:"message,omitempty"`
 	}
@@ -857,6 +862,7 @@ func PrintJSON(results []UsageResult) error {
 			Unit:         r.Unit,
 			Buckets:      r.Buckets,
 			BucketResets: r.BucketResets,
+			ResetCredits: r.ResetCredits,
 			SourceDetail: r.SourceDetail,
 			Message:      truncateText(r.Message, 48),
 		})

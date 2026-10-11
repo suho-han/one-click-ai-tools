@@ -50,14 +50,16 @@ func CodexLoginEmail(home string) string {
 }
 
 func FetchCodexUsage(ctx context.Context) UsageResult {
-	return fetchCodexUsageForHome(ctx, "", "codex")
+	return FetchCodexUsageForHome(ctx, "", "codex")
 }
 
-// fetchCodexUsageForHome collects Codex usage from one credential home. An
-// empty home resolves through codexHomePath ($CODEX_HOME or ~/.codex); the
-// codex:<name> account rows pass their configured directory instead. provider
-// is the UsageResult label ("codex", "codex:work", ...).
-func fetchCodexUsageForHome(ctx context.Context, home string, provider string) UsageResult {
+// FetchCodexUsageForHome collects Codex usage from one credential home.
+// Exported for the reset-credit command, which reports fresh usage right
+// after spending a credit. An empty home resolves through codexHomePath
+// ($CODEX_HOME or ~/.codex); the codex:<name> account rows pass their
+// configured directory instead. provider is the UsageResult label ("codex",
+// "codex:work", ...).
+func FetchCodexUsageForHome(ctx context.Context, home string, provider string) UsageResult {
 	result := UsageResult{
 		Provider:   provider,
 		Plan:       "unknown",
@@ -219,6 +221,17 @@ type codexBackendUsageResponse struct {
 		PrimaryWindow   *codexBackendRateLimitWindow `json:"primary_window"`
 		SecondaryWindow *codexBackendRateLimitWindow `json:"secondary_window"`
 	} `json:"rate_limit"`
+	RateLimitResetCredits *codexRateLimitResetCredits `json:"rate_limit_reset_credits"`
+}
+
+// codexRateLimitResetCredits mirrors the wham/usage field of the same name:
+// credits the user can spend to reset their rate-limit window early.
+// AvailableCount is the headline number (all unused credits);
+// ApplicableAvailableCount is the subset usable against the currently active
+// window, which stays 0 until a limit is actually reached.
+type codexRateLimitResetCredits struct {
+	AvailableCount           *int `json:"available_count"`
+	ApplicableAvailableCount *int `json:"applicable_available_count"`
 }
 
 type codexBackendRateLimitWindow struct {
@@ -281,6 +294,10 @@ func fetchCodexBackendUsage(ctx context.Context, base UsageResult, home string) 
 	if strings.TrimSpace(payload.PlanType) != "" {
 		result.Plan = strings.TrimSpace(payload.PlanType)
 		result.PlanSource = "codex backend wham/usage"
+	}
+
+	if credits := payload.RateLimitResetCredits; credits != nil && credits.AvailableCount != nil {
+		result.ResetCredits = credits.AvailableCount
 	}
 
 	addCodexBackendWindow(result.Buckets, result.BucketResets, payload.RateLimit.PrimaryWindow)

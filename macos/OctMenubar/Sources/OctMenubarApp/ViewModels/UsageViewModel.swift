@@ -7,6 +7,12 @@ import SwiftUI
 final class UsageViewModel: ObservableObject {
     @Published private(set) var snapshot: UsageSnapshot
     @Published private(set) var isRefreshing = false
+    /// Card whose reset-credits badge was tapped — drives the confirmation
+    /// alert. Nil when no confirmation is pending.
+    @Published var pendingResetCreditCard: ProviderCard?
+    /// Failure from a reset-credit spend (or its follow-up refresh), shown
+    /// as an alert so the popover's usage data stays untouched.
+    @Published var resetCreditError: String?
 
     private let service: OctCLIService
     private let configurationStore: ConfigurationStore
@@ -101,6 +107,33 @@ final class UsageViewModel: ObservableObject {
             } catch {
                 snapshot = .error(message: error.localizedDescription, refreshInterval: currentRefreshInterval())
             }
+        }
+    }
+
+    /// Arms the reset-credit confirmation for one card. The spend only
+    /// happens if the user confirms the alert.
+    func requestResetCredit(for card: ProviderCard) {
+        pendingResetCreditCard = card
+    }
+
+    func cancelResetCredit() {
+        pendingResetCreditCard = nil
+    }
+
+    /// Spends one reset credit on the confirmed card, then refreshes so the
+    /// quota bars (and the badge count) reflect the cleared windows. A
+    /// failure lands in resetCreditError instead of wiping the snapshot.
+    func confirmResetCredit() {
+        guard let card = pendingResetCreditCard else { return }
+        pendingResetCreditCard = nil
+        Task {
+            do {
+                _ = try await service.consumeResetCredit(provider: card.name)
+            } catch {
+                resetCreditError = error.localizedDescription
+                return
+            }
+            refresh()
         }
     }
 

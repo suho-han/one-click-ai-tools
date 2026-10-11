@@ -76,6 +76,16 @@ struct OctCLIService {
         return try JSONDecoder().decode(ConfigurationSnapshot.self, from: data)
     }
 
+    /// Spends one of the provider's rate-limit reset credits. The app shows
+    /// its own confirmation dialog first, so this passes --yes; the CLI call
+    /// itself is the single, final authorization.
+    func consumeResetCredit(provider: String) async throws -> ResetCreditConsumeResult {
+        let output = try await runAndCapture(
+            arguments: ["usage", "reset-credit", "--provider", provider, "--json", "--yes"]
+        )
+        return try JSONDecoder().decode(ResetCreditConsumeResult.self, from: Data(output.utf8))
+    }
+
     /// Saves via the modern --payload flag. When the installed oct binary is
     /// older and rejects the flag, retries once with the legacy --json
     /// spelling — only for that positively-identified flag-parse failure;
@@ -737,6 +747,30 @@ struct ProcessOutput {
 }
 
 /// `oct menubar daemon --json`: whether this track's menubar is registered
+/// `oct usage reset-credit --json --yes` result: the credit spend outcome
+/// plus the freshly-queried state the badge should show next.
+struct ResetCreditConsumeResult: Decodable, Equatable {
+    let provider: String
+    let availableCountBefore: Int
+    let consumed: Bool
+    let code: String?
+    let windowsReset: Int?
+    let availableCountAfter: Int?
+    let usageAfter: [String: String]?
+    let error: String?
+
+    enum CodingKeys: String, CodingKey {
+        case provider
+        case consumed
+        case code
+        case error
+        case windowsReset = "windows_reset"
+        case availableCountBefore = "available_count_before"
+        case availableCountAfter = "available_count_after"
+        case usageAfter = "usage_after"
+    }
+}
+
 /// to start at login (enabled) and currently loaded into launchd (loaded).
 /// `label` identifies the registration (com.oct.menubar / com.oct-beta.menubar).
 struct MenubarDaemonState: Codable, Equatable {

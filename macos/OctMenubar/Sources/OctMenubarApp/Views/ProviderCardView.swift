@@ -6,9 +6,13 @@ struct ProviderCardView: View {
     /// UsageRowMetrics) — wide enough that no text ever truncates, and
     /// identical across cards so the bar's width matches everywhere.
     let columnWidths: UsageRowMetrics.ColumnWidths
-    /// True while the refresh that will replace this card's data is still in
-    /// flight — drives the quota bars' pulsing shimmer.
+    /// True while the refresh that will replace this card's data is still
+    /// in flight — drives the quota bars' pulsing shimmer.
     var isRefreshing: Bool = false
+    /// Fired when the user taps the reset-credits badge; nil (or a badgeless
+    /// card) leaves the badge inert. The confirmation dialog lives in the
+    /// popover, not here.
+    var onResetCreditTap: (() -> Void)? = nil
     @AppStorage(MenubarPreferences.useProviderAccentColorsKey) private var useProviderAccentColors = true
     @State private var showsMessage = false
     @State private var isBarPulsing = false
@@ -33,6 +37,10 @@ struct ProviderCardView: View {
                                 .font(.system(size: 10, weight: .semibold, design: .rounded))
                                 .foregroundStyle(.primary)
                                 .lineLimit(1)
+                        }
+
+                        if showsResetCredits {
+                            resetCreditsBadge
                         }
                     }
                 }
@@ -277,6 +285,47 @@ struct ProviderCardView: View {
     private var showsPlan: Bool {
         let plan = provider.plan.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return !plan.isEmpty && plan != "unknown" && plan != "n/a"
+    }
+
+    private var showsResetCredits: Bool {
+        provider.resetCredits != nil
+    }
+
+    /// "( 🎁 N )" — the provider's unused rate-limit reset credits, drawn
+    /// right of the plan label in the provider's accent color. Static on
+    /// purpose (no spin); color glyphs ignore foreground style, so the
+    /// emoji keeps its native colors while the parens and count carry the
+    /// accent. Tapping spends a credit (after the popover's confirmation);
+    /// when no handler is set the badge stays display-only so legacy call
+    /// sites are unaffected.
+    @ViewBuilder
+    private var resetCreditsBadge: some View {
+        if let credits = provider.resetCredits {
+            if let onResetCreditTap {
+                Button(action: onResetCreditTap) {
+                    badgeContent(credits, hint: "Resets usage windows by spending one credit")
+                }
+                .buttonStyle(.plain)
+                .disabled(isRefreshing)
+            } else {
+                badgeContent(credits, hint: "")
+            }
+        }
+    }
+
+    private func badgeContent(_ credits: Int, hint: String) -> some View {
+        HStack(spacing: 2) {
+            Text("(")
+            Text("🎁")
+            Text("\(credits)")
+                .monospacedDigit()
+            Text(")")
+        }
+        .font(.system(size: 10, weight: .semibold, design: .rounded))
+        .foregroundStyle(providerAccent)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(credits) rate limit reset credits")
+        .accessibilityHint(hint)
     }
 
     private var providerAccent: Color {
