@@ -9,7 +9,7 @@ final class StatusBarController: NSObject, NSApplicationDelegate {
     private let configurationStore = ConfigurationStore()
     private lazy var viewModel = UsageViewModel(service: OctCLIService(), configurationStore: configurationStore)
     private var cancellables: Set<AnyCancellable> = []
-    private let releaseMonitor = ReleaseUpdateMonitor()
+    private let releaseMonitor = ReleaseUpdateMonitor.shared
     private var updateStatusItem: UpdateStatusItemController?
 
     func applicationDidFinishLaunching(_ notification: Notification) {

@@ -652,13 +652,31 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.configFile, "/Users/me/.oct/config.yaml")
         XCTAssertEqual(snapshot.menubarTitleMode, .oct)
         XCTAssertEqual(snapshot.alert, .goDefaults)
+        XCTAssertTrue(snapshot.telemetryEnabled, "A pre-telemetry CLI snapshot defaults to enabled.")
         XCTAssertEqual(snapshot.tools.map(\.binaryName), ["codex"])
+    }
+
+    func testConfigurationSnapshotDecodesExplicitTelemetryOptOut() throws {
+        let json = #"""
+        {
+          "config_file": "/tmp/config.yaml",
+          "telemetry_enabled": false,
+          "session_refresh_enabled": false,
+          "session_refresh_interval": "daily",
+          "session_refresh_hour": 9,
+          "tools": []
+        }
+        """#
+        let snapshot = try JSONDecoder().decode(ConfigurationSnapshot.self, from: Data(json.utf8))
+        XCTAssertFalse(snapshot.telemetryEnabled)
+        XCTAssertFalse(ConfigurationDraft(snapshot: snapshot).updatePayload().telemetryEnabled)
     }
 
     func testConfigurationDraftBuildsUpdatePayloadAfterEdits() throws {
         let snapshot = ConfigurationSnapshot(
             configFile: "/tmp/config.yaml",
             menubarTitleMode: .oct,
+            telemetryEnabled: false,
             sessionRefreshEnabled: false,
             sessionRefreshInterval: "daily",
             sessionRefreshHour: 9,
@@ -689,6 +707,7 @@ final class UsageSnapshotTests: XCTestCase {
 
         XCTAssertEqual(payload.enabledTools, ["codex", "claude", "commandcode"])
         XCTAssertEqual(payload.menubarTitleMode, .oct)
+        XCTAssertFalse(payload.telemetryEnabled)
         XCTAssertTrue(payload.sessionRefreshEnabled)
         XCTAssertEqual(payload.sessionRefreshInterval, "weekly")
         XCTAssertEqual(payload.sessionRefreshHour, 22)
@@ -709,6 +728,7 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertEqual(Set(json.keys), [
             "enabled_tools",
             "menubar_title_mode",
+            "telemetry_enabled",
             "session_refresh_enabled",
             "session_refresh_interval",
             "session_refresh_hour",
@@ -725,6 +745,7 @@ final class UsageSnapshotTests: XCTestCase {
         ])
         XCTAssertEqual(Set(thresholds.keys), ["default", "5h", "7d", "1m"])
         XCTAssertEqual(json["enabled_tools"] as? [String], ["codex", "claude", "commandcode"])
+        XCTAssertEqual(json["telemetry_enabled"] as? Bool, false)
         XCTAssertEqual(json["menubar_title_mode"] as? String, "oct")
         XCTAssertEqual(json["session_refresh_enabled"] as? Bool, true)
         XCTAssertEqual(json["session_refresh_interval"] as? String, "weekly")
@@ -738,6 +759,37 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertEqual(thresholds["5h"] as? Double, 82.5)
         XCTAssertEqual(thresholds["7d"] as? Double, 90)
         XCTAssertEqual(thresholds["1m"] as? Double, 95)
+    }
+
+    func testAlertSliderStopsAtFivePercentStepsAndNinetyNine() {
+        XCTAssertEqual(AlertSettings.sliderThreshold(for: 1), 5)
+        XCTAssertEqual(AlertSettings.sliderThreshold(for: 47.4), 45)
+        XCTAssertEqual(AlertSettings.sliderThreshold(for: 47.5), 50)
+        XCTAssertEqual(AlertSettings.sliderThreshold(for: 95), 95)
+        XCTAssertEqual(AlertSettings.sliderThreshold(for: 96.9), 95)
+        XCTAssertEqual(AlertSettings.sliderThreshold(for: 97), 99)
+        XCTAssertEqual(AlertSettings.sliderThreshold(for: 99), 99)
+    }
+
+    func testSharedAlertThresholdUpdatesFallbackAndEveryWindow() {
+        var alert = AlertSettings.goDefaults
+        alert.thresholds.fiveHours = 35
+        alert.thresholds.sevenDays = 60
+        alert.thresholds.monthly = 85
+        XCTAssertFalse(alert.thresholds.hasSharedWindows)
+
+        alert.setSharedThreshold(95)
+        XCTAssertEqual(alert.thresholdPercent, 95)
+        XCTAssertEqual(alert.thresholds, AlertThresholds(
+            defaultThreshold: 95, fiveHours: 95, sevenDays: 95, monthly: 95
+        ))
+        XCTAssertTrue(alert.thresholds.hasSharedWindows)
+
+        alert.thresholds.sevenDays = 99
+        XCTAssertFalse(alert.thresholds.hasSharedWindows)
+        XCTAssertEqual(alert.thresholds.fiveHours, 95)
+        XCTAssertEqual(alert.thresholds.monthly, 95)
+        XCTAssertEqual(alert.thresholdPercent, 95)
     }
 
     func testConfigurationSnapshotRejectsMalformedAlertJSON() {
@@ -770,6 +822,7 @@ final class UsageSnapshotTests: XCTestCase {
         let snapshot = ConfigurationSnapshot(
             configFile: "/tmp/config.yaml",
             menubarTitleMode: .compact,
+            telemetryEnabled: false,
             sessionRefreshEnabled: false,
             sessionRefreshInterval: "daily",
             sessionRefreshHour: 9,
@@ -780,10 +833,12 @@ final class UsageSnapshotTests: XCTestCase {
         var draft = ConfigurationDraft(snapshot: snapshot)
         draft.menubarTitleMode = .oct
         draft.setTool("codex", enabled: false)
+        draft.telemetryEnabled = true
 
         draft.revert(to: snapshot)
 
         XCTAssertEqual(draft.menubarTitleMode, .compact)
+        XCTAssertFalse(draft.telemetryEnabled)
         XCTAssertEqual(draft.tools.map(\.enabled), [true])
     }
 

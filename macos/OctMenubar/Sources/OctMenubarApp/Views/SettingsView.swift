@@ -3,6 +3,9 @@ import SwiftUI
 struct SettingsView: View {
     @State private var selectedTab: SettingsTab = .providers
     @ObservedObject var configurationStore: ConfigurationStore
+    @StateObject private var feedbackStore = FeedbackStore(
+        service: FeedbackService(endpoint: FeedbackService.configuredEndpoint())
+    )
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -12,6 +15,11 @@ struct SettingsView: View {
         }
         .padding(16)
         .frame(minWidth: 640, idealWidth: 640, maxWidth: 640, minHeight: 480, alignment: .topLeading)
+        .overlay {
+            if selectedTab != .about && configurationStore.isLoading && configurationStore.draft == nil {
+                ProgressView("Loading configuration")
+            }
+        }
         .onAppear {
             // Reload-on-open policy: picks up external (CLI) config changes.
             // The draft itself lives in the shared store, so closing and
@@ -50,6 +58,8 @@ struct SettingsView: View {
                 selectedTab: selectedTab,
                 configDraft: $configurationStore.draft,
                 isLoading: configurationStore.isLoading,
+                releaseMonitor: .shared,
+                feedbackStore: feedbackStore,
                 feedback: configurationStore.feedback,
                 toolUpdateStates: configurationStore.toolUpdateStates,
                 isAgentUpdating: configurationStore.isAgentUpdating,

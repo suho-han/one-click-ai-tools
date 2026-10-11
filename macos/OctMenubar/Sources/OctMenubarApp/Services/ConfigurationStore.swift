@@ -44,6 +44,7 @@ final class ConfigurationStore: ObservableObject {
     /// Guards against a late-arriving load overwriting a newer draft: only
     /// the most recently started load may publish its result.
     private var loadGeneration = 0
+    private var loadedFeedbackDismissal: Task<Void, Never>?
     /// Same guard for version checks: only the newest check may publish.
     private var versionCheckGeneration = 0
 
@@ -84,6 +85,7 @@ final class ConfigurationStore: ObservableObject {
     /// shows them; the popover's silent reload skips that cost.
     func loadDraft() async {
         let generation = loadGeneration + 1
+        loadedFeedbackDismissal?.cancel()
         loadGeneration = generation
         isLoading = true
         feedback = nil
@@ -94,6 +96,18 @@ final class ConfigurationStore: ObservableObject {
             snapshot = fresh
             draft = ConfigurationDraft(snapshot: fresh)
             feedback = .success("Loaded configuration.")
+            loadedFeedbackDismissal = Task { [weak self] in
+                do {
+                    try await Task.sleep(for: .seconds(5))
+                } catch {
+                    return
+                }
+                guard let self, self.feedback?.kind == .success,
+                      self.feedback?.message == "Loaded configuration." else { return }
+                withAnimation(.easeOut(duration: 0.35)) {
+                    self.feedback = nil
+                }
+            }
         } catch {
             guard generation == loadGeneration else { return }
             feedback = .error(error.localizedDescription)

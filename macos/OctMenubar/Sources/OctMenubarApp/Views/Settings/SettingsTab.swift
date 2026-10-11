@@ -5,6 +5,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case display
     case alerts
     case automation
+    case about
 
     var id: String { rawValue }
 
@@ -14,6 +15,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .display: "Display"
         case .alerts: "Alerts"
         case .automation: "Automation"
+        case .about: "About"
         }
     }
 
@@ -23,6 +25,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .display: "paintpalette"
         case .alerts: "bell.badge"
         case .automation: "arrow.clockwise.circle"
+        case .about: "info.circle"
         }
     }
 
@@ -32,6 +35,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .display: "Customize the menu bar and provider appearance."
         case .alerts: "Set usage alert thresholds and quiet periods."
         case .automation: "Schedule session refresh and launch at login."
+        case .about: "App details, updates, and project links."
         }
     }
 }

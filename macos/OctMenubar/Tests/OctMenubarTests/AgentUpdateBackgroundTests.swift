@@ -70,6 +70,18 @@ final class AgentUpdateBackgroundTests: XCTestCase {
         XCTAssertEqual(result.exitStatus, 0)
     }
 
+    func testEventStreamMarksMenubarSource() async throws {
+        let stub = try writeExecutableStub("""
+        echo "{\\"event\\":\\"$OCT_TELEMETRY_SOURCE\\"}"
+        """)
+        let service = OctCLIService(executableURL: stub, processTimeout: 5)
+        let collector = EventCollector()
+
+        let result = try await service.runAgentUpdate(timeout: 5) { collector.append($0) }
+        XCTAssertEqual(result.exitStatus, 0)
+        XCTAssertEqual(collector.snapshot.map(\.event), ["menubar"])
+    }
+
     /// Noise the real CLI never emits — prose lines, a record split across
     /// stdout chunks, and a crash that dies mid-record — must not corrupt the
     /// event stream or hang the runner, and a nonzero exit without run_done

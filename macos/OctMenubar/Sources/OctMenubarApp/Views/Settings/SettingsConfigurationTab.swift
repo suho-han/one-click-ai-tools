@@ -6,6 +6,8 @@ struct SettingsConfigurationTab: View {
     @Binding var configDraft: ConfigurationDraft?
 
     let isLoading: Bool
+    @ObservedObject var releaseMonitor: ReleaseUpdateMonitor
+    @ObservedObject var feedbackStore: FeedbackStore
     let feedback: SettingsFeedback?
     /// Live per-provider progress for the background agent update, keyed by
     /// binaryName; drives the version chip through Updating… → Updated!.
@@ -45,22 +47,35 @@ struct SettingsConfigurationTab: View {
     let onMenubarDaemonToggle: (Bool) -> Void
 
     @State private var installPromptTools: [ConfigTool]?
+    @AppStorage(MenubarPreferences.sharedAlertThresholdKey) private var sharesAlertThreshold = false
 
     private static let nodeDownloadURL = URL(string: "https://nodejs.org/en/download")!
 
     var body: some View {
-        ScrollView(.vertical) {
-            VStack(alignment: .leading, spacing: 12) {
-                configurationContent
+        Group {
+            if isLoading && configDraft == nil && selectedTab != .about {
+                Color.clear
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView(.vertical) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        configurationContent
 
-                if let feedback {
-                    SettingsFeedbackMessage(feedback: feedback)
+                        if let feedback, selectedTab != .about {
+                            SettingsFeedbackMessage(feedback: feedback)
+                                .transition(.opacity)
+                        }
+                    }
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .id(selectedTab)
+        .onAppear(perform: reconcileSharedThresholdPreference)
+        .onChange(of: configDraft?.alert.thresholds) { _, _ in
+            reconcileSharedThresholdPreference()
+        }
         .alert(
             failureReport?.title ?? "",
             isPresented: Binding(
@@ -77,15 +92,7 @@ struct SettingsConfigurationTab: View {
 
     @ViewBuilder
     private var configurationContent: some View {
-        if isLoading && configDraft == nil {
-            SettingsSectionCard(
-                title: "Configuration",
-                systemImage: "arrow.triangle.2.circlepath",
-                description: "Reading the current oct configuration."
-            ) {
-                ProgressView("Loading configuration")
-            }
-        } else if configDraft == nil {
+        if configDraft == nil && selectedTab != .about {
             SettingsSectionCard(
                 title: "Configuration",
                 systemImage: "slider.horizontal.3",
@@ -108,6 +115,8 @@ struct SettingsConfigurationTab: View {
             case .automation:
                 sessionRefreshSection
                 generalSection
+            case .about:
+                SettingsAboutTab(releaseMonitor: releaseMonitor, feedbackStore: feedbackStore)
             }
         }
     }
@@ -454,10 +463,15 @@ struct SettingsConfigurationTab: View {
                 // (macOS renders disabled controls in gray regardless of tint),
                 // so gate interaction instead and dim with opacity alone.
                 VStack(alignment: .leading, spacing: 10) {
-                    alertPercentSlider(title: "Alert threshold", binding: alertMainThresholdBinding)
-                    alertPercentSlider(title: "5h", binding: alertFiveHoursThresholdBinding, indent: 18, secondaryLabel: true)
-                    alertPercentSlider(title: "7d", binding: alertSevenDaysThresholdBinding, indent: 18, secondaryLabel: true)
-                    alertPercentSlider(title: "1m", binding: alertMonthlyThresholdBinding, indent: 18, secondaryLabel: true)
+                    Toggle("Use the same threshold for 5h, 7d, and 1m", isOn: sharedThresholdBinding)
+
+                    if sharesAlertThreshold {
+                        alertPercentSlider(title: "Alert threshold", binding: alertMainThresholdBinding)
+                    } else {
+                        alertPercentSlider(title: "5h", binding: alertFiveHoursThresholdBinding, indent: 18, secondaryLabel: true)
+                        alertPercentSlider(title: "7d", binding: alertSevenDaysThresholdBinding, indent: 18, secondaryLabel: true)
+                        alertPercentSlider(title: "1m", binding: alertMonthlyThresholdBinding, indent: 18, secondaryLabel: true)
+                    }
 
                     alertPickerRow(title: "Cooldown", selection: alertCooldownMinutesBinding) {
                         ForEach(AlertSettings.cooldownMenuChoices(current: configDraft?.alert.cooldownMinutes ?? 360), id: \.self) { minutes in
@@ -489,8 +503,8 @@ struct SettingsConfigurationTab: View {
     }
 
     /// Aligned threshold row: label column, draggable slider, fixed-width
-    /// percent chip so values don't jitter while dragging. The 1...99 range
-    /// excludes zero and 100 — both rejected by the CLI payload contract.
+    /// percent chip so values don't jitter while dragging. New selections use
+    /// 5% stops through 95%, plus the CLI's 99% ceiling.
     private func alertPercentSlider(
         title: String,
         binding: Binding<Double>,
@@ -503,7 +517,7 @@ struct SettingsConfigurationTab: View {
                 .foregroundStyle(secondaryLabel ? Color.secondary : Color.primary)
                 .frame(width: 120, alignment: .leading)
                 .padding(.leading, indent)
-            ThresholdSlider(value: binding, range: 1...99, color: thresholdTrackColor(binding.wrappedValue))
+            ThresholdSlider(value: binding, range: 5...99, color: thresholdTrackColor(binding.wrappedValue))
                 .accessibilityLabel(title)
             Text("\(Int(binding.wrappedValue.rounded()))%")
                 .font(.system(size: 11, weight: .medium).monospacedDigit())
@@ -578,9 +592,8 @@ struct SettingsConfigurationTab: View {
         }
     }
 
-    /// App-level behavior (not part of the oct config draft): whether this
-    /// track's menubar daemon is registered to start at login. The toggle
-    /// acts immediately — no unsaved-changes round-trip.
+    /// Launch-at-login is app-level behavior applied immediately; usage
+    /// analytics is part of the oct config draft and applies only on Save.
     private var generalSection: some View {
         SettingsSectionCard(
             title: "General",
@@ -591,6 +604,11 @@ struct SettingsConfigurationTab: View {
                 Toggle("Launch at login", isOn: menubarDaemonBinding)
                     .disabled(menubarDaemonState == nil)
                 Text(menubarDaemonCaption)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+
+                Toggle("Share usage analytics", isOn: telemetryEnabledBinding)
+                Text("Uses a random installation ID to measure commands and return visits. No prompts or credentials. Apply with Save; environment opt-outs still take priority.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
@@ -616,6 +634,16 @@ struct SettingsConfigurationTab: View {
             get: { configDraft?.menubarTitleMode ?? .oct },
             set: {
                 configDraft?.setMenubarTitleMode($0)
+                onDraftChange()
+            }
+        )
+    }
+
+    private var telemetryEnabledBinding: Binding<Bool> {
+        Binding(
+            get: { configDraft?.telemetryEnabled ?? true },
+            set: {
+                configDraft?.telemetryEnabled = $0
                 onDraftChange()
             }
         )
@@ -661,16 +689,37 @@ struct SettingsConfigurationTab: View {
         )
     }
 
-    /// The main alert threshold is the effective default: reading resolves to
-    /// thresholds.default and writing keeps the legacy threshold_percent in
-    /// sync, since thresholdFor resolves window -> default -> legacy percent
-    /// and a diverging legacy value would resurface via the CLI.
+    /// External CLI edits can break a previously shared configuration; show
+    /// the separate controls rather than hiding those divergent values.
+    private func reconcileSharedThresholdPreference() {
+        guard sharesAlertThreshold, let thresholds = configDraft?.alert.thresholds else { return }
+        if !thresholds.hasSharedWindows {
+            sharesAlertThreshold = false
+        }
+    }
+
+    /// Checking adopts the current default for every window. Unchecking
+    /// leaves the values intact and individually editable.
+    private var sharedThresholdBinding: Binding<Bool> {
+        Binding(
+            get: { sharesAlertThreshold },
+            set: { enabled in
+                sharesAlertThreshold = enabled
+                if enabled, let percent = configDraft?.alert.thresholds.defaultThreshold {
+                    configDraft?.alert.setSharedThreshold(percent)
+                    onDraftChange()
+                }
+            }
+        )
+    }
+
+    /// A shared edit updates the legacy fallback alongside every window key,
+    /// since the CLI checks window -> default -> threshold_percent.
     private var alertMainThresholdBinding: Binding<Double> {
         Binding(
             get: { configDraft?.alert.thresholds.defaultThreshold ?? AlertSettings.goDefaults.thresholds.defaultThreshold },
             set: {
-                configDraft?.alert.thresholds.defaultThreshold = $0
-                configDraft?.alert.thresholdPercent = $0
+                configDraft?.alert.setSharedThreshold($0)
                 onDraftChange()
             }
         )
@@ -747,9 +796,8 @@ struct SettingsConfigurationTab: View {
 /// control redesign renders sliders in fixed chrome and ignores both `.tint`
 /// and `.accentColor`, and the threshold color IS the information here
 /// (green → orange → red ramp), so the track and knob are drawn by hand.
-/// Values snap to whole numbers to keep the CLI payload contract (1...99,
-/// no fractions); the system Slider stays as the accessibility
-/// representation for VoiceOver and keyboard interaction.
+/// Drag and accessibility edits share the same 5%-step snapping rule, with
+/// 99% as the final stop. Existing off-step values remain visible until edited.
 private struct ThresholdSlider: View {
     @Binding var value: Double
     var range: ClosedRange<Double>
@@ -790,13 +838,19 @@ private struct ThresholdSlider: View {
                         guard width > 0 else { return }
                         let raw = range.lowerBound
                             + Double(gesture.location.x / width) * (range.upperBound - range.lowerBound)
-                        value = min(max(raw.rounded(), range.lowerBound), range.upperBound)
+                        value = AlertSettings.sliderThreshold(for: raw)
                     }
             )
         }
         .frame(height: 18)
         .accessibilityRepresentation {
-            Slider(value: $value, in: range)
+            Slider(
+                value: Binding(
+                    get: { value },
+                    set: { value = AlertSettings.sliderThreshold(for: $0) }
+                ),
+                in: range
+            )
         }
     }
 }

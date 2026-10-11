@@ -2,6 +2,8 @@ import SwiftUI
 
 enum MenubarPreferences {
     static let useProviderAccentColorsKey = "oct.menubar.useProviderAccentColors"
+    static let sharedAlertThresholdKey = "oct.menubar.sharedAlertThreshold"
+    static let automaticallyChecksForUpdatesKey = "oct.menubar.automaticallyChecksForUpdates"
 }
 
 @main

@@ -222,6 +222,9 @@ struct OctCLIService {
         let process = Process()
         process.executableURL = executableURL
         process.arguments = arguments
+        var environment = ProcessInfo.processInfo.environment
+        environment["OCT_TELEMETRY_SOURCE"] = "menubar"
+        process.environment = environment
 
         let stdout = Pipe()
         let stderr = Pipe()
@@ -419,6 +422,9 @@ struct OctCLIService {
         let process = Process()
         process.executableURL = executableURL
         process.arguments = arguments
+        var environment = ProcessInfo.processInfo.environment
+        environment["OCT_TELEMETRY_SOURCE"] = "menubar"
+        process.environment = environment
 
         let stdout = Pipe()
         let stderr = Pipe()

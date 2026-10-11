@@ -156,6 +156,10 @@ struct AlertThresholds: Codable, Equatable {
         self.monthly = monthly
     }
 
+    var hasSharedWindows: Bool {
+        fiveHours == defaultThreshold && sevenDays == defaultThreshold && monthly == defaultThreshold
+    }
+
     /// Tolerant decoding: snapshots from an older oct CLI carry no `1m`
     /// (and legacy ones may omit other window keys), and the alerts screen
     /// must still load instead of failing with a missing-data error.
@@ -261,6 +265,23 @@ struct AlertSettings: Codable, Equatable {
         self.thresholds = thresholds
     }
 
+    /// Slider stops are 5%, 10%, …, 95%, and the CLI's 99% ceiling.
+    /// Existing off-step configuration values remain untouched until edited.
+    static func sliderThreshold(for raw: Double) -> Double {
+        if raw >= 97 { return 99 }
+        return min(max((raw / 5).rounded() * 5, 5), 95)
+    }
+
+    mutating func setSharedThreshold(_ percent: Double) {
+        thresholdPercent = percent
+        thresholds = AlertThresholds(
+            defaultThreshold: percent,
+            fiveHours: percent,
+            sevenDays: percent,
+            monthly: percent
+        )
+    }
+
     /// Tolerant decoding: snapshots from an older oct CLI carry no
     /// `quiet_until` (they still had quiet_hours/timezone), and the alerts
     /// screen must still load instead of failing with a missing-data error.
@@ -283,6 +304,7 @@ struct ConfigurationSnapshot: Codable, Equatable {
     let configFile: String
     let menubarTitleMode: MenubarTitleMode
     let menubarRefreshInterval: String
+    let telemetryEnabled: Bool
     let sessionRefreshEnabled: Bool
     let sessionRefreshInterval: String
     let sessionRefreshHour: Int
@@ -296,6 +318,7 @@ struct ConfigurationSnapshot: Codable, Equatable {
         case configFile = "config_file"
         case menubarTitleMode = "menubar_title_mode"
         case menubarRefreshInterval = "menubar_refresh_interval"
+        case telemetryEnabled = "telemetry_enabled"
         case sessionRefreshEnabled = "session_refresh_enabled"
         case sessionRefreshInterval = "session_refresh_interval"
         case sessionRefreshHour = "session_refresh_hour"
@@ -308,6 +331,7 @@ struct ConfigurationSnapshot: Codable, Equatable {
         configFile: String,
         menubarTitleMode: MenubarTitleMode,
         menubarRefreshInterval: String = "1m",
+        telemetryEnabled: Bool = true,
         sessionRefreshEnabled: Bool,
         sessionRefreshInterval: String,
         sessionRefreshHour: Int,
@@ -318,6 +342,7 @@ struct ConfigurationSnapshot: Codable, Equatable {
         self.configFile = configFile
         self.menubarTitleMode = menubarTitleMode
         self.menubarRefreshInterval = menubarRefreshInterval
+        self.telemetryEnabled = telemetryEnabled
         self.sessionRefreshEnabled = sessionRefreshEnabled
         self.sessionRefreshInterval = sessionRefreshInterval
         self.sessionRefreshHour = sessionRefreshHour
@@ -332,6 +357,7 @@ struct ConfigurationSnapshot: Codable, Equatable {
             configFile: try container.decode(String.self, forKey: .configFile),
             menubarTitleMode: try container.decodeIfPresent(MenubarTitleMode.self, forKey: .menubarTitleMode) ?? .oct,
             menubarRefreshInterval: try container.decodeIfPresent(String.self, forKey: .menubarRefreshInterval) ?? "1m",
+            telemetryEnabled: try container.decodeIfPresent(Bool.self, forKey: .telemetryEnabled) ?? true,
             sessionRefreshEnabled: try container.decode(Bool.self, forKey: .sessionRefreshEnabled),
             sessionRefreshInterval: try container.decode(String.self, forKey: .sessionRefreshInterval),
             sessionRefreshHour: try container.decode(Int.self, forKey: .sessionRefreshHour),
@@ -396,6 +422,7 @@ struct ConfigurationSnapshot: Codable, Equatable {
 struct ConfigurationUpdatePayload: Codable, Equatable {
     let enabledTools: [String]
     let menubarTitleMode: MenubarTitleMode
+    let telemetryEnabled: Bool
     let sessionRefreshEnabled: Bool
     let sessionRefreshInterval: String
     let sessionRefreshHour: Int
@@ -406,6 +433,7 @@ struct ConfigurationUpdatePayload: Codable, Equatable {
     enum CodingKeys: String, CodingKey {
         case enabledTools = "enabled_tools"
         case menubarTitleMode = "menubar_title_mode"
+        case telemetryEnabled = "telemetry_enabled"
         case sessionRefreshEnabled = "session_refresh_enabled"
         case sessionRefreshInterval = "session_refresh_interval"
         case sessionRefreshHour = "session_refresh_hour"
@@ -418,6 +446,7 @@ struct ConfigurationUpdatePayload: Codable, Equatable {
 struct ConfigurationDraft: Equatable {
     var configFile: String
     var menubarTitleMode: MenubarTitleMode
+    var telemetryEnabled: Bool
     var sessionRefreshEnabled: Bool
     var sessionRefreshInterval: String
     var sessionRefreshHour: Int
@@ -428,6 +457,7 @@ struct ConfigurationDraft: Equatable {
     init(snapshot: ConfigurationSnapshot) {
         configFile = snapshot.configFile
         menubarTitleMode = snapshot.menubarTitleMode
+        telemetryEnabled = snapshot.telemetryEnabled
         sessionRefreshEnabled = snapshot.sessionRefreshEnabled
         sessionRefreshInterval = snapshot.sessionRefreshInterval
         sessionRefreshHour = snapshot.sessionRefreshHour
@@ -471,6 +501,7 @@ struct ConfigurationDraft: Equatable {
         ConfigurationUpdatePayload(
             enabledTools: tools.filter(\.enabled).map(\.binaryName),
             menubarTitleMode: menubarTitleMode,
+            telemetryEnabled: telemetryEnabled,
             sessionRefreshEnabled: sessionRefreshEnabled,
             sessionRefreshInterval: sessionRefreshInterval,
             sessionRefreshHour: sessionRefreshHour,

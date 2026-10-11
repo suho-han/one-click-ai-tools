@@ -68,21 +68,54 @@ enum ReleaseUpdateLogic {
 /// or a rate-limited response must not flicker the update button away.
 @MainActor
 final class ReleaseUpdateMonitor: ObservableObject {
+    static let shared = ReleaseUpdateMonitor()
     static let repo = "suho-han/one-click-ai-tools"
     static let pollInterval: TimeInterval = 5 * 60
 
     @Published private(set) var availableUpdate: ReleaseUpdate?
+    @Published private(set) var automaticallyChecksForUpdates: Bool
 
     private var timer: Timer?
+    private var hasStarted = false
+    private var checkGeneration = 0
     private let currentVersion: String
     private let session: URLSession
+    private let defaults: UserDefaults
 
-    init(currentVersion: String = MenubarBuildVersion.version, session: URLSession = .shared) {
+    init(
+        currentVersion: String = MenubarBuildVersion.version,
+        session: URLSession = .shared,
+        defaults: UserDefaults = .standard
+    ) {
         self.currentVersion = currentVersion
         self.session = session
+        self.defaults = defaults
+        self.automaticallyChecksForUpdates =
+            defaults.object(forKey: MenubarPreferences.automaticallyChecksForUpdatesKey) as? Bool ?? true
     }
 
     func start() {
+        guard !hasStarted else { return }
+        hasStarted = true
+        beginPollingIfEnabled()
+    }
+
+    func setAutomaticallyChecksForUpdates(_ enabled: Bool) {
+        guard enabled != automaticallyChecksForUpdates else { return }
+        defaults.set(enabled, forKey: MenubarPreferences.automaticallyChecksForUpdatesKey)
+        automaticallyChecksForUpdates = enabled
+        if enabled {
+            beginPollingIfEnabled()
+        } else {
+            timer?.invalidate()
+            timer = nil
+            checkGeneration += 1
+            availableUpdate = nil
+        }
+    }
+
+    private func beginPollingIfEnabled() {
+        guard hasStarted, automaticallyChecksForUpdates, timer == nil else { return }
         Task { await checkNow() }
         timer = Timer.scheduledTimer(withTimeInterval: Self.pollInterval, repeats: true) { [weak self] _ in
             Task { await self?.checkNow() }
@@ -90,6 +123,8 @@ final class ReleaseUpdateMonitor: ObservableObject {
     }
 
     func checkNow() async {
+        guard automaticallyChecksForUpdates else { return }
+        let generation = checkGeneration
         guard let url = URL(string: "https://api.github.com/repos/\(Self.repo)/releases/latest") else { return }
         var request = URLRequest(url: url)
         request.timeoutInterval = 15
@@ -106,6 +141,7 @@ final class ReleaseUpdateMonitor: ObservableObject {
                 }
             }
             let payload = try JSONDecoder().decode(Payload.self, from: data)
+            guard automaticallyChecksForUpdates, generation == checkGeneration else { return }
             availableUpdate = ReleaseUpdateLogic.updateIfNewer(
                 current: currentVersion,
                 remoteTag: payload.tagName,
