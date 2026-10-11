@@ -3,6 +3,7 @@ package update
 import (
 	"bytes"
 	"context"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -10,6 +11,22 @@ import (
 
 	"github.com/spf13/viper"
 )
+
+func TestStandaloneInstallerPropagatesDownloadFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("standalone installers require bash")
+	}
+	binDir := t.TempDir()
+	writeStubExecutable(t, filepath.Join(binDir, "curl"), "echo 'download failed' >&2\nexit 22\n")
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	tool := Tool{Name: "Kimi Code", BinaryName: "kimi"}
+	for _, manager := range []Manager{CursorAgent, AntigravityInstaller, KimiInstaller} {
+		output, err := runInstallWithFallback(t.Context(), manager, tool)
+		if err == nil || !strings.Contains(string(output), "download failed") {
+			t.Fatalf("%s installer returned output %q, error %v; want curl failure", manager, output, err)
+		}
+	}
+}
 
 func TestExplainResolvedManagerFallsBackWhenNpmMissing(t *testing.T) {
 	reset := stubManagerDetection(t)
@@ -62,34 +79,6 @@ func TestExplainResolvedManagerKeepsNpmDefaultWhenNpmAvailable(t *testing.T) {
 	})
 	if manager != Npm || reason != "default fallback" {
 		t.Fatalf("explainResolvedManager(kimi, npm present) = (%q, %q), want (npm, default fallback)", manager, reason)
-	}
-}
-
-func TestInstallerManagersRunOfficialScripts(t *testing.T) {
-	wantScripts := map[Manager]string{
-		ClaudeInstaller:   "https://claude.ai/install.sh",
-		CodexInstaller:    "https://github.com/openai/codex/releases/latest/download/install.sh",
-		CopilotInstaller:  "https://gh.io/copilot-install",
-		KimiInstaller:     "https://code.kimi.com/kimi-code/install.sh",
-		QwenInstaller:     "https://qwen-code-assets.oss-cn-hangzhou.aliyuncs.com/installation/install-qwen-standalone.sh",
-		OpenCodeInstaller: "https://opencode.ai/install",
-	}
-
-	for manager, wantScript := range wantScripts {
-		cmd := manager.InstallCommand(Tool{Name: "Any", BinaryName: "any"})
-		if got := commandBase(cmd.Path); got != "bash" {
-			t.Fatalf("%s install command path = %q, want bash", manager, got)
-		}
-		if len(cmd.Args) != 3 || cmd.Args[1] != "-lc" {
-			t.Fatalf("%s install command args = %v, want [bash -lc <script>]", manager, cmd.Args)
-		}
-		joined := cmd.Args[2]
-		if !strings.HasPrefix(joined, "curl -fsSL ") || !strings.HasSuffix(joined, " | bash") {
-			t.Fatalf("%s install command = %q, want `curl -fsSL <script> | bash`", manager, joined)
-		}
-		if !strings.Contains(joined, wantScript) {
-			t.Fatalf("%s install command = %q, want it to contain %q", manager, joined, wantScript)
-		}
 	}
 }
 

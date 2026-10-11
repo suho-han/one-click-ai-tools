@@ -207,46 +207,83 @@ func registryLatestVersion(ctx context.Context, manager Manager, pkg string) str
 	return firstNonEmptyLine(string(out))
 }
 
-// versionIsNewer reports whether latest is a strictly newer release than
-// installed. Both sides may carry cosmetic prefixes (v) or suffixes (build
-// metadata); the comparison is numeric on the dot-separated components and
-// gives up (reporting "not newer") when a component is not numeric — a
-// conservative answer that only ever hides an update button, never fakes one.
+// versionIsNewer compares numeric components, then SemVer prerelease
+// identifiers. Unknown version formats conservatively hide the update button.
 func versionIsNewer(installed, latest string) bool {
-	installed = strings.TrimPrefix(strings.TrimSpace(installed), "v")
-	latest = strings.TrimPrefix(strings.TrimSpace(latest), "v")
-	if installed == "" || latest == "" || installed == latest {
+	a, aCount, aPre, aOK := parseComparableVersion(installed)
+	b, bCount, bPre, bOK := parseComparableVersion(latest)
+	if !aOK || !bOK {
 		return false
 	}
-	installedParts := strings.SplitN(installed, ".", 3)
-	latestParts := strings.SplitN(latest, ".", 3)
-	for i := 0; i < len(installedParts) && i < len(latestParts); i++ {
-		a, aOK := numericPrefix(installedParts[i])
-		b, bOK := numericPrefix(latestParts[i])
-		if !aOK || !bOK {
+	for i := range a {
+		if a[i] != b[i] {
+			return a[i] < b[i]
+		}
+	}
+	if aPre != bPre {
+		if aPre == "" {
 			return false
 		}
-		if a != b {
-			return a < b
+		if bPre == "" {
+			return true
 		}
+		aParts, bParts := strings.Split(aPre, "."), strings.Split(bPre, ".")
+		for i := 0; i < len(aParts) && i < len(bParts); i++ {
+			if aParts[i] == bParts[i] {
+				continue
+			}
+			aNum, aNumeric := prereleaseNumber(aParts[i])
+			bNum, bNumeric := prereleaseNumber(bParts[i])
+			if aNumeric != bNumeric {
+				return aNumeric
+			}
+			if aNumeric {
+				if len(aNum) != len(bNum) {
+					return len(aNum) < len(bNum)
+				}
+				return aNum < bNum
+			}
+			return aParts[i] < bParts[i]
+		}
+		return len(aParts) < len(bParts)
 	}
-	return len(installedParts) < len(latestParts)
+	return aCount < bCount
 }
 
-// numericPrefix parses the leading digits of s ("3-beta.1" -> 3, true).
-func numericPrefix(s string) (int, bool) {
-	end := 0
-	for end < len(s) && s[end] >= '0' && s[end] <= '9' {
-		end++
+func parseComparableVersion(version string) ([3]int, int, string, bool) {
+	var parts [3]int
+	version = strings.TrimPrefix(strings.TrimSpace(version), "v")
+	version, _, _ = strings.Cut(version, "+")
+	core, pre, hasPre := strings.Cut(version, "-")
+	fields := strings.Split(core, ".")
+	if len(fields) == 0 || len(fields) > len(parts) || (hasPre && pre == "") {
+		return parts, 0, "", false
 	}
-	if end == 0 {
-		return 0, false
+	for i, field := range fields {
+		if field == "" || strings.Trim(field, "0123456789") != "" {
+			return parts, 0, "", false
+		}
+		n, err := strconv.Atoi(field)
+		if err != nil {
+			return parts, 0, "", false
+		}
+		parts[i] = n
 	}
-	n, err := strconv.Atoi(s[:end])
-	if err != nil {
-		return 0, false
+	if hasPre {
+		for _, field := range strings.Split(pre, ".") {
+			if field == "" || strings.Trim(field, "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz-") != "" {
+				return parts, 0, "", false
+			}
+			if number, numeric := prereleaseNumber(field); numeric && len(number) > 1 && number[0] == '0' {
+				return parts, 0, "", false
+			}
+		}
 	}
-	return n, true
+	return parts, len(fields), pre, true
+}
+
+func prereleaseNumber(identifier string) (string, bool) {
+	return identifier, identifier != "" && strings.Trim(identifier, "0123456789") == ""
 }
 
 func formatCheckLine(plan Plan, latest string, latestKnown, outdated bool) string {

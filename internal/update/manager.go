@@ -192,13 +192,13 @@ func (m Manager) InstallCommandCtx(ctx context.Context, t Tool) *exec.Cmd {
 	case CopilotNative:
 		return commandContextWithEnv(ctx, firstAvailableBinary(t), "update")
 	case CursorAgent:
-		return commandContextWithEnv(ctx, "bash", "-lc", "curl https://cursor.com/install -fsS | bash")
+		return commandContextWithEnv(ctx, "bash", "-o", "pipefail", "-c", "curl https://cursor.com/install -fsS | bash")
 	case AntigravityUpdater:
 		return commandContextWithEnv(ctx, firstAvailableBinary(t), "update")
 	case AntigravityInstaller:
-		return commandContextWithEnv(ctx, "bash", "-lc", "curl -fsSL https://antigravity.google/cli/install.sh | bash")
+		return commandContextWithEnv(ctx, "bash", "-o", "pipefail", "-c", "curl -fsSL https://antigravity.google/cli/install.sh | bash")
 	case ClaudeInstaller, CodexInstaller, CopilotInstaller, KimiInstaller, QwenInstaller, OpenCodeInstaller:
-		return commandContextWithEnv(ctx, "bash", "-lc", "curl -fsSL "+npmFreeInstallScripts[m]+" | bash")
+		return commandContextWithEnv(ctx, "bash", "-o", "pipefail", "-c", "curl -fsSL "+npmFreeInstallScripts[m]+" | bash")
 	case Brew:
 		return commandContextWithEnv(ctx, "brew", "upgrade", t.BrewTarget())
 	case Pnpm:

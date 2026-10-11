@@ -204,7 +204,7 @@ launch_menubar_app() {
         return 0
     fi
     ui_step "Launching menubar helper"
-    nohup "$helper_installed" >/dev/null 2>&1 &
+    OCT_MENUBAR_OCT_PATH="${INSTALL_DIR}/${BIN_NAME}" nohup "$helper_installed" >/dev/null 2>&1 &
     ui_done "Menubar helper launched"
 }
 

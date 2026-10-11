@@ -20,6 +20,10 @@ All notable changes to this project will be documented in this file. See [standa
 * **ci:** keep Darwin-only menubar process tests out of Linux and Windows test builds.
 * **analytics:** reject running the private database server on Windows, where POSIX file-mode privacy cannot be enforced.
 * **ci:** exercise update subprocesses with native Windows executables and limit POSIX permission assertions to supported platforms.
+* **installer:** bind the auto-launched beta helper to its matching CLI binary and report failed standalone downloads.
+* **schedule:** keep a failed crontab read from silently disabling a scheduled task.
+* **menubar:** run updates for the unsaved provider selection and detect newer prerelease versions.
+* **update:** reject human-only explain and dry-run flags in JSON mode.
 
 ### [0.1.6](https://github.com/suho-han/one-click-ai-tools/compare/v0.1.5...v0.1.6) (2026-09-30)
 

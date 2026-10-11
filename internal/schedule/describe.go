@@ -56,8 +56,10 @@ func (m *MacOS) Describe(task Task) (CurrentSchedule, error) {
 func (l *Linux) Describe(task Task) (CurrentSchedule, error) {
 	out, err := linuxCrontabList()
 	if err != nil {
-		// Mirror Status: any crontab read failure counts as "not scheduled".
-		return CurrentSchedule{}, nil
+		if isNoCrontabError(err) {
+			return CurrentSchedule{}, nil
+		}
+		return CurrentSchedule{}, fmt.Errorf("list crontab: %w", err)
 	}
 	entry, ok := findCrontabEntry(string(out), task)
 	if !ok {

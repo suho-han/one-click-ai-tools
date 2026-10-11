@@ -295,7 +295,7 @@ final class ConfigurationStore: ObservableObject {
             do {
                 let result = try await service.runAgentUpdate(
                     installMissing: installMissing,
-                    only: isRunAll ? nil : seededBinaries
+                    only: seededBinaries
                 ) { event in
                     yieldEvent.yield(event)
                 }

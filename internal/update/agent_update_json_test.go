@@ -12,6 +12,19 @@ import (
 	"github.com/spf13/viper"
 )
 
+func TestRunJSONRejectsHumanOnlyFlags(t *testing.T) {
+	for _, opts := range []Options{{JSON: true, Explain: true}, {JSON: true, DryRun: true}} {
+		var out bytes.Buffer
+		opts.Output = &out
+		if err := Run(t.Context(), opts); err == nil || !strings.Contains(err.Error(), "--json cannot be combined") {
+			t.Fatalf("Run(%+v) error = %v, want incompatible flags", opts, err)
+		}
+		if out.Len() != 0 {
+			t.Fatalf("invalid JSON mode wrote stdout: %q", out.String())
+		}
+	}
+}
+
 // decodeEventLines splits NDJSON output and decodes every line; a malformed
 // line fails the test because `--json` stdout must stay machine-readable.
 func decodeEventLines(t *testing.T, out string) []updateEvent {

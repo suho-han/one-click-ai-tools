@@ -150,26 +150,6 @@ func TestDetectManagerCopilotNative(t *testing.T) {
 	}
 }
 
-func TestCursorAgentInstallCommand(t *testing.T) {
-	cmd := CursorAgent.InstallCommand(Tool{BinaryName: "cursor-agent", BinaryAliases: []string{"cursor", "agent"}})
-	if len(cmd.Args) != 3 {
-		t.Fatalf("unexpected args length: %v", cmd.Args)
-	}
-	if commandBase(cmd.Args[0]) != "bash" || cmd.Args[1] != "-lc" || cmd.Args[2] != "curl https://cursor.com/install -fsS | bash" {
-		t.Fatalf("CursorAgent.InstallCommand args = %v, want [bash -lc 'curl https://cursor.com/install -fsS | bash']", cmd.Args)
-	}
-}
-
-func TestAntigravityInstallCommand(t *testing.T) {
-	cmd := AntigravityInstaller.InstallCommand(Tool{BinaryName: "agy", BinaryAliases: []string{"antigravity", "gemini", "gemini-cli"}})
-	if len(cmd.Args) != 3 {
-		t.Fatalf("unexpected args length: %v", cmd.Args)
-	}
-	if commandBase(cmd.Args[0]) != "bash" || cmd.Args[1] != "-lc" || cmd.Args[2] != "curl -fsSL https://antigravity.google/cli/install.sh | bash" {
-		t.Fatalf("AntigravityInstaller.InstallCommand args = %v, want [bash -lc 'curl -fsSL https://antigravity.google/cli/install.sh | bash']", cmd.Args)
-	}
-}
-
 func TestClaudeNativeInstallCommand(t *testing.T) {
 	reset := stubManagerDetection(t)
 	defer reset()

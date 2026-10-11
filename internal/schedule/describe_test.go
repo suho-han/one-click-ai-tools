@@ -3,7 +3,9 @@ package schedule
 import (
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -128,6 +130,9 @@ func TestMacOSDescribe_ReadsPlistFromHome(t *testing.T) {
 }
 
 func TestLinuxDescribe_ReadsCrontab(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("crontab is Unix-only")
+	}
 	origList := linuxCrontabList
 	t.Cleanup(func() { linuxCrontabList = origList })
 
@@ -144,13 +149,20 @@ func TestLinuxDescribe_ReadsCrontab(t *testing.T) {
 		t.Fatalf("Describe = %+v, want enabled daily@9", state)
 	}
 
-	linuxCrontabList = func() ([]byte, error) { return nil, errors.New("no crontab for user") }
+	_, noCrontabErr := exec.Command("sh", "-c", "echo 'no crontab for user' >&2; exit 1").Output()
+	linuxCrontabList = func() ([]byte, error) { return nil, noCrontabErr }
 	state, err = l.Describe(AgentUpdateTask)
 	if err != nil {
 		t.Fatalf("Describe without crontab: %v", err)
 	}
 	if state.Enabled {
 		t.Fatal("expected disabled without a crontab entry")
+	}
+
+	denied := errors.New("permission denied")
+	linuxCrontabList = func() ([]byte, error) { return nil, denied }
+	if _, err := l.Describe(AgentUpdateTask); !errors.Is(err, denied) {
+		t.Fatalf("Describe with failed crontab inspection error = %v, want permission denied", err)
 	}
 
 	linuxCrontabList = func() ([]byte, error) {

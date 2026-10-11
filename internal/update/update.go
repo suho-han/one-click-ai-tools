@@ -72,6 +72,9 @@ func Run(ctx context.Context, opts ...Options) error {
 	if in == nil {
 		in = os.Stdin
 	}
+	if config.JSON && (config.Explain || config.DryRun) {
+		return fmt.Errorf("--json cannot be combined with --explain or --dry-run")
+	}
 	emit := newEventEmitter(config.JSON, out)
 
 	enabledTools := viper.GetStringSlice("enabled_tools")

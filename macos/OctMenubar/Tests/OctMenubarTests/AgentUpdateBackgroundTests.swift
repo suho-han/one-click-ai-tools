@@ -174,6 +174,36 @@ final class AgentUpdateBackgroundTests: XCTestCase {
         """
     }
 
+    func testRunAllUsesUnsavedProviderSelection() async throws {
+        let snapshot = makeSnapshot()
+        let argsFile = FileManager.default.temporaryDirectory
+            .appendingPathComponent("oct-args-\(UUID().uuidString)")
+        addTeardownBlock { try? FileManager.default.removeItem(at: argsFile) }
+        let stub = try writeExecutableStub("""
+        printf '%s\\n' "$@" > '\(argsFile.path)'
+        echo '{"event":"run_start","total":1}'
+        echo '{"event":"tool_done","binary":"agy","status":"up_to_date"}'
+        echo '{"event":"run_done","failed":0}'
+        """)
+        let store = ConfigurationStore(
+            service: OctCLIService(executableURL: stub, processTimeout: 10, refreshDeadline: 15),
+            snapshot: snapshot
+        )
+        var draft = ConfigurationDraft(snapshot: snapshot)
+        draft.tools[0].enabled = false
+        draft.tools[1].enabled = false
+        draft.tools[2].enabled = true
+        store.draft = draft
+
+        await store.runAgentUpdateNow(installMissing: false)
+
+        let args = try String(contentsOf: argsFile, encoding: .utf8)
+            .split(separator: "\n").map(String.init)
+        XCTAssertEqual(args, ["agent-update", "--json", "--skip-missing", "--only", "agy"])
+        XCTAssertNil(store.toolUpdateStates["claude"])
+        XCTAssertNil(store.toolUpdateStates["codex"])
+    }
+
     /// The core contract: outcome chips (Updated! / Latest) persist after the
     /// run instead of settling back — they describe the last run until the
     /// settings window closes — while the new version lands in snapshot AND
@@ -616,10 +646,10 @@ final class AgentUpdateBackgroundTests: XCTestCase {
     /// chips and flags intact.
     func testRunAllAndRowRunExcludeEachOther() async throws {
         let snapshot = makeSnapshot()
-        // $4 is "--only" only for row runs; the sweep (no --only) takes the
-        // else branch. Both branches sleep so the test can interleave.
+        // Both paths now pass --only; the sweep selects two binaries, while
+        // the row run selects only agy. Both sleep so the test can interleave.
         let stub = try writeExecutableStub("""
-        if [ "$4" = "--only" ]; then
+        if [ "$5" = "agy" ]; then
         sleep 0.4
         echo '{"event":"run_start","total":1}'
         echo '{"event":"tool_done","binary":"agy","status":"updated","version_after":"10.0.0"}'
