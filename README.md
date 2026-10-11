@@ -239,7 +239,7 @@ oct menubar install-helper # ~/.local/bin/OctMenubarApp 로 설치
 <details>
 <summary><b>⚙️ Settings 화면 범위와 페치 타임아웃</b></summary>
 
-메뉴바 앱의 Settings에서는 General 설정이 Configuration 화면으로 합쳐집니다. 이 화면의 알림 항목은 안전한 전역 알림 설정만 노출하며, 프로바이더별 임계값이나 snooze 제어는 노출하지 않습니다. 그런 고급 설정은 `oct alert config ...`와 `oct alert snooze ...`를 사용하세요.
+메뉴바 앱의 Settings는 Providers(도구 선택·업데이트), Display(외형·사용량 표시), Alerts(전역 알림), Automation(세션 갱신·로그인 시 실행) 탭으로 나뉩니다. 변경한 설정은 탭을 이동해도 유지되며, 창 하단의 Save changes로 저장합니다. Terminal 명령 실행용 Tools 탭은 없으며 명령은 `oct` CLI에서 직접 실행할 수 있습니다. Alerts 탭은 안전한 전역 설정만 노출하고, 프로바이더별 임계값이나 snooze 제어는 노출하지 않습니다. 그런 고급 설정은 `oct alert config ...`와 `oct alert snooze ...`를 사용하세요.
 
 `oct usage --json`의 전체 페치 deadline(기본 15초)은 `OCT_USAGE_FETCH_TIMEOUT` 환경변수로 조정할 수 있습니다 (예: `OCT_USAGE_FETCH_TIMEOUT=8s oct usage`). 5~18초 범위로 클램프되어 menubar helper의 20초 프로세스 타임아웃 안에 항상 부분 결과가 도착합니다.
 

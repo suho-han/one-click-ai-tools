@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SettingsConfigurationTab: View {
+    let selectedTab: SettingsTab
     @AppStorage(MenubarPreferences.useProviderAccentColorsKey) private var useProviderAccentColors = true
     @Binding var configDraft: ConfigurationDraft?
 
@@ -42,9 +43,6 @@ struct SettingsConfigurationTab: View {
     /// Toggles launch-at-login; the store settles the state and surfaces
     /// failures as feedback.
     let onMenubarDaemonToggle: (Bool) -> Void
-    /// Terminal-tool actions routed through the same runner the Tools tab
-    /// uses, so feedback lines stay uniform.
-    let onAction: (OctMenubarAction) -> Void
 
     @State private var installPromptTools: [ConfigTool]?
 
@@ -62,6 +60,7 @@ struct SettingsConfigurationTab: View {
             .padding(.vertical, 12)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .id(selectedTab)
         .alert(
             failureReport?.title ?? "",
             isPresented: Binding(
@@ -98,12 +97,18 @@ struct SettingsConfigurationTab: View {
                 .buttonStyle(.bordered)
             }
         } else {
-            providerSection
-            appearanceSection
-            displaySection
-            alertSection
-            sessionRefreshSection
-            generalSection
+            switch selectedTab {
+            case .providers:
+                providerSection
+            case .display:
+                appearanceSection
+                displaySection
+            case .alerts:
+                alertSection
+            case .automation:
+                sessionRefreshSection
+                generalSection
+            }
         }
     }
 

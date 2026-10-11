@@ -146,21 +146,6 @@ struct OctCLIService {
         return "\(oct) menubar stop; sleep 0.5; \(oct) menubar --daemon"
     }
 
-    func run(action: OctMenubarAction) async throws {
-        switch action {
-        case .openUsage:
-            try await runInTerminal(arguments: ["usage"])
-        case .openMonitor:
-            try await runInTerminal(arguments: ["monitor", "--once"])
-        case .runSessionRefresh:
-            try await runInTerminal(arguments: ["session-refresh"])
-        case .runAlertCheck:
-            try await runInTerminal(arguments: ["usage", "--notify"])
-        case .runAgentUpdate:
-            try await runInTerminal(arguments: ["agent-update"])
-        }
-    }
-
     /// Arguments for the background agent update: `--json` streams NDJSON
     /// update events the app parses, and JSON mode never prompts — the
     /// app asked the user beforehand, so missing providers are either
@@ -410,41 +395,6 @@ struct OctCLIService {
         return result.stdout
     }
 
-    private func runInTerminal(arguments: [String]) async throws {
-        let launcherURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("oct-menubar-\(UUID().uuidString)")
-            .appendingPathExtension("command")
-        let script = """
-        #!/bin/zsh
-        \(buildShellCommand(arguments: arguments))
-        status=$?
-        echo
-        echo "[oct menubar] exit status: $status"
-        echo "Press any key to close..."
-        read -k 1
-        exit $status
-        """
-        try script.write(to: launcherURL, atomically: true, encoding: .utf8)
-        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: launcherURL.path)
-
-        _ = try await runProcess(
-            executableURL: URL(fileURLWithPath: "/usr/bin/open"),
-            arguments: ["-a", "Terminal", launcherURL.path],
-            requireManagedExecutable: false
-        )
-
-        // Terminal may not have exec'd the launcher yet when `open` returns;
-        // remove it after a grace period instead of leaking one file per
-        // action into the shared temp directory.
-        DispatchQueue.global().asyncAfter(deadline: .now() + 60) {
-            try? FileManager.default.removeItem(at: launcherURL)
-        }
-    }
-
-    private func buildShellCommand(arguments: [String]) -> String {
-        ([Self.shellQuote(executableURL.path)] + arguments.map(Self.shellQuote)).joined(separator: " ")
-    }
-
     /// Runs a process off the caller's thread and collects its output without
     /// deadlock: pipes are drained continuously from the moment the process
     /// starts (so output beyond the pipe buffer capacity cannot block the
@@ -459,11 +409,10 @@ struct OctCLIService {
     /// instead of hanging.
     private func runProcess(
         executableURL: URL,
-        arguments: [String],
-        requireManagedExecutable: Bool = true
+        arguments: [String]
     ) async throws -> ProcessOutput {
         let fileManager = FileManager.default
-        if requireManagedExecutable && !fileManager.isExecutableFile(atPath: executableURL.path) {
+        if !fileManager.isExecutableFile(atPath: executableURL.path) {
             throw OctCLIServiceError.missingExecutable(path: executableURL.path, searchedPaths: searchedPaths)
         }
 
@@ -746,7 +695,6 @@ struct ProcessOutput {
     let stderr: String
 }
 
-/// `oct menubar daemon --json`: whether this track's menubar is registered
 /// `oct usage reset-credit --json --yes` result: the credit spend outcome
 /// plus the freshly-queried state the badge should show next.
 struct ResetCreditConsumeResult: Decodable, Equatable {
@@ -771,6 +719,7 @@ struct ResetCreditConsumeResult: Decodable, Equatable {
     }
 }
 
+/// `oct menubar daemon --json`: whether this track's menubar is registered
 /// to start at login (enabled) and currently loaded into launchd (loaded).
 /// `label` identifies the registration (com.oct.menubar / com.oct-beta.menubar).
 struct MenubarDaemonState: Codable, Equatable {

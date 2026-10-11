@@ -1,8 +1,7 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @State private var selectedTab: SettingsTab = .configuration
-    @State private var lastActionFeedback: SettingsFeedback?
+    @State private var selectedTab: SettingsTab = .providers
     @ObservedObject var configurationStore: ConfigurationStore
 
     var body: some View {
@@ -47,40 +46,33 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 0) {
             SettingsTabSelector(selection: $selectedTab)
 
-            Group {
-                switch selectedTab {
-                case .configuration:
-                    SettingsConfigurationTab(
-                        configDraft: $configurationStore.draft,
-                        isLoading: configurationStore.isLoading,
-                        feedback: configurationStore.feedback,
-                        toolUpdateStates: configurationStore.toolUpdateStates,
-                        isAgentUpdating: configurationStore.isAgentUpdating,
-                        singleUpdateBinaries: configurationStore.singleUpdateBinaries,
-                        agentUpdateProgress: configurationStore.agentUpdateProgress,
-                        versionChecks: configurationStore.versionChecks,
-                        failureReport: configurationStore.failureReport,
-                        onDraftChange: markConfigurationChanged,
-                        onLoad: { Task { await configurationStore.loadDraft() } },
-                        onRunAgentUpdate: { installMissing in
-                            Task { await configurationStore.runAgentUpdateNow(installMissing: installMissing) }
-                        },
-                        onUpdateProvider: { binaryName in
-                            Task { await configurationStore.runAgentUpdateNow(installMissing: false, onlyBinary: binaryName) }
-                        },
-                        onDismissFailureReport: {
-                            configurationStore.dismissFailureReport()
-                        },
-                        menubarDaemonState: configurationStore.menubarDaemonState,
-                        onMenubarDaemonToggle: { enabled in
-                            Task { await configurationStore.setMenubarDaemonEnabled(enabled) }
-                        },
-                        onAction: runAction
-                    )
-                case .tools:
-                    SettingsToolsTab(feedback: lastActionFeedback, onAction: runAction)
+            SettingsConfigurationTab(
+                selectedTab: selectedTab,
+                configDraft: $configurationStore.draft,
+                isLoading: configurationStore.isLoading,
+                feedback: configurationStore.feedback,
+                toolUpdateStates: configurationStore.toolUpdateStates,
+                isAgentUpdating: configurationStore.isAgentUpdating,
+                singleUpdateBinaries: configurationStore.singleUpdateBinaries,
+                agentUpdateProgress: configurationStore.agentUpdateProgress,
+                versionChecks: configurationStore.versionChecks,
+                failureReport: configurationStore.failureReport,
+                onDraftChange: markConfigurationChanged,
+                onLoad: { Task { await configurationStore.loadDraft() } },
+                onRunAgentUpdate: { installMissing in
+                    Task { await configurationStore.runAgentUpdateNow(installMissing: installMissing) }
+                },
+                onUpdateProvider: { binaryName in
+                    Task { await configurationStore.runAgentUpdateNow(installMissing: false, onlyBinary: binaryName) }
+                },
+                onDismissFailureReport: {
+                    configurationStore.dismissFailureReport()
+                },
+                menubarDaemonState: configurationStore.menubarDaemonState,
+                onMenubarDaemonToggle: { enabled in
+                    Task { await configurationStore.setMenubarDaemonEnabled(enabled) }
                 }
-            }
+            )
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -125,21 +117,6 @@ struct SettingsView: View {
         }
     }
 
-    private func runAction(_ action: OctMenubarAction) {
-        // Terminal launches run off the main thread; the window stays
-        // responsive and only the feedback line updates. (The agent update
-        // never takes this path — the configuration tab routes it to the
-        // store's background runner via onRunAgentUpdate.)
-        Task {
-            do {
-                try await OctCLIService().run(action: action)
-                lastActionFeedback = .success("Launched \(action.settingsTitle) in Terminal.")
-            } catch {
-                lastActionFeedback = .error(error.localizedDescription)
-            }
-        }
-    }
-
     private func revertConfiguration() {
         configurationStore.revertDraft()
     }
@@ -157,23 +134,6 @@ struct SettingsView: View {
             configurationStore.feedback = .warning("Select at least one provider.")
         } else {
             configurationStore.feedback = nil
-        }
-    }
-}
-
-private extension OctMenubarAction {
-    var settingsTitle: String {
-        switch self {
-        case .openUsage:
-            return "Open usage"
-        case .openMonitor:
-            return "Open monitor"
-        case .runAlertCheck:
-            return "Run alert"
-        case .runSessionRefresh:
-            return "Session refresh"
-        case .runAgentUpdate:
-            return "Run agent-update"
         }
     }
 }

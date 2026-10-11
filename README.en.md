@@ -236,7 +236,7 @@ oct menubar install-helper # install to ~/.local/bin/OctMenubarApp
 <details>
 <summary><b>⚙️ Settings screen scope and fetch timeout</b></summary>
 
-In the menubar app's Settings, General is merged into the Configuration screen. Its alert section exposes only safe global alert settings; it does not expose provider-specific thresholds or snooze controls. Use `oct alert config ...` and `oct alert snooze ...` for those advanced controls.
+The menubar Settings window has Providers (selection and updates), Display (appearance and usage), Alerts (global rules), and Automation (session refresh and launch at login) tabs. Edits persist when switching tabs and are saved with the pinned Save changes button. The Terminal command-launching Tools tab is gone; run those commands directly with the `oct` CLI. Alerts exposes only safe global settings; use `oct alert config ...` and `oct alert snooze ...` for provider-specific thresholds or snooze controls.
 
 The overall fetch deadline of `oct usage --json` (15s by default) is tunable via the `OCT_USAGE_FETCH_TIMEOUT` environment variable (e.g. `OCT_USAGE_FETCH_TIMEOUT=8s oct usage`). It is clamped to the 5–18s range, so a partial result always arrives within the menubar helper's 20s process timeout.
 

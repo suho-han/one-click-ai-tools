@@ -98,18 +98,6 @@ final class UsageViewModel: ObservableObject {
         }
     }
 
-    func runAction(_ action: OctMenubarAction) {
-        // Process I/O stays off the main thread; a failure surfaces as
-        // action feedback without wiping the displayed usage data.
-        Task {
-            do {
-                try await service.run(action: action)
-            } catch {
-                snapshot = .error(message: error.localizedDescription, refreshInterval: currentRefreshInterval())
-            }
-        }
-    }
-
     /// Arms the reset-credit confirmation for one card. The spend only
     /// happens if the user confirms the alert.
     func requestResetCredit(for card: ProviderCard) {
@@ -166,12 +154,4 @@ final class UsageViewModel: ObservableObject {
             RunLoop.main.add(refreshTimer, forMode: .common)
         }
     }
-}
-
-enum OctMenubarAction {
-    case openUsage
-    case openMonitor
-    case runSessionRefresh
-    case runAlertCheck
-    case runAgentUpdate
 }
