@@ -53,6 +53,11 @@ struct ConfigTool: Codable, Equatable, Identifiable {
     /// not installed. Synthesized Codable decoding reads optionals with
     /// decodeIfPresent, so older snapshots decode unchanged.
     var version: String?
+    /// The CLI marks usage-only providers false. Missing on older CLI
+    /// snapshots defaults to the previous installable-tool behavior.
+    var canUpdate: Bool? = nil
+
+    var supportsUpdate: Bool { canUpdate ?? true }
 
     var id: String { binaryName }
 
@@ -61,6 +66,7 @@ struct ConfigTool: Codable, Equatable, Identifiable {
         case binaryName = "binary_name"
         case enabled
         case version
+        case canUpdate = "can_update"
     }
 }
 
@@ -468,6 +474,10 @@ struct ConfigurationDraft: Equatable {
 
     var hasEnabledTool: Bool {
         tools.contains { $0.enabled }
+    }
+
+    var hasEnabledUpdateTool: Bool {
+        tools.contains { $0.enabled && $0.supportsUpdate }
     }
 
     mutating func setTool(_ binaryName: String, enabled: Bool) {

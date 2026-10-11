@@ -292,7 +292,7 @@ struct SettingsConfigurationTab: View {
     }
 
     private func isProviderUpdateOffered(_ tool: ConfigTool) -> Bool {
-        guard let version = tool.version, !version.isEmpty else { return false }
+        guard tool.supportsUpdate, let version = tool.version, !version.isEmpty else { return false }
         guard toolUpdateStates[tool.binaryName] == nil else { return false }
         return versionChecks[tool.binaryName]?.offersUpdate == true
     }
@@ -322,7 +322,7 @@ struct SettingsConfigurationTab: View {
                 .disabled(
                     isAgentUpdating
                         || !singleUpdateBinaries.isEmpty
-                        || (configDraft?.hasEnabledTool ?? false) == false
+                        || (configDraft?.hasEnabledUpdateTool ?? false) == false
                 )
                 .animation(.easeInOut(duration: 0.18), value: isAgentUpdating)
 
@@ -381,7 +381,7 @@ struct SettingsConfigurationTab: View {
     /// "") need one confirmation before the background run installs them;
     /// nil versions (oct too old to probe) count as installed.
     private func requestAgentUpdateRun() {
-        let missing = (configDraft?.tools ?? []).filter { $0.enabled && $0.version == "" }
+        let missing = (configDraft?.tools ?? []).filter { $0.enabled && $0.supportsUpdate && $0.version == "" }
         guard !missing.isEmpty else {
             onRunAgentUpdate(false)
             return

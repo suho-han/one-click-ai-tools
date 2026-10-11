@@ -132,22 +132,6 @@ final class AgentUpdateBackgroundTests: XCTestCase {
 
     // MARK: - ConfigurationStore state machine
 
-    func testAgentUpdateArgumentsReflectInstallChoice() {
-        XCTAssertEqual(OctCLIService.agentUpdateArguments(installMissing: false), ["agent-update", "--json", "--skip-missing"])
-        XCTAssertEqual(OctCLIService.agentUpdateArguments(installMissing: true), ["agent-update", "--json", "--install-missing"])
-    }
-
-    func testAgentUpdateArgumentsIncludeOnlyFilter() {
-        XCTAssertEqual(
-            OctCLIService.agentUpdateArguments(installMissing: false, only: ["claude"]),
-            ["agent-update", "--json", "--skip-missing", "--only", "claude"]
-        )
-        XCTAssertEqual(
-            OctCLIService.agentUpdateArguments(installMissing: true, only: []),
-            ["agent-update", "--json", "--install-missing"]
-        )
-    }
-
     private func makeSnapshot() -> ConfigurationSnapshot {
         ConfigurationSnapshot(
             configFile: "/tmp/oct-config.json",
@@ -174,15 +158,28 @@ final class AgentUpdateBackgroundTests: XCTestCase {
         """
     }
 
-    func testRunAllUsesUnsavedProviderSelection() async throws {
-        let snapshot = makeSnapshot()
-        let argsFile = FileManager.default.temporaryDirectory
-            .appendingPathComponent("oct-args-\(UUID().uuidString)")
-        addTeardownBlock { try? FileManager.default.removeItem(at: argsFile) }
+    func testRunAllUpdatesEverySelectedInstallableProvider() async throws {
+        var snapshot = makeSnapshot()
+        let standalone = try JSONDecoder().decode(
+            ConfigTool.self,
+            from: Data(#"{"name":"zai","binary_name":"zai","enabled":true,"can_update":false}"#.utf8)
+        )
+        snapshot.tools.insert(standalone, at: 0)
+        // Match the CLI's repeatable --only contract: each occurrence selects
+        // exactly its next argument. A usage-only provider is never valid.
         let stub = try writeExecutableStub("""
-        printf '%s\\n' "$@" > '\(argsFile.path)'
-        echo '{"event":"run_start","total":1}'
-        echo '{"event":"tool_done","binary":"agy","status":"up_to_date"}'
+        while [ "$#" -gt 0 ]; do
+            if [ "$1" = "--only" ]; then
+                shift
+                case "$1" in
+                    codex|agy)
+                        printf '{"event":"tool_done","binary":"%s","status":"updated","version_after":"2.0.0"}\\n' "$1"
+                        ;;
+                    *) exit 23 ;;
+                esac
+            fi
+            shift
+        done
         echo '{"event":"run_done","failed":0}'
         """)
         let store = ConfigurationStore(
@@ -190,18 +187,17 @@ final class AgentUpdateBackgroundTests: XCTestCase {
             snapshot: snapshot
         )
         var draft = ConfigurationDraft(snapshot: snapshot)
-        draft.tools[0].enabled = false
         draft.tools[1].enabled = false
-        draft.tools[2].enabled = true
+        draft.tools[3].enabled = true
         store.draft = draft
 
         await store.runAgentUpdateNow(installMissing: false)
 
-        let args = try String(contentsOf: argsFile, encoding: .utf8)
-            .split(separator: "\n").map(String.init)
-        XCTAssertEqual(args, ["agent-update", "--json", "--skip-missing", "--only", "agy"])
+        XCTAssertEqual(store.toolUpdateStates["codex"], .updated)
+        XCTAssertEqual(store.toolUpdateStates["agy"], .updated)
+        XCTAssertNil(store.toolUpdateStates["zai"])
         XCTAssertNil(store.toolUpdateStates["claude"])
-        XCTAssertNil(store.toolUpdateStates["codex"])
+        XCTAssertEqual(store.feedback?.message, "Agent update finished: 2 updated, 0 already latest.")
     }
 
     /// The core contract: outcome chips (Updated! / Latest) persist after the
@@ -426,6 +422,26 @@ final class AgentUpdateBackgroundTests: XCTestCase {
         await store.runAgentUpdateNow(installMissing: false)
 
         XCTAssertFalse(store.isAgentUpdating)
+        XCTAssertTrue(store.toolUpdateStates.isEmpty)
+    }
+
+    func testRunRefusesWhenOnlyUsageProviderEnabled() async throws {
+        var snapshot = makeSnapshot()
+        snapshot.tools = [
+            ConfigTool(name: "zai", binaryName: "zai", enabled: true, version: nil, canUpdate: false)
+        ]
+        let missing = FileManager.default.temporaryDirectory
+            .appendingPathComponent("oct-missing-\(UUID().uuidString)")
+        let store = ConfigurationStore(
+            service: OctCLIService(executableURL: missing, processTimeout: 10, refreshDeadline: 15),
+            snapshot: snapshot
+        )
+        store.draft = ConfigurationDraft(snapshot: snapshot)
+
+        await store.runAgentUpdateNow(installMissing: false)
+
+        XCTAssertFalse(store.draft?.hasEnabledUpdateTool ?? true)
+        XCTAssertEqual(store.feedback?.message, "Select at least one updatable provider.")
         XCTAssertTrue(store.toolUpdateStates.isEmpty)
     }
 

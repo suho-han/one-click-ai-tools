@@ -20,6 +20,7 @@ type configToolStatus struct {
 	Name       string `json:"name"`
 	BinaryName string `json:"binary_name"`
 	Enabled    bool   `json:"enabled"`
+	CanUpdate  bool   `json:"can_update"`
 	// Installed version, filled only by snapshots that probed for it
 	// (`config list --json --probe-versions`); empty means not installed.
 	Version string `json:"version,omitempty"`
@@ -151,6 +152,7 @@ func buildConfigSnapshot(configFile string) configSnapshot {
 			Name:       tool.Name,
 			BinaryName: tool.BinaryName,
 			Enabled:    configToolEnabled(enabledTools, tool),
+			CanUpdate:  true,
 		})
 	}
 	appendStandalone = func(p usage.Provider) {

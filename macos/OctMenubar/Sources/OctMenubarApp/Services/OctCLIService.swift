@@ -153,9 +153,10 @@ struct OctCLIService {
     /// `only` restricts the run to the named providers (CLI `--only`).
     static func agentUpdateArguments(installMissing: Bool, only: [String]? = nil) -> [String] {
         var arguments = ["agent-update", "--json", installMissing ? "--install-missing" : "--skip-missing"]
-        if let only, !only.isEmpty {
-            arguments.append("--only")
-            arguments.append(contentsOf: only)
+        if let only {
+            for binary in only {
+                arguments.append(contentsOf: ["--only", binary])
+            }
         }
         return arguments
     }
@@ -540,8 +541,9 @@ struct OctCLIService {
     /// on a dead child when Foundation's launch handshake races a fast exit
     /// (observed in the field; reproduced in tests). A live child gets a
     /// grace window, then SIGKILL, then one more bounded reap. An ECHILD
-    /// result means Foundation already reaped the child, whose
-    /// terminationStatus is then the authoritative outcome. Returns nil when
+    /// result means Foundation already reaped the child; wait until Process
+    /// publishes its exit before reading terminationStatus (a fast exit can
+    /// otherwise still report "task still running"). Returns nil when
     /// the status cannot be determined within the budget. The wait status is
     /// decoded by hand (sys/wait.h's WIFEXITED & friends are function-like
     /// macros Swift cannot import): low 7 bits carry the signal, high 8 the
@@ -554,7 +556,7 @@ struct OctCLIService {
                 kill(pid, SIGKILL)
             }
             var status: Int32 = 0
-            var deadline = Date().addingTimeInterval(grace)
+            let deadline = Date().addingTimeInterval(grace)
             while Date() < deadline {
                 let result = waitpid(pid, &status, WNOHANG)
                 if result == pid {
@@ -567,7 +569,7 @@ struct OctCLIService {
                     }
                     return nil
                 }
-                if result == -1 && errno == ECHILD {
+                if result == -1 && errno == ECHILD && !process.isRunning {
                     return process.terminationStatus
                 }
                 try? await Task.sleep(nanoseconds: 10_000_000)

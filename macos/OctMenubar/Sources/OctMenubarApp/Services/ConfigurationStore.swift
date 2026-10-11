@@ -241,20 +241,21 @@ final class ConfigurationStore: ObservableObject {
         guard let pendingDraft = draft else { return }
         if let onlyBinary {
             guard !isAgentUpdating, !singleUpdateBinaries.contains(onlyBinary) else { return }
-            guard pendingDraft.tools.contains(where: { $0.binaryName == onlyBinary }) else { return }
+            guard pendingDraft.tools.contains(where: { $0.binaryName == onlyBinary && $0.supportsUpdate }) else { return }
             await runProviderUpdate(
-                seeding: pendingDraft.tools.filter { $0.binaryName == onlyBinary },
+                seeding: pendingDraft.tools.filter { $0.binaryName == onlyBinary && $0.supportsUpdate },
                 installMissing: installMissing,
                 isRunAll: false
             )
         } else {
             guard !isAgentUpdating, singleUpdateBinaries.isEmpty else { return }
-            guard !pendingDraft.tools.filter(\.enabled).isEmpty else {
-                feedback = .warning("Select at least one provider.")
+            let updateTools = pendingDraft.tools.filter { $0.enabled && $0.supportsUpdate }
+            guard !updateTools.isEmpty else {
+                feedback = .warning("Select at least one updatable provider.")
                 return
             }
             await runProviderUpdate(
-                seeding: pendingDraft.tools.filter(\.enabled),
+                seeding: updateTools,
                 installMissing: installMissing,
                 isRunAll: true
             )

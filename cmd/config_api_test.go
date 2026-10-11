@@ -382,6 +382,14 @@ func TestBuildConfigSnapshotIncludesStandaloneProviders(t *testing.T) {
 	if !zai.Enabled {
 		t.Errorf("zai.Enabled = false, want true (listed in enabled_tools)")
 	}
+	if zai.CanUpdate {
+		t.Fatal("usage-only zai must not be offered for agent-update")
+	}
+	for _, tool := range got.Tools {
+		if tool.BinaryName == "codex" && !tool.CanUpdate {
+			t.Fatal("installable codex must remain eligible for agent-update")
+		}
+	}
 	// Opt-in: an unconfigured standalone provider must not appear.
 	for _, tool := range got.Tools {
 		if tool.BinaryName == "grok" {
