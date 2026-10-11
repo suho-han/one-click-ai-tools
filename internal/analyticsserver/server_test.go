@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -49,6 +50,9 @@ func post(t *testing.T, handler http.Handler, body []byte) *httptest.ResponseRec
 
 func newService(t *testing.T) (*Service, string) {
 	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("analytics server requires POSIX private file permissions")
+	}
 	path := filepath.Join(t.TempDir(), "analytics.sqlite")
 	s, err := Open(path)
 	if err != nil {

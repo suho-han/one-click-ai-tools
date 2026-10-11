@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -40,6 +41,9 @@ func TestMacFamilyUsesProductNameNotModelIdentifier(t *testing.T) {
 }
 
 func TestDeviceFamilyCacheStoresOnlySanitizedFamily(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("macOS cache tests require POSIX file modes")
+	}
 	home := t.TempDir()
 	dir := filepath.Join(home, ".oct", "telemetry")
 	if err := os.MkdirAll(dir, 0700); err != nil {
@@ -67,6 +71,9 @@ func TestDeviceFamilyCacheStoresOnlySanitizedFamily(t *testing.T) {
 }
 
 func TestDeviceFamilyRejectsUnsafeCacheAndNeverProbesOtherSystems(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("macOS cache tests require POSIX file modes")
+	}
 	home := t.TempDir()
 	dir := filepath.Join(home, ".oct", "telemetry")
 	if err := os.MkdirAll(dir, 0700); err != nil {
@@ -91,11 +98,6 @@ func TestDeviceFamilyRejectsUnsafeCacheAndNeverProbesOtherSystems(t *testing.T) 
 	if info, err := os.Lstat(path); err != nil || info.Mode()&os.ModeSymlink == 0 {
 		t.Fatalf("replaced unsafe cache: %v (%v)", info, err)
 	}
-	for goos, want := range map[string]string{"linux": "Linux PC", "windows": "Windows PC", "plan9": "Other"} {
-		if got := deviceFamily(goos, home, probe); got != want {
-			t.Errorf("%s family = %q, want %q", goos, got, want)
-		}
-	}
 	if calls != 1 {
 		t.Errorf("unexpected probe count: %d", calls)
 	}
@@ -111,6 +113,9 @@ func TestDeviceFamilyRejectsUnsafeCacheAndNeverProbesOtherSystems(t *testing.T) 
 }
 
 func TestUnknownMacDeviceCacheAvoidsRepeatProbe(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("macOS cache tests require POSIX file modes")
+	}
 	home := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(home, ".oct", "telemetry"), 0700); err != nil {
 		t.Fatal(err)
@@ -138,5 +143,22 @@ func TestUnknownMacDeviceCacheAvoidsRepeatProbe(t *testing.T) {
 	}
 	if failures != 2 {
 		t.Errorf("failed probe was cached: %d invocations", failures)
+	}
+}
+
+func TestDeviceFamilyNonMacNeverProbesHardware(t *testing.T) {
+	calls := 0
+	probe := func(context.Context) (string, error) {
+		calls++
+		return "private machine name", nil
+	}
+	home := t.TempDir()
+	for goos, want := range map[string]string{"linux": "Linux PC", "windows": "Windows PC", "plan9": "Other"} {
+		if got := deviceFamily(goos, home, probe); got != want {
+			t.Errorf("%s family = %q, want %q", goos, got, want)
+		}
+	}
+	if calls != 0 {
+		t.Fatalf("non-Mac device probing leaked %d calls", calls)
 	}
 }

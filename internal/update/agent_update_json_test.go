@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -72,12 +73,15 @@ func stubManagersOnPath(t *testing.T, versionBefore, versionAfter string) {
 	case versionAfter != "":
 		listBody = "if [ -f '" + stateFile + "' ]; then\necho 'mmx-cli@" + versionAfter + "'\nfi"
 	}
+	if runtime.GOOS == "windows" {
+		t.Setenv("OCT_UPDATE_TEST_PROCESS", "1")
+		t.Setenv("OCT_UPDATE_TEST_NPM_BEFORE", versionBefore)
+		t.Setenv("OCT_UPDATE_TEST_NPM_AFTER", versionAfter)
+		t.Setenv("OCT_UPDATE_TEST_NPM_STATE", stateFile)
+	}
 	writeStub := func(name, body string) {
 		t.Helper()
-		path := filepath.Join(binDir, executableName(name))
-		if err := os.WriteFile(path, []byte("#!/bin/sh\n"+body), 0o755); err != nil {
-			t.Fatalf("write stub %s: %v", name, err)
-		}
+		writeStubExecutable(t, filepath.Join(binDir, executableName(name)), body)
 	}
 	writeStub("npm", "case \"$1\" in\nlist)\n"+listBody+"\n;;\ninstall)\ntouch '"+stateFile+"'\n;;\nesac\nexit 0\n")
 	for _, manager := range []string{"brew", "pnpm", "yarn"} {
@@ -338,12 +342,14 @@ func TestRunJSONFailedToolCarriesInstallerOutputTail(t *testing.T) {
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("mkdir stub bin: %v", err)
 	}
+	if runtime.GOOS == "windows" {
+		t.Setenv("OCT_UPDATE_TEST_PROCESS", "1")
+		t.Setenv("OCT_UPDATE_TEST_NPM_BEFORE", "1.0.0")
+		t.Setenv("OCT_UPDATE_TEST_INSTALL_ERROR", "npm error EACCES permission denied, access /usr/local/lib/node_modules")
+	}
 	writeStub := func(name, body string) {
 		t.Helper()
-		path := filepath.Join(binDir, executableName(name))
-		if err := os.WriteFile(path, []byte("#!/bin/sh\n"+body), 0o755); err != nil {
-			t.Fatalf("write stub %s: %v", name, err)
-		}
+		writeStubExecutable(t, filepath.Join(binDir, executableName(name)), body)
 	}
 	writeStub("npm", "case \"$1\" in\n"+
 		"list)\necho 'mmx-cli@1.0.0'\n;;\n"+

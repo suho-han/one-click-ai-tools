@@ -169,11 +169,13 @@ func TestCapturePairAllowlistAndInstallationRetention(t *testing.T) {
 	if err != nil || strings.TrimSpace(string(data)) != installation {
 		t.Errorf("persisted ID = %q, err %v; want %q", data, err, installation)
 	}
-	if info, err := os.Stat(filepath.Join(home, ".oct", "telemetry")); err != nil || info.Mode().Perm() != 0700 {
-		t.Errorf("directory mode: %v %v", info, err)
-	}
-	if info, err := os.Stat(filepath.Join(home, ".oct", "telemetry", "installation-id")); err != nil || info.Mode().Perm() != 0600 {
-		t.Errorf("file mode: %v %v", info, err)
+	if runtime.GOOS != "windows" {
+		if info, err := os.Stat(filepath.Join(home, ".oct", "telemetry")); err != nil || info.Mode().Perm() != 0700 {
+			t.Errorf("directory mode: %v %v", info, err)
+		}
+		if info, err := os.Stat(filepath.Join(home, ".oct", "telemetry", "installation-id")); err != nil || info.Mode().Perm() != 0600 {
+			t.Errorf("file mode: %v %v", info, err)
+		}
 	}
 }
 

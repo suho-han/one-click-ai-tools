@@ -3,8 +3,8 @@ package update
 import (
 	"bytes"
 	"context"
-	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -94,6 +94,10 @@ func TestInstallerManagersRunOfficialScripts(t *testing.T) {
 }
 
 func TestInstallerManagersReadVersionFromBinary(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Setenv("OCT_UPDATE_TEST_PROCESS", "1")
+		t.Setenv("OCT_UPDATE_TEST_VERSION", "fake-tool 9.9.9")
+	}
 	binDir := t.TempDir()
 	fakes := map[Manager]string{
 		ClaudeInstaller:   "claude",
@@ -105,10 +109,7 @@ func TestInstallerManagersReadVersionFromBinary(t *testing.T) {
 	}
 	for _, binary := range fakes {
 		path := filepath.Join(binDir, executableName(binary))
-		script := "#!/bin/sh\necho \"fake-tool 9.9.9\"\n"
-		if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
-			t.Fatalf("WriteFile(%s) error = %v", binary, err)
-		}
+		writeStubExecutable(t, path, "echo \"fake-tool 9.9.9\"\n")
 	}
 
 	t.Setenv("PATH", binDir)

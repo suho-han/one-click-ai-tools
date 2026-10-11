@@ -24,12 +24,21 @@ func stubCheckManagersOnPath(t *testing.T, outdatedShell, viewVersion string) {
 	if outdatedLines == "" {
 		outdatedLines = "exit 1"
 	}
+	if runtime.GOOS == "windows" {
+		t.Setenv("OCT_UPDATE_TEST_PROCESS", "1")
+		t.Setenv("OCT_UPDATE_TEST_NPM_BEFORE", "1.0.0")
+		t.Setenv("OCT_UPDATE_TEST_VIEW", viewVersion)
+		mode := "fail"
+		if strings.Contains(outdatedShell, "mmx-cli") {
+			mode = "json1"
+		} else if strings.Contains(outdatedShell, "echo '{}'") {
+			mode = "json0"
+		}
+		t.Setenv("OCT_UPDATE_TEST_OUTDATED", mode)
+	}
 	writeStub := func(name, body string) {
 		t.Helper()
-		path := filepath.Join(binDir, executableName(name))
-		if err := os.WriteFile(path, []byte("#!/bin/sh\n"+body), 0o755); err != nil {
-			t.Fatalf("write stub %s: %v", name, err)
-		}
+		writeStubExecutable(t, filepath.Join(binDir, executableName(name)), body)
 	}
 	writeStub("npm", "case \"$1\" in\n"+
 		"list)\necho 'mmx-cli@1.0.0'\n;;\n"+
@@ -51,11 +60,12 @@ func stubAgysOnPath(t *testing.T, version string) {
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("mkdir agy stub bin: %v", err)
 	}
-	path := filepath.Join(binDir, executableName("agy"))
-	body := "#!/bin/sh\nif [ \"$1\" = update ]; then echo 'agy updated'; else echo '" + version + "'; fi\nexit 0\n"
-	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
-		t.Fatalf("write agy stub: %v", err)
+	if runtime.GOOS == "windows" {
+		t.Setenv("OCT_UPDATE_TEST_PROCESS", "1")
+		t.Setenv("OCT_UPDATE_TEST_VERSION", version)
 	}
+	path := filepath.Join(binDir, executableName("agy"))
+	writeStubExecutable(t, path, "if [ \"$1\" = update ]; then echo 'agy updated'; else echo '"+version+"'; fi\nexit 0\n")
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
@@ -146,10 +156,12 @@ func TestRunVersionCheckJSONUnknownLatestForNativeManager(t *testing.T) {
 	if err := os.MkdirAll(stubDir, 0o755); err != nil {
 		t.Fatalf("mkdir stub dir: %v", err)
 	}
-	claudeStub := filepath.Join(stubDir, executableName("claude"))
-	if err := os.WriteFile(claudeStub, []byte("#!/bin/sh\necho '1.2.3'\n"), 0o755); err != nil {
-		t.Fatalf("write claude stub: %v", err)
+	if runtime.GOOS == "windows" {
+		t.Setenv("OCT_UPDATE_TEST_PROCESS", "1")
+		t.Setenv("OCT_UPDATE_TEST_VERSION", "1.2.3")
 	}
+	claudeStub := filepath.Join(stubDir, executableName("claude"))
+	writeStubExecutable(t, claudeStub, "echo '1.2.3'\n")
 	t.Setenv("PATH", stubDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	// ...while the detection layer resolves the same name to a native
 	// install layout, classifying the tool as claude-native.
@@ -157,9 +169,7 @@ func TestRunVersionCheckJSONUnknownLatestForNativeManager(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(nativePath), 0o755); err != nil {
 		t.Fatalf("mkdir native dir: %v", err)
 	}
-	if err := os.WriteFile(nativePath, []byte("#!/bin/sh\n"), 0o755); err != nil {
-		t.Fatalf("write native binary: %v", err)
-	}
+	writeStubExecutable(t, nativePath, "")
 	origLookup := binaryLookup
 	binaryLookup = func(name string) (string, error) {
 		if name == "claude" {

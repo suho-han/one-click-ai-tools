@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"regexp"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -70,6 +71,11 @@ type Service struct {
 func Open(path string) (*Service, error) {
 	if path == "" {
 		return nil, errors.New("database path is required")
+	}
+	// The mode bits below enforce a private database only on POSIX systems.
+	// Windows reports writable files as 0666 regardless of their ACL.
+	if runtime.GOOS == "windows" {
+		return nil, errors.New("analytics server requires POSIX private file permissions")
 	}
 	if info, err := os.Lstat(path); err == nil {
 		if !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 {

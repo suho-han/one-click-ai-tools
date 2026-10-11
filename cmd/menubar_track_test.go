@@ -90,10 +90,7 @@ func TestMenubarHelperCandidatesBetaTrackUseOwnHelperName(t *testing.T) {
 	stubMenubarTrack(t, "0.1.6-beta.1")
 
 	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("PATH", "")
-
-	candidates := menubarHelperCandidates(nil, filepath.Join(home, ".local", "bin", "oct-beta"), "")
+	candidates := menubarHelperCandidates(map[string]string{"HOME": home}, filepath.Join(home, ".local", "bin", "oct-beta"), "")
 	if !candidateListContains(candidates, filepath.Join(home, ".local", "bin", betaHelperName)) {
 		t.Fatalf("beta candidates missing the beta helper install location:\n%s", strings.Join(candidates, "\n"))
 	}
@@ -119,11 +116,8 @@ func TestMenubarHelperCandidatesStableTrackKeepSourceTreePaths(t *testing.T) {
 	stubMenubarTrack(t, "0.1.6")
 
 	home := t.TempDir()
-	t.Setenv("HOME", home)
-	t.Setenv("PATH", "")
 	workDir := filepath.Join(home, "repo", "sub")
-
-	candidates := menubarHelperCandidates(nil, filepath.Join(home, "repo", "oct"), workDir)
+	candidates := menubarHelperCandidates(map[string]string{"HOME": home}, filepath.Join(home, "repo", "oct"), workDir)
 	if !candidateListContains(candidates, filepath.Join(home, "repo", "macos", "OctMenubar", ".build", "debug", stableHelperName)) {
 		t.Fatalf("stable candidates missing the source-tree build path:\n%s", strings.Join(candidates, "\n"))
 	}

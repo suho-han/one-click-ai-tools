@@ -18,6 +18,8 @@ All notable changes to this project will be documented in this file. See [standa
 ### Bug Fixes
 
 * **ci:** keep Darwin-only menubar process tests out of Linux and Windows test builds.
+* **analytics:** reject running the private database server on Windows, where POSIX file-mode privacy cannot be enforced.
+* **ci:** exercise update subprocesses with native Windows executables and limit POSIX permission assertions to supported platforms.
 
 ### [0.1.6](https://github.com/suho-han/one-click-ai-tools/compare/v0.1.5...v0.1.6) (2026-09-30)
 
