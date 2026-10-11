@@ -15,6 +15,10 @@ All notable changes to this project will be documented in this file. See [standa
 
 * **menubar:** remove the server vendor name from the feedback privacy notice.
 
+### Bug Fixes
+
+* **ci:** keep Darwin-only menubar process tests out of Linux and Windows test builds.
+
 ### [0.1.6](https://github.com/suho-han/one-click-ai-tools/compare/v0.1.5...v0.1.6) (2026-09-30)
 
 
