@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -252,6 +253,53 @@ func buildAgentUpdateScheduleSnapshot() configScheduleSnapshot {
 		hour = 9
 	}
 	return configScheduleSnapshot{Enabled: state.Enabled, Interval: state.Interval, Hour: hour}
+}
+
+// applyConfigUpdateAndSave restores the platform schedule when config
+// persistence fails. The scheduler is a separate store, so a failed save
+// must not leave an apparently rejected automatic update enabled.
+func applyConfigUpdateAndSave(payload configUpdatePayload) error {
+	var scheduler schedule.Scheduler
+	var previous schedule.CurrentSchedule
+	if desired := payload.AgentUpdateSchedule; desired != nil {
+		var err error
+		scheduler, err = configScheduleScheduler()
+		if err != nil {
+			return fmt.Errorf("scheduler unavailable: %w", err)
+		}
+		previous, err = scheduler.Describe(schedule.AgentUpdateTask)
+		if err != nil {
+			return fmt.Errorf("failed to read the current agent-update schedule: %w", err)
+		}
+		if previous.Enabled && previous.Interval == "" &&
+			(desired.Enabled == nil || !*desired.Enabled || strings.TrimSpace(desired.Interval) != "") {
+			return fmt.Errorf("cannot change an agent-update schedule with an unknown interval through config update")
+		}
+	}
+	if err := applyConfigUpdate(payload); err != nil {
+		return err
+	}
+	if err := writeConfig(); err != nil {
+		saveErr := fmt.Errorf("failed to write config: %w", err)
+		if scheduler == nil {
+			return saveErr
+		}
+		after, inspectErr := scheduler.Describe(schedule.AgentUpdateTask)
+		if inspectErr == nil && after == previous {
+			return saveErr
+		}
+		var restoreErr error
+		if previous.Enabled {
+			restoreErr = scheduler.Enable(schedule.AgentUpdateTask, previous.Interval, previous.Hour)
+		} else {
+			restoreErr = scheduler.Disable(schedule.AgentUpdateTask)
+		}
+		if restoreErr != nil {
+			return errors.Join(saveErr, fmt.Errorf("failed to restore previous agent-update schedule: %w", restoreErr))
+		}
+		return saveErr
+	}
+	return nil
 }
 
 func applyConfigUpdate(payload configUpdatePayload) error {

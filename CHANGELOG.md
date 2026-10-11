@@ -24,6 +24,8 @@ All notable changes to this project will be documented in this file. See [standa
 * **schedule:** keep a failed crontab read from silently disabling a scheduled task.
 * **menubar:** run updates for the unsaved provider selection and detect newer prerelease versions.
 * **update:** reject human-only explain and dry-run flags in JSON mode.
+* **config:** restore the previous automatic-update schedule if saving settings fails.
+* **update:** keep prerelease installations on the prerelease channel and compare beta versions correctly.
 
 ### [0.1.6](https://github.com/suho-han/one-click-ai-tools/compare/v0.1.5...v0.1.6) (2026-09-30)
 

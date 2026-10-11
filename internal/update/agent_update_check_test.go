@@ -333,7 +333,7 @@ func TestVersionIsNewer(t *testing.T) {
 		{"not-a-version", "2.0.0", false},
 	}
 	for _, tc := range cases {
-		if got := versionIsNewer(tc.installed, tc.latest); got != tc.want {
+		if got := VersionIsNewer(tc.installed, tc.latest); got != tc.want {
 			t.Fatalf("versionIsNewer(%q, %q) = %v, want %v", tc.installed, tc.latest, got, tc.want)
 		}
 	}

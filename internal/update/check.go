@@ -70,7 +70,7 @@ func RunVersionCheck(ctx context.Context, opts ...Options) error {
 	}
 	for i, plan := range plans {
 		latestVersion, latestKnown := latest[plan.Tool.BinaryName]
-		outdated := versionIsNewer(plan.VersionBefore, latestVersion)
+		outdated := VersionIsNewer(plan.VersionBefore, latestVersion)
 		emit.toolCheck(plan, latestVersion, latestKnown, outdated)
 		if !config.JSON {
 			fmt.Fprintf(out, "[%d/%d] %s\n", i+1, len(plans), formatCheckLine(plan, latestVersion, latestKnown, outdated))
@@ -207,9 +207,9 @@ func registryLatestVersion(ctx context.Context, manager Manager, pkg string) str
 	return firstNonEmptyLine(string(out))
 }
 
-// versionIsNewer compares numeric components, then SemVer prerelease
+// VersionIsNewer compares numeric components, then SemVer prerelease
 // identifiers. Unknown version formats conservatively hide the update button.
-func versionIsNewer(installed, latest string) bool {
+func VersionIsNewer(installed, latest string) bool {
 	a, aCount, aPre, aOK := parseComparableVersion(installed)
 	b, bCount, bPre, bOK := parseComparableVersion(latest)
 	if !aOK || !bOK {

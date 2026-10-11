@@ -3,6 +3,8 @@ package cmd
 import (
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -149,6 +151,57 @@ func TestApplyAgentUpdateScheduleUpdate(t *testing.T) {
 				t.Fatalf("disable calls = %d, want %d", fake.disabled, tc.wantDisable)
 			}
 		})
+	}
+}
+
+func TestConfigUpdateRestoresScheduleWhenConfigWriteFails(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		previous schedule.CurrentSchedule
+		desired  configScheduleUpdatePayload
+	}{
+		{"enable", schedule.CurrentSchedule{}, configScheduleUpdatePayload{Enabled: boolPtr(true), Interval: "daily", Hour: intPtr(8)}},
+		{"disable", schedule.CurrentSchedule{Enabled: true, Interval: "daily", Hour: 8}, configScheduleUpdatePayload{Enabled: boolPtr(false)}},
+		{"rewrite", schedule.CurrentSchedule{Enabled: true, Interval: "weekly", Hour: 7}, configScheduleUpdatePayload{Enabled: boolPtr(true), Interval: "daily", Hour: intPtr(8)}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			viper.Reset()
+			t.Cleanup(viper.Reset)
+			blocker := filepath.Join(t.TempDir(), "not-a-directory")
+			if err := os.WriteFile(blocker, []byte("block"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			viper.SetConfigFile(filepath.Join(blocker, "config.yaml"))
+			fake := &fakeConfigScheduler{current: tc.previous}
+			withFakeConfigScheduler(t, fake)
+
+			err := applyConfigUpdateAndSave(configUpdatePayload{AgentUpdateSchedule: &tc.desired})
+			if err == nil || !strings.Contains(err.Error(), "failed to write config") {
+				t.Fatalf("save error = %v, want failed config persistence", err)
+			}
+			if fake.current != tc.previous {
+				t.Fatalf("schedule after rejected save = %+v, want restored %+v", fake.current, tc.previous)
+			}
+			if len(fake.enabled)+fake.disabled != 2 {
+				t.Fatalf("scheduler calls = %d, want change and rollback", len(fake.enabled)+fake.disabled)
+			}
+		})
+	}
+}
+
+func TestConfigUpdateRejectsIrreversibleUnknownSchedule(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	fake := &fakeConfigScheduler{current: schedule.CurrentSchedule{Enabled: true}}
+	withFakeConfigScheduler(t, fake)
+	err := applyConfigUpdateAndSave(configUpdatePayload{
+		AgentUpdateSchedule: &configScheduleUpdatePayload{Enabled: boolPtr(false)},
+	})
+	if err == nil || !strings.Contains(err.Error(), "unknown interval") {
+		t.Fatalf("update error = %v, want unknown schedule rejection", err)
+	}
+	if fake.disabled != 0 || !fake.current.Enabled {
+		t.Fatalf("unknown schedule changed despite rejection: %+v", fake)
 	}
 }
 

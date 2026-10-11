@@ -1,9 +1,11 @@
 package cmd
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"github.com/spf13/cobra"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -21,13 +23,76 @@ func TestCompareReleaseVersions(t *testing.T) {
 		{a: "v0.1.1", b: "v0.1.2", want: -1},
 		{a: "0.2.0", b: "v0.1.9", want: 1},
 		{a: "v1.0.0", b: "1.0.0", want: 0},
-		{a: "v1.2.3-beta.1", b: "v1.2.3", want: 0},
+		{a: "v1.2.3-beta.1", b: "v1.2.3", want: -1},
+		{a: "v1.2.3-beta.1", b: "v1.2.3-beta.2", want: -1},
+		{a: "v1.2.3-beta.9", b: "v1.2.3-beta.10", want: -1},
+		{a: "v1.2.3", b: "v1.2.3-beta.2", want: 1},
 	}
 	for _, tt := range tests {
 		got := compareReleaseVersions(tt.a, tt.b)
 		if got != tt.want {
 			t.Fatalf("compareReleaseVersions(%q, %q) = %d, want %d", tt.a, tt.b, got, tt.want)
 		}
+	}
+}
+
+func TestSelfUpdateBetaTrack(t *testing.T) {
+	for _, tc := range []struct {
+		version, executable string
+		want                bool
+	}{
+		{"v0.1.6-beta.1", "/tmp/oct", true},
+		{"v0.1.6", "/tmp/oct-beta", true},
+		{"v0.1.6", filepath.Join("test", "oct-beta.exe"), true},
+		{"v0.1.6", "/tmp/oct", false},
+	} {
+		if got := selfUpdateBetaTrack(tc.version, tc.executable); got != tc.want {
+			t.Fatalf("selfUpdateBetaTrack(%q, %q) = %v, want %v", tc.version, tc.executable, got, tc.want)
+		}
+	}
+}
+
+func TestSelfUpdateCheckSelectsReleaseChannel(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/repos/suho-han/one-click-ai-tools/releases/latest":
+			fmt.Fprint(w, `{"tag_name":"v0.1.6"}`)
+		case "/repos/suho-han/one-click-ai-tools/releases":
+			fmt.Fprint(w, `[
+				{"tag_name":"v0.1.6","prerelease":false},
+				{"tag_name":"v0.1.7-beta.1","prerelease":true,"draft":true},
+				{"tag_name":"v0.1.6-beta.2","prerelease":true},
+				{"tag_name":"v0.1.6-beta.10","prerelease":true}
+			]`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	oldAPI, oldVersion := selfUpdateAPIBaseURL, rootCmd.Version
+	selfUpdateAPIBaseURL = srv.URL
+	t.Cleanup(func() {
+		selfUpdateAPIBaseURL, rootCmd.Version = oldAPI, oldVersion
+	})
+	for _, tc := range []struct {
+		version, want string
+	}{
+		{"0.1.6-beta.1", "v0.1.6-beta.1 -> v0.1.6-beta.10"},
+		{"0.1.5", "v0.1.5 -> v0.1.6"},
+	} {
+		t.Run(tc.version, func(t *testing.T) {
+			rootCmd.Version = tc.version
+			var output bytes.Buffer
+			cmd := &cobra.Command{}
+			cmd.SetContext(t.Context())
+			cmd.SetOut(&output)
+			if err := runSelfUpdate(cmd, selfUpdateOptions{check: true}); err != nil {
+				t.Fatalf("update check: %v", err)
+			}
+			if !strings.Contains(output.String(), tc.want) {
+				t.Fatalf("update check output = %q, want %q", output.String(), tc.want)
+			}
+		})
 	}
 }
 

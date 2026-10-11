@@ -19,11 +19,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/suho-han/one-click-ai-tools/internal/update"
 )
 
 const selfUpdateRepo = "suho-han/one-click-ai-tools"
@@ -34,7 +34,9 @@ type selfUpdateOptions struct {
 }
 
 type githubLatestRelease struct {
-	TagName string `json:"tag_name"`
+	TagName    string `json:"tag_name"`
+	Prerelease bool   `json:"prerelease"`
+	Draft      bool   `json:"draft"`
 }
 
 type releaseAsset struct {
@@ -44,10 +46,11 @@ type releaseAsset struct {
 
 // selfUpdateHTTPClient is the client for GitHub release downloads. Timeout is
 // zero because archive bodies are large; per-call deadlines are applied in
-// fetchLatestReleaseTag / installReleaseAsset / verifyReleaseAssetChecksum
+// release lookups / installReleaseAsset / verifyReleaseAssetChecksum
 // and connection phases are bounded by the transport below.
 var (
 	selfUpdateCommandContext = exec.CommandContext
+	selfUpdateAPIBaseURL     = "https://api.github.com"
 	checksumBaseURL          = "https://github.com"
 	selfUpdateHTTPClient     = &http.Client{
 		Transport: &http.Transport{
@@ -75,7 +78,12 @@ var updateCmd = &cobra.Command{
 }
 
 func runSelfUpdate(cmd *cobra.Command, opts selfUpdateOptions) error {
-	if runtime.GOOS == "darwin" && installedViaBrew() {
+	executable, err := os.Executable()
+	if err != nil {
+		return err
+	}
+	betaTrack := selfUpdateBetaTrack(rootCmd.Version, executable)
+	if runtime.GOOS == "darwin" && !betaTrack && installedViaBrew() {
 		if opts.check {
 			fmt.Fprintln(cmd.OutOrStdout(), "oct is managed by Homebrew. Use: brew upgrade one-click-tools")
 			return nil
@@ -90,7 +98,12 @@ func runSelfUpdate(cmd *cobra.Command, opts selfUpdateOptions) error {
 	}
 
 	current := normalizeReleaseTag(rootCmd.Version)
-	latest, err := fetchLatestReleaseTag(cmd.Context(), selfUpdateRepo)
+	var latest string
+	if betaTrack {
+		latest, err = fetchLatestPrereleaseTag(cmd.Context(), selfUpdateRepo, current)
+	} else {
+		latest, err = fetchLatestReleaseTag(cmd.Context(), selfUpdateRepo)
+	}
 	if err != nil {
 		return err
 	}
@@ -103,7 +116,7 @@ func runSelfUpdate(cmd *cobra.Command, opts selfUpdateOptions) error {
 
 	fmt.Fprintf(cmd.OutOrStdout(), "oct update available: %s -> %s\n", current, latest)
 	if opts.check {
-		fmt.Fprintln(cmd.OutOrStdout(), "Run `oct update --yes` to install it non-interactively.")
+		fmt.Fprintf(cmd.OutOrStdout(), "Run `%s update --yes` to install it non-interactively.\n", selfUpdateCommandName(executable))
 		return nil
 	}
 
@@ -156,10 +169,21 @@ func brewCellarDirs() []string {
 	}
 }
 
+func selfUpdateCommandName(executable string) string {
+	if strings.TrimSuffix(strings.ToLower(filepath.Base(executable)), ".exe") == "oct-beta" {
+		return "oct-beta"
+	}
+	return "oct"
+}
+
+func selfUpdateBetaTrack(version, executable string) bool {
+	return selfUpdateCommandName(executable) == "oct-beta" || strings.Contains(strings.TrimPrefix(version, "v"), "-")
+}
+
 func fetchLatestReleaseTag(ctx context.Context, repo string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", repo)
+	url := fmt.Sprintf("%s/repos/%s/releases/latest", selfUpdateAPIBaseURL, repo)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return "", err
@@ -184,6 +208,41 @@ func fetchLatestReleaseTag(ctx context.Context, repo string) (string, error) {
 		return "", errors.New("GitHub latest release response did not include tag_name")
 	}
 	return normalizeReleaseTag(release.TagName), nil
+}
+
+func fetchLatestPrereleaseTag(ctx context.Context, repo, current string) (string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+	url := fmt.Sprintf("%s/repos/%s/releases?per_page=100", selfUpdateAPIBaseURL, repo)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", err
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "one-click-ai-tools")
+	resp, err := selfUpdateHTTPClient.Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("GitHub prerelease lookup failed: HTTP %d", resp.StatusCode)
+	}
+	var releases []githubLatestRelease
+	if err := json.NewDecoder(resp.Body).Decode(&releases); err != nil {
+		return "", err
+	}
+	latest := current
+	for _, release := range releases {
+		tag := normalizeReleaseTag(release.TagName)
+		if release.Draft || !release.Prerelease || !strings.Contains(tag, "-") {
+			continue
+		}
+		if update.VersionIsNewer(latest, tag) {
+			latest = tag
+		}
+	}
+	return latest, nil
 }
 
 func confirmSelfUpdate(cmd *cobra.Command, current, latest string) (bool, error) {
@@ -630,32 +689,13 @@ func normalizeReleaseTag(version string) string {
 }
 
 func compareReleaseVersions(a, b string) int {
-	av := parseReleaseVersion(a)
-	bv := parseReleaseVersion(b)
-	for i := 0; i < len(av) && i < len(bv); i++ {
-		if av[i] > bv[i] {
-			return 1
-		}
-		if av[i] < bv[i] {
-			return -1
-		}
+	if update.VersionIsNewer(a, b) {
+		return -1
+	}
+	if update.VersionIsNewer(b, a) {
+		return 1
 	}
 	return 0
-}
-
-func parseReleaseVersion(version string) [3]int {
-	version = strings.TrimPrefix(strings.TrimSpace(version), "v")
-	version = strings.SplitN(version, "-", 2)[0]
-	version = strings.SplitN(version, "+", 2)[0]
-	parts := strings.Split(version, ".")
-	var parsed [3]int
-	for i := 0; i < len(parts) && i < 3; i++ {
-		value, err := strconv.Atoi(parts[i])
-		if err == nil {
-			parsed[i] = value
-		}
-	}
-	return parsed
 }
 
 func init() {
