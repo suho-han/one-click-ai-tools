@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/suho-han/one-click-ai-tools/internal/config"
+	"github.com/suho-han/one-click-ai-tools/internal/telemetry"
 )
 
 var cfgFile string
@@ -34,7 +36,26 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 	rootCmd.SetOut(stdout)
 	rootCmd.SetErr(stderr)
 	rootCmd.SetArgs(args)
-	if err := rootCmd.Execute(); err != nil {
+	if telemetry.Endpoint == "" {
+		if err := rootCmd.Execute(); err != nil {
+			fmt.Fprintf(stderr, "oct: %v\n", err)
+			return 1
+		}
+		return 0
+	}
+	previous := rootCmd.Context()
+	if previous == nil {
+		previous = context.Background()
+	}
+	invocation := &telemetryInvocation{}
+	rootCmd.SetContext(context.WithValue(previous, telemetryContextKey{}, invocation))
+	defer rootCmd.SetContext(previous)
+
+	_, err := rootCmd.ExecuteC()
+	if invocation.session != nil {
+		invocation.session.Finish(err == nil, telemetryAllowedAfterCommand(invocation))
+	}
+	if err != nil {
 		fmt.Fprintf(stderr, "oct: %v\n", err)
 		return 1
 	}
@@ -46,6 +67,10 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 func Execute() {
 	reorderRootCommands()
 	os.Exit(runCLI(os.Args[1:], os.Stdout, os.Stderr))
+}
+
+func init() {
+	rootCmd.PersistentPreRun = beginCommandTelemetry
 }
 
 func init() {
@@ -209,6 +234,7 @@ func initConfig() {
 
 	viper.SetDefault("icon_style", "braille")
 	viper.SetDefault("usage_alert_enabled", false)
+	viper.SetDefault("telemetry_enabled", true)
 	viper.SetDefault("usage_alert_threshold_percent", 80.0)
 	viper.SetDefault("usage_alert_cooldown_minutes", 360)
 	viper.SetDefault("usage_alert_quiet_until", "")

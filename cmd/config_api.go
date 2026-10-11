@@ -41,6 +41,7 @@ type configSnapshot struct {
 	SessionRefreshEnabled  bool                   `json:"session_refresh_enabled"`
 	SessionRefreshInterval string                 `json:"session_refresh_interval"`
 	SessionRefreshHour     int                    `json:"session_refresh_hour"`
+	TelemetryEnabled       bool                   `json:"telemetry_enabled"`
 	AgentUpdateSchedule    configScheduleSnapshot `json:"agent_update_schedule"`
 	AgentOrder             []string               `json:"agent_order"`
 	Tools                  []configToolStatus     `json:"tools"`
@@ -76,6 +77,7 @@ type configUpdatePayload struct {
 	SessionRefreshEnabled  *bool                        `json:"session_refresh_enabled"`
 	SessionRefreshInterval string                       `json:"session_refresh_interval"`
 	SessionRefreshHour     *int                         `json:"session_refresh_hour"`
+	TelemetryEnabled       *bool                        `json:"telemetry_enabled"`
 	AgentUpdateSchedule    *configScheduleUpdatePayload `json:"agent_update_schedule"`
 	AgentOrder             []string                     `json:"agent_order"`
 	Alert                  *configAlertUpdatePayload    `json:"alert"`
@@ -215,6 +217,7 @@ func buildConfigSnapshot(configFile string) configSnapshot {
 		SessionRefreshEnabled:  viper.GetBool("session_refresh_enabled"),
 		SessionRefreshInterval: normalizedConfigRefreshInterval(viper.GetString("session_refresh_interval")),
 		SessionRefreshHour:     normalizedConfigRefreshHour(viper.GetInt("session_refresh_hour")),
+		TelemetryEnabled:       viper.GetBool("telemetry_enabled"),
 		AgentUpdateSchedule:    buildAgentUpdateScheduleSnapshot(),
 		AgentOrder:             agentOrder,
 		Tools:                  tools,
@@ -288,6 +291,9 @@ func applyConfigUpdate(payload configUpdatePayload) error {
 	}
 	if payload.SessionRefreshEnabled != nil {
 		viper.Set("session_refresh_enabled", *payload.SessionRefreshEnabled)
+	}
+	if payload.TelemetryEnabled != nil {
+		viper.Set("telemetry_enabled", *payload.TelemetryEnabled)
 	}
 	if shouldSetInterval {
 		viper.Set("session_refresh_interval", interval)

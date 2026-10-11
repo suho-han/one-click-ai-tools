@@ -979,6 +979,23 @@ var configSetMenubarTitleModeCmd = &cobra.Command{
 	},
 }
 
+var configSetTelemetryEnabledCmd = &cobra.Command{
+	Use:   "telemetry-enabled <true|false>",
+	Short: "Enable or disable usage analytics",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if args[0] != "true" && args[0] != "false" {
+			return fmt.Errorf("invalid telemetry-enabled value: use true or false")
+		}
+		viper.Set("telemetry_enabled", args[0] == "true")
+		if err := writeConfig(); err != nil {
+			return fmt.Errorf("failed to write config: %w", err)
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), "Config updated.")
+		return nil
+	},
+}
+
 // accountEntriesForConfig converts account entries back into the documented
 // provider-keyed accounts shape for viper to persist. The reserved token-kind
 // fields round-trip too (only when set, to keep hand-maintained config files
@@ -1373,6 +1390,7 @@ var configListCmd = &cobra.Command{
 		enabledTools := viper.GetStringSlice("enabled_tools")
 		titleMode := normalizedMenubarTitleMode(viper.GetString("menubar_title_mode"))
 		fmt.Fprintf(out, "Menubar title mode: %s\n", titleMode)
+		fmt.Fprintf(out, "Usage analytics enabled: %t\n", viper.GetBool("telemetry_enabled"))
 		fmt.Fprintf(out, "Session refresh enabled: %v\n", viper.GetBool("session_refresh_enabled"))
 		fmt.Fprintf(out, "Session refresh interval: %s\n", viper.GetString("session_refresh_interval"))
 		fmt.Fprintf(out, "Session refresh hour: %d\n\n", viper.GetInt("session_refresh_hour"))
@@ -1503,6 +1521,7 @@ func init() {
 	configCmd.AddCommand(configResetCmd)
 	configSetCmd.AddCommand(configSetToolsCmd)
 	configSetCmd.AddCommand(configSetMenubarTitleModeCmd)
+	configSetCmd.AddCommand(configSetTelemetryEnabledCmd)
 	configCmd.AddCommand(configAccountCmd)
 	configAccountCmd.AddCommand(configAccountAddCmd)
 	configAccountCmd.AddCommand(configAccountRemoveCmd)
