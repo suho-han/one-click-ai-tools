@@ -76,6 +76,36 @@ Expected result:
 Meaning:
 - the installed helper should allow menubar launch outside the development worktree
 
+## Feedback endpoint and local verification
+
+Settings → About → Project submits feedback only when **Send feedback** is clicked.
+Release builds derive `/v1/feedback` from the stamped `OCT_ANALYTICS_ENDPOINT`
+ending in `/v1/events`. Local builds have no compiled endpoint and display
+“Feedback is unavailable in this build.”
+
+Set `OCT_FEEDBACK_ENDPOINT` on the helper process to override the endpoint:
+
+```bash
+go run ./cmd/oct-analytics-server -db /tmp/oct-feedback-smoke.sqlite
+# In another terminal, after building the helper:
+OCT_FEEDBACK_ENDPOINT=http://127.0.0.1:8843/v1/feedback \
+DO_NOT_TRACK=1 OCT_TELEMETRY_ENABLED=false \
+macos/OctMenubar/.build/debug/OctMenubarApp
+```
+
+HTTPS is required except for numeric loopback HTTP (`127.0.0.1` or `::1`).
+Credentials, query strings and fragments are rejected. An empty or invalid
+override disables submission rather than falling back to the release server.
+Analytics opt-out does not block explicit feedback.
+
+Verify a submitted multiline message in the collector's SQLite `feedback`
+table (`id`, `received_at`, `message`); command events and installation
+observations should remain unchanged. `POST /v1/feedback` accepts JSON containing
+only `message`, up to 4,000 UTF-8 bytes, and returns 202 after storage succeeds.
+Feedback has a separate 120/minute quota and 90-day retention. There is no public
+feedback read API. Failed submissions retain the editor text; retry is manual.
+Drafts survive tab changes but are not saved to disk.
+
 ## Standalone binary validation
 
 Check that a copied binary outside the repo still finds the installed helper.

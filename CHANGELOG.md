@@ -4,6 +4,17 @@ All notable changes to this project will be documented in this file. See [standa
 
 > Version numbering reset to 0.1.x when the project moved to the `one-click-ai-tools` repository (July 2026). Entries below continue from the 0.4.x line of the previous `one-click-tools` repository.
 
+## Unreleased
+
+### Features
+
+* **analytics:** add pseudonymous command and installation statistics, provider and device-family counts, CLI/menubar opt-out, and usage-record clearing.
+* **menubar:** add an About tab with explicit feedback submission and update-check control, shared alert-threshold controls, and clearer settings loading feedback.
+
+### Changes
+
+* **menubar:** remove the server vendor name from the feedback privacy notice.
+
 ### [0.1.6](https://github.com/suho-han/one-click-ai-tools/compare/v0.1.5...v0.1.6) (2026-09-30)
 
 
