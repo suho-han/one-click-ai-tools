@@ -37,11 +37,14 @@ func TestExplainResolvedManagerFallsBackWhenNpmMissing(t *testing.T) {
 		Package:    "@moonshot-ai/kimi-code",
 		BinaryName: "kimi",
 	})
-	if manager != KimiInstaller {
-		t.Fatalf("explainResolvedManager(kimi, npm missing) = %q, want %q", manager, KimiInstaller)
-	}
-	if reason != "official install script (npm not found)" {
-		t.Fatalf("reason = %q, want the npm-missing fallback reason", reason)
+	if installerGOOS == "windows" {
+		if manager != Npm || reason != "npm not found" {
+			t.Fatalf("Windows fallback = %q (%s), want npm guidance", manager, reason)
+		}
+	} else {
+		if manager != KimiInstaller || reason != "official install script (npm not found)" {
+			t.Fatalf("shell-capable fallback = %q (%s), want Kimi installer", manager, reason)
+		}
 	}
 }
 
@@ -157,11 +160,9 @@ func TestMissingManagerGuidance(t *testing.T) {
 	}
 }
 
-// TestExplainPlansUseInstallersWithoutNpm pins the plan-level view end to
-// end: on a machine without npm, Kimi's plan carries the official script as
-// the install command, while npm-only MiniMax stays on npm with the
-// missing-npm reason the run loop turns into guidance.
-func TestExplainPlansUseInstallersWithoutNpm(t *testing.T) {
+// Explain plans must reflect the platform's executable install path when npm
+// is unavailable: shell installers on Unix, actionable npm guidance on Windows.
+func TestExplainPlansMissingNpmByPlatform(t *testing.T) {
 	reset := stubManagerDetection(t)
 	defer reset()
 
@@ -175,12 +176,20 @@ func TestExplainPlansUseInstallersWithoutNpm(t *testing.T) {
 	}
 
 	kimi := byName["kimi"]
-	if kimi.Manager != KimiInstaller {
-		t.Fatalf("plan manager for kimi = %q, want %q", kimi.Manager, KimiInstaller)
-	}
-	joined := strings.Join(kimi.InstallCommand, " ")
-	if !strings.Contains(joined, "https://code.kimi.com/kimi-code/install.sh") {
-		t.Fatalf("kimi plan command = %q, want the official install script", joined)
+	if installerGOOS == "windows" {
+		if kimi.Manager != Npm || kimi.Reason != "npm not found" {
+			t.Fatalf("Windows Kimi plan = (%q, %q), want npm guidance", kimi.Manager, kimi.Reason)
+		}
+		if strings.Contains(strings.Join(kimi.InstallCommand, " "), "install.sh") {
+			t.Fatal("Windows plan must not advertise a POSIX shell installer")
+		}
+	} else {
+		if kimi.Manager != KimiInstaller {
+			t.Fatalf("plan manager for kimi = %q, want %q", kimi.Manager, KimiInstaller)
+		}
+		if joined := strings.Join(kimi.InstallCommand, " "); !strings.Contains(joined, "https://code.kimi.com/kimi-code/install.sh") {
+			t.Fatalf("kimi plan command = %q, want the official install script", joined)
+		}
 	}
 
 	mmx := byName["mmx"]
