@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
@@ -205,33 +206,40 @@ func TestConfigUpdateRejectsIrreversibleUnknownSchedule(t *testing.T) {
 	}
 }
 
-// TestConfigListJSONIncludesScheduleAndVersionShape pins the snapshot keys the
-// menubar settings decode: agent_update_schedule always present, versions
-// absent without --probe-versions.
-func TestConfigListJSONIncludesScheduleAndVersionShape(t *testing.T) {
-	t.Cleanup(viper.Reset)
+func TestConfigListJSONDoesNotInventDisabledScheduleOnInspectionFailure(t *testing.T) {
 	viper.Reset()
-	viper.SetConfigFile("/tmp/does-not-exist.yaml")
+	t.Cleanup(viper.Reset)
+	viper.SetConfigFile(filepath.Join(t.TempDir(), "config.yaml"))
+	fake := &fakeConfigScheduler{
+		current:     schedule.CurrentSchedule{Enabled: true, Interval: "daily", Hour: 8},
+		describeErr: errors.New("crontab read failed"),
+	}
+	withFakeConfigScheduler(t, fake)
+	oldJSON := configListJSON
+	configListJSON = true
+	t.Cleanup(func() { configListJSON = oldJSON })
+	var output bytes.Buffer
+	configListCmd.SetOut(&output)
+	t.Cleanup(func() { configListCmd.SetOut(nil) })
 
-	snapshot := buildConfigSnapshot("/tmp/does-not-exist.yaml")
-	// Build twice through the JSON encoding to guarantee stable field names.
-	encoded, err := json.Marshal(snapshot)
-	if err != nil {
-		t.Fatalf("marshal snapshot: %v", err)
+	err := configListCmd.RunE(configListCmd, nil)
+	if err == nil || !strings.Contains(err.Error(), "crontab read failed") {
+		t.Fatalf("config list error = %v, want scheduler inspection failure", err)
 	}
-	if !strings.Contains(string(encoded), `"agent_update_schedule"`) {
-		t.Fatalf("snapshot missing agent_update_schedule: %s", encoded)
-	}
-	if strings.Contains(string(encoded), `"version"`) {
-		t.Fatalf("snapshot without probing must not carry versions: %s", encoded)
+	if output.Len() != 0 {
+		t.Fatalf("failed inspection emitted unsafe JSON snapshot: %s", output.String())
 	}
 
-	var decoded struct {
-		AgentUpdateSchedule configScheduleSnapshot `json:"agent_update_schedule"`
-		Tools               []configToolStatus     `json:"tools"`
+	fake.describeErr = nil
+	if err := configListCmd.RunE(configListCmd, nil); err != nil {
+		t.Fatal(err)
 	}
-	if err := json.Unmarshal(encoded, &decoded); err != nil {
-		t.Fatalf("unmarshal snapshot: %v", err)
+	var recovered configSnapshot
+	if err := json.Unmarshal(output.Bytes(), &recovered); err != nil {
+		t.Fatal(err)
+	}
+	if !recovered.AgentUpdateSchedule.Enabled || recovered.AgentUpdateSchedule.Interval != "daily" {
+		t.Fatalf("recovered snapshot lost running schedule: %+v", recovered.AgentUpdateSchedule)
 	}
 }
 

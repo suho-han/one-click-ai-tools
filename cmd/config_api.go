@@ -127,7 +127,11 @@ func parseConfigUpdatePayload(raw string) (configUpdatePayload, error) {
 	return payload, nil
 }
 
-func buildConfigSnapshot(configFile string) configSnapshot {
+func buildConfigSnapshot(configFile string) (configSnapshot, error) {
+	agentUpdateSchedule, err := buildAgentUpdateScheduleSnapshot()
+	if err != nil {
+		return configSnapshot{}, err
+	}
 	enabledTools := viper.GetStringSlice("enabled_tools")
 	rawOrder := viper.GetStringSlice("agent_order")
 	orderedTools := update.GetOrderedTools(rawOrder)
@@ -221,11 +225,11 @@ func buildConfigSnapshot(configFile string) configSnapshot {
 		SessionRefreshInterval: normalizedConfigRefreshInterval(viper.GetString("session_refresh_interval")),
 		SessionRefreshHour:     normalizedConfigRefreshHour(viper.GetInt("session_refresh_hour")),
 		TelemetryEnabled:       viper.GetBool("telemetry_enabled"),
-		AgentUpdateSchedule:    buildAgentUpdateScheduleSnapshot(),
+		AgentUpdateSchedule:    agentUpdateSchedule,
 		AgentOrder:             agentOrder,
 		Tools:                  tools,
 		Alert:                  buildConfigAlertSnapshot(),
-	}
+	}, nil
 }
 
 // configScheduleScheduler is the scheduler source for the config API's
@@ -235,17 +239,16 @@ var configScheduleScheduler = schedule.GetScheduler
 
 // buildAgentUpdateScheduleSnapshot reads back the persisted agent-update
 // schedule straight from the platform scheduler (launchd plist / crontab /
-// schtasks). A scheduler that cannot be reached or described reports
-// disabled: the settings UI then shows "off" instead of failing the whole
-// snapshot, and a save that does not touch the schedule still no-ops safely.
-func buildAgentUpdateScheduleSnapshot() configScheduleSnapshot {
+// schtasks). If inspection fails, no settings snapshot can safely be saved:
+// reporting "off" would turn an unrelated settings save into a disable.
+func buildAgentUpdateScheduleSnapshot() (configScheduleSnapshot, error) {
 	scheduler, err := configScheduleScheduler()
 	if err != nil {
-		return configScheduleSnapshot{}
+		return configScheduleSnapshot{}, fmt.Errorf("scheduler unavailable: %w", err)
 	}
 	state, err := scheduler.Describe(schedule.AgentUpdateTask)
 	if err != nil {
-		return configScheduleSnapshot{}
+		return configScheduleSnapshot{}, fmt.Errorf("failed to read the current agent-update schedule: %w", err)
 	}
 	hour := state.Hour
 	if !state.Enabled {
@@ -254,7 +257,7 @@ func buildAgentUpdateScheduleSnapshot() configScheduleSnapshot {
 		// midnight just because the schedule is off.
 		hour = 9
 	}
-	return configScheduleSnapshot{Enabled: state.Enabled, Interval: state.Interval, Hour: hour}
+	return configScheduleSnapshot{Enabled: state.Enabled, Interval: state.Interval, Hour: hour}, nil
 }
 
 // applyConfigUpdateAndSave restores the platform schedule when config

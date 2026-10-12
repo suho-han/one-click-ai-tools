@@ -9,7 +9,6 @@ Example `~/.oct/config.yaml`:
 ```yaml
 usage_alert_enabled: true
 usage_alert_threshold_percent: 80
-usage_alert_critical_percent: 98
 usage_alert_cooldown_minutes: 360
 # Quiet timer: alerts stay suppressed until this instant (empty = off).
 # Armed via the preset choices off/1h/2h/4h/6h/12h, not edited by hand.
@@ -51,7 +50,6 @@ oct alert config show
 oct alert config set enabled true
 oct alert config set cooldown_minutes 120
 oct alert config set threshold_percent 85
-oct alert config set critical_percent 98
 oct alert config set quiet 2h          # choices: off, 1h, 2h, 4h, 6h, 12h
 
 oct alert config set threshold.5h 90
@@ -74,14 +72,10 @@ oct alert snooze clear --provider codex --window 5h
 
 ## Behavior rules
 
-- Priority labels:
-  - `value >= critical_percent` -> `CRITICAL`
-  - `threshold <= value < critical_percent` -> `HIGH`
-- Duplicate alerts are suppressed during cooldown windows
-- Escalation can still alert during cooldown if threshold level increases
-- While the quiet timer is armed, only `CRITICAL` passes
-- The quiet timer is a one-shot mute (off/1h/2h/4h/6h/12h) armed from the moment it is set; it expires on its own
-- `CRITICAL` overrides snooze
+- Priority label: `HIGH` when usage reaches its effective threshold (`NORMAL` otherwise in `oct alert test`).
+- Duplicate alerts are suppressed during the cooldown window. A newly crossed, higher configured threshold can alert during cooldown.
+- The quiet timer suppresses all alerts while armed; it is a one-shot mute (off/1h/2h/4h/6h/12h) that expires on its own.
+- Snoozes suppress all matching alerts, including values near 100%.
 - State file: `~/.oct/state/usage-alert-state.json`
 
 ## Related docs

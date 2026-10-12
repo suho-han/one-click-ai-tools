@@ -1376,7 +1376,10 @@ var configListCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		out := cmd.OutOrStdout()
 		if configListJSON {
-			snapshot := buildConfigSnapshot(configPathForDisplay())
+			snapshot, err := buildConfigSnapshot(configPathForDisplay())
+			if err != nil {
+				return err
+			}
 			if configListProbeVersions {
 				attachToolVersions(cmd.Context(), &snapshot)
 			}

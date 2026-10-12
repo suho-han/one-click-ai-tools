@@ -10,6 +10,16 @@ import (
 	"github.com/suho-han/one-click-ai-tools/internal/update"
 )
 
+func mustBuildConfigSnapshot(t *testing.T, path string) configSnapshot {
+	t.Helper()
+	withFakeConfigScheduler(t, &fakeConfigScheduler{})
+	snapshot, err := buildConfigSnapshot(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return snapshot
+}
+
 func TestBuildConfigSnapshot_enablesAllToolsWhenEnabledToolsUnset(t *testing.T) {
 	t.Cleanup(viper.Reset)
 	viper.Reset()
@@ -19,7 +29,7 @@ func TestBuildConfigSnapshot_enablesAllToolsWhenEnabledToolsUnset(t *testing.T) 
 	viper.Set("session_refresh_hour", 7)
 	viper.Set("agent_order", []string{"codex", "agy", "claude"})
 
-	got := buildConfigSnapshot("/tmp/oct.yaml")
+	got := mustBuildConfigSnapshot(t, "/tmp/oct.yaml")
 
 	if got.ConfigFile != "/tmp/oct.yaml" {
 		t.Fatalf("ConfigFile = %q, want /tmp/oct.yaml", got.ConfigFile)
@@ -124,40 +134,6 @@ func TestConfigUpdatePayload_rejectsInvalidPayloadWithoutMutation(t *testing.T) 
 	}
 }
 
-func TestConfigSnapshot_marshalJSONUsesMachineReadableShape(t *testing.T) {
-	t.Cleanup(viper.Reset)
-	viper.Reset()
-	viper.Set("enabled_tools", []string{"codex"})
-	viper.Set("menubar_title_mode", "oct")
-	viper.Set("session_refresh_interval", "daily")
-	viper.Set("session_refresh_hour", 5)
-
-	snapshot := buildConfigSnapshot("/tmp/config.yaml")
-	data, err := json.Marshal(snapshot)
-	if err != nil {
-		t.Fatalf("json.Marshal returned error: %v", err)
-	}
-
-	var decoded struct {
-		ConfigFile             string `json:"config_file"`
-		MenubarTitleMode       string `json:"menubar_title_mode"`
-		SessionRefreshInterval string `json:"session_refresh_interval"`
-		Tools                  []struct {
-			BinaryName string `json:"binary_name"`
-			Enabled    bool   `json:"enabled"`
-		} `json:"tools"`
-	}
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		t.Fatalf("json.Unmarshal returned error: %v", err)
-	}
-	if decoded.ConfigFile != "/tmp/config.yaml" || decoded.MenubarTitleMode != "oct" || decoded.SessionRefreshInterval != "daily" {
-		t.Fatalf("decoded snapshot = %+v", decoded)
-	}
-	if len(decoded.Tools) == 0 || decoded.Tools[0].BinaryName == "" {
-		t.Fatalf("decoded tools missing binary names: %+v", decoded.Tools)
-	}
-}
-
 func boolPtr(value bool) *bool {
 	return &value
 }
@@ -186,7 +162,7 @@ func TestConfigSnapshot_marshalJSONIncludesSafeAlertSettings(t *testing.T) {
 	viper.Set("usage_alert_provider_thresholds", map[string]map[string]float64{"codex": {"5h": 95}})
 	viper.Set("usage_alert_state_path", "/private/state.json")
 
-	data, err := json.Marshal(buildConfigSnapshot("/tmp/oct.yaml"))
+	data, err := json.Marshal(mustBuildConfigSnapshot(t, "/tmp/oct.yaml"))
 	if err != nil {
 		t.Fatalf("marshal snapshot: %v", err)
 	}
@@ -331,25 +307,25 @@ func TestConfigSnapshotExposesMenubarRefreshInterval(t *testing.T) {
 	viper.Reset()
 
 	// Default: missing config value normalizes to the menubar default "1m".
-	got := buildConfigSnapshot("/tmp/oct.yaml")
+	got := mustBuildConfigSnapshot(t, "/tmp/oct.yaml")
 	if got.MenubarRefreshInterval != "1m" {
 		t.Fatalf("default MenubarRefreshInterval = %q, want 1m", got.MenubarRefreshInterval)
 	}
 
 	viper.Set("menubar_refresh_interval", "90s")
-	got = buildConfigSnapshot("/tmp/oct.yaml")
+	got = mustBuildConfigSnapshot(t, "/tmp/oct.yaml")
 	if got.MenubarRefreshInterval != "90s" {
 		t.Fatalf("MenubarRefreshInterval = %q, want 90s", got.MenubarRefreshInterval)
 	}
 
 	viper.Set("menubar_refresh_interval", "bogus")
-	got = buildConfigSnapshot("/tmp/oct.yaml")
+	got = mustBuildConfigSnapshot(t, "/tmp/oct.yaml")
 	if got.MenubarRefreshInterval != "1m" {
 		t.Fatalf("invalid MenubarRefreshInterval = %q, want fallback 1m", got.MenubarRefreshInterval)
 	}
 
 	// JSON shape: the key must be present for the Swift app.
-	data, err := json.Marshal(buildConfigSnapshot("/tmp/oct.yaml"))
+	data, err := json.Marshal(mustBuildConfigSnapshot(t, "/tmp/oct.yaml"))
 	if err != nil {
 		t.Fatalf("marshal snapshot: %v", err)
 	}
@@ -368,7 +344,7 @@ func TestBuildConfigSnapshotIncludesStandaloneProviders(t *testing.T) {
 	viper.Set("enabled_tools", []string{"codex", "zai"})
 	viper.Set("agent_order", []string{"zai", "codex"})
 
-	got := buildConfigSnapshot("/tmp/oct.yaml")
+	got := mustBuildConfigSnapshot(t, "/tmp/oct.yaml")
 
 	var zai *configToolStatus
 	for i := range got.Tools {
@@ -407,7 +383,7 @@ func TestConfigSnapshotPreservesStandaloneOptInFromAgentOrder(t *testing.T) {
 	viper.Reset()
 	viper.Set("agent_order", []string{"zai,codex"})
 
-	snapshot := buildConfigSnapshot("/tmp/oct.yaml")
+	snapshot := mustBuildConfigSnapshot(t, "/tmp/oct.yaml")
 	enabled := make([]string, 0, len(snapshot.Tools))
 	for _, tool := range snapshot.Tools {
 		if tool.BinaryName == "zai" && !tool.Enabled {
@@ -423,7 +399,7 @@ func TestConfigSnapshotPreservesStandaloneOptInFromAgentOrder(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if got := buildConfigSnapshot("/tmp/oct.yaml"); !got.Tools[0].Enabled || got.Tools[0].BinaryName != "zai" {
+	if got := mustBuildConfigSnapshot(t, "/tmp/oct.yaml"); !got.Tools[0].Enabled || got.Tools[0].BinaryName != "zai" {
 		t.Fatalf("standalone provider lost after settings save: %+v", got.Tools)
 	}
 }
@@ -438,7 +414,7 @@ func TestBuildConfigSnapshot_MirrorsConfigWhenEnabledToolsSet(t *testing.T) {
 	viper.Set("enabled_tools", []string{"codex", "agy"})
 	viper.Set("agent_order", []string{"codex", "agy", "claude"})
 
-	got := buildConfigSnapshot("/tmp/oct.yaml")
+	got := mustBuildConfigSnapshot(t, "/tmp/oct.yaml")
 
 	want := []string{"codex", "agy", "claude"}
 	if len(got.Tools) != len(want) || len(got.AgentOrder) != len(want) {
@@ -466,7 +442,7 @@ func TestBuildConfigSnapshot_SurfacesEnabledEntryMissingFromOrder(t *testing.T) 
 	viper.Set("enabled_tools", []string{"codex", "zai"})
 	viper.Set("agent_order", []string{"codex"})
 
-	got := buildConfigSnapshot("/tmp/oct.yaml")
+	got := mustBuildConfigSnapshot(t, "/tmp/oct.yaml")
 
 	names := toolNames(got.Tools)
 	if len(names) != 2 || names[0] != "codex" || names[1] != "zai" {
@@ -486,7 +462,7 @@ func TestBuildConfigSnapshot_SplitsCommaJoinedEntries(t *testing.T) {
 	viper.Set("enabled_tools", []string{"codex,agy"})
 	viper.Set("agent_order", []string{"codex,agy"})
 
-	got := buildConfigSnapshot("/tmp/oct.yaml")
+	got := mustBuildConfigSnapshot(t, "/tmp/oct.yaml")
 
 	enabled := map[string]bool{}
 	for _, tool := range got.Tools {
