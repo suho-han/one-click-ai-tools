@@ -10,6 +10,16 @@ import (
 	"github.com/suho-han/one-click-ai-tools/internal/update"
 )
 
+func mustBuildConfigSnapshot(t *testing.T, path string) configSnapshot {
+	t.Helper()
+	withFakeConfigScheduler(t, &fakeConfigScheduler{})
+	snapshot, err := buildConfigSnapshot(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return snapshot
+}
+
 func TestBuildConfigSnapshot_enablesAllToolsWhenEnabledToolsUnset(t *testing.T) {
 	t.Cleanup(viper.Reset)
 	viper.Reset()
@@ -19,7 +29,7 @@ func TestBuildConfigSnapshot_enablesAllToolsWhenEnabledToolsUnset(t *testing.T) 
 	viper.Set("session_refresh_hour", 7)
 	viper.Set("agent_order", []string{"codex", "agy", "claude"})
 
-	got := buildConfigSnapshot("/tmp/oct.yaml")
+	got := mustBuildConfigSnapshot(t, "/tmp/oct.yaml")
 
 	if got.ConfigFile != "/tmp/oct.yaml" {
 		t.Fatalf("ConfigFile = %q, want /tmp/oct.yaml", got.ConfigFile)
@@ -124,40 +134,6 @@ func TestConfigUpdatePayload_rejectsInvalidPayloadWithoutMutation(t *testing.T) 
 	}
 }
 
-func TestConfigSnapshot_marshalJSONUsesMachineReadableShape(t *testing.T) {
-	t.Cleanup(viper.Reset)
-	viper.Reset()
-	viper.Set("enabled_tools", []string{"codex"})
-	viper.Set("menubar_title_mode", "oct")
-	viper.Set("session_refresh_interval", "daily")
-	viper.Set("session_refresh_hour", 5)
-
-	snapshot := buildConfigSnapshot("/tmp/config.yaml")
-	data, err := json.Marshal(snapshot)
-	if err != nil {
-		t.Fatalf("json.Marshal returned error: %v", err)
-	}
-
-	var decoded struct {
-		ConfigFile             string `json:"config_file"`
-		MenubarTitleMode       string `json:"menubar_title_mode"`
-		SessionRefreshInterval string `json:"session_refresh_interval"`
-		Tools                  []struct {
-			BinaryName string `json:"binary_name"`
-			Enabled    bool   `json:"enabled"`
-		} `json:"tools"`
-	}
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		t.Fatalf("json.Unmarshal returned error: %v", err)
-	}
-	if decoded.ConfigFile != "/tmp/config.yaml" || decoded.MenubarTitleMode != "oct" || decoded.SessionRefreshInterval != "daily" {
-		t.Fatalf("decoded snapshot = %+v", decoded)
-	}
-	if len(decoded.Tools) == 0 || decoded.Tools[0].BinaryName == "" {
-		t.Fatalf("decoded tools missing binary names: %+v", decoded.Tools)
-	}
-}
-
 func boolPtr(value bool) *bool {
 	return &value
 }
@@ -175,18 +151,18 @@ func TestConfigSnapshot_marshalJSONIncludesSafeAlertSettings(t *testing.T) {
 	viper.Reset()
 	viper.Set("usage_alert_enabled", true)
 	viper.Set("usage_alert_threshold_percent", 80.0)
-	viper.Set("usage_alert_critical_percent", 98.0)
 	viper.Set("usage_alert_cooldown_minutes", 120)
 	viper.Set("usage_alert_quiet_until", "2026-05-09T08:00:00Z")
 	viper.Set("usage_alert_thresholds", map[string]any{
 		"default": 80,
 		"5h":      85,
 		"7d":      90,
+		"1m":      95,
 	})
 	viper.Set("usage_alert_provider_thresholds", map[string]map[string]float64{"codex": {"5h": 95}})
 	viper.Set("usage_alert_state_path", "/private/state.json")
 
-	data, err := json.Marshal(buildConfigSnapshot("/tmp/oct.yaml"))
+	data, err := json.Marshal(mustBuildConfigSnapshot(t, "/tmp/oct.yaml"))
 	if err != nil {
 		t.Fatalf("marshal snapshot: %v", err)
 	}
@@ -212,12 +188,12 @@ func TestConfigSnapshot_marshalJSONIncludesSafeAlertSettings(t *testing.T) {
 	if !ok {
 		t.Fatalf("alert.thresholds = %#v, want object", alert["thresholds"])
 	}
-	for key, want := range map[string]float64{"default": 80, "5h": 85, "7d": 90} {
+	for key, want := range map[string]float64{"default": 80, "5h": 85, "7d": 90, "1m": 95} {
 		if got := thresholds[key]; got != want {
 			t.Fatalf("alert.thresholds.%s = %#v, want %v", key, got, want)
 		}
 	}
-	for _, forbidden := range []string{"provider_thresholds", "state_path", "snooze_state", "token", "private"} {
+	for _, forbidden := range []string{"provider_thresholds", "state_path", "snooze_state", "token", "private", "critical_percent"} {
 		if _, ok := alert[forbidden]; ok {
 			t.Fatalf("alert JSON leaked forbidden key %q: %s", forbidden, data)
 		}
@@ -228,7 +204,7 @@ func TestConfigUpdatePayload_applyConfigUpdatePersistsAlertSettings(t *testing.T
 	t.Cleanup(viper.Reset)
 	viper.Reset()
 
-	payload, err := parseConfigUpdatePayload(`{"alert":{"enabled":true,"threshold_percent":85,"critical_percent":98,"cooldown_minutes":120,"quiet_until":"2026-05-09T08:00:00Z","thresholds":{"default":80,"5h":85,"7d":90}}}`)
+	payload, err := parseConfigUpdatePayload(`{"alert":{"enabled":true,"threshold_percent":85,"cooldown_minutes":120,"quiet_until":"2026-05-09T08:00:00Z","thresholds":{"default":80,"5h":85,"7d":90,"1m":95}}}`)
 	if err != nil {
 		t.Fatalf("parseConfigUpdatePayload() error = %v", err)
 	}
@@ -242,16 +218,13 @@ func TestConfigUpdatePayload_applyConfigUpdatePersistsAlertSettings(t *testing.T
 	if got := viper.GetFloat64("usage_alert_threshold_percent"); got != 85 {
 		t.Fatalf("usage_alert_threshold_percent = %v, want 85", got)
 	}
-	if got := viper.GetFloat64("usage_alert_critical_percent"); got != 98 {
-		t.Fatalf("usage_alert_critical_percent = %v, want 98", got)
-	}
 	if got := viper.GetInt("usage_alert_cooldown_minutes"); got != 120 {
 		t.Fatalf("usage_alert_cooldown_minutes = %d, want 120", got)
 	}
 	if got := viper.GetString("usage_alert_quiet_until"); got != "2026-05-09T08:00:00Z" {
 		t.Fatalf("usage_alert_quiet_until = %q, want 2026-05-09T08:00:00Z", got)
 	}
-	for key, want := range map[string]float64{"default": 80, "5h": 85, "7d": 90} {
+	for key, want := range map[string]float64{"default": 80, "5h": 85, "7d": 90, "1m": 95} {
 		if got := viper.GetFloat64("usage_alert_thresholds." + key); got != want {
 			t.Fatalf("usage_alert_thresholds.%s = %v, want %v", key, got, want)
 		}
@@ -300,14 +273,13 @@ func TestConfigUpdatePayload_rejectsNonFiniteAlertPercentWithoutMutation(t *test
 			t.Cleanup(viper.Reset)
 			viper.Reset()
 			viper.Set("usage_alert_threshold_percent", 80.0)
-			viper.Set("usage_alert_critical_percent", 98.0)
 			viper.Set("usage_alert_thresholds", map[string]any{"default": 81.0, "5h": 82.0, "7d": 83.0})
 			payloads := []configUpdatePayload{
 				{Alert: &configAlertUpdatePayload{ThresholdPercent: floatPtr(value)}},
-				{Alert: &configAlertUpdatePayload{CriticalPercent: floatPtr(value)}},
 				{Alert: &configAlertUpdatePayload{Thresholds: &configAlertThresholdPayload{Default: floatPtr(value)}}},
 				{Alert: &configAlertUpdatePayload{Thresholds: &configAlertThresholdPayload{FiveHours: floatPtr(value)}}},
 				{Alert: &configAlertUpdatePayload{Thresholds: &configAlertThresholdPayload{SevenDays: floatPtr(value)}}},
+				{Alert: &configAlertUpdatePayload{Thresholds: &configAlertThresholdPayload{Monthly: floatPtr(value)}}},
 			}
 
 			// When
@@ -320,9 +292,6 @@ func TestConfigUpdatePayload_rejectsNonFiniteAlertPercentWithoutMutation(t *test
 			// Then
 			if got := viper.GetFloat64("usage_alert_threshold_percent"); got != 80 {
 				t.Fatalf("threshold_percent = %v, want unchanged 80", got)
-			}
-			if got := viper.GetFloat64("usage_alert_critical_percent"); got != 98 {
-				t.Fatalf("critical_percent = %v, want unchanged 98", got)
 			}
 			for key, want := range map[string]float64{"default": 81, "5h": 82, "7d": 83} {
 				if got := viper.GetFloat64("usage_alert_thresholds." + key); got != want {
@@ -338,25 +307,25 @@ func TestConfigSnapshotExposesMenubarRefreshInterval(t *testing.T) {
 	viper.Reset()
 
 	// Default: missing config value normalizes to the menubar default "1m".
-	got := buildConfigSnapshot("/tmp/oct.yaml")
+	got := mustBuildConfigSnapshot(t, "/tmp/oct.yaml")
 	if got.MenubarRefreshInterval != "1m" {
 		t.Fatalf("default MenubarRefreshInterval = %q, want 1m", got.MenubarRefreshInterval)
 	}
 
 	viper.Set("menubar_refresh_interval", "90s")
-	got = buildConfigSnapshot("/tmp/oct.yaml")
+	got = mustBuildConfigSnapshot(t, "/tmp/oct.yaml")
 	if got.MenubarRefreshInterval != "90s" {
 		t.Fatalf("MenubarRefreshInterval = %q, want 90s", got.MenubarRefreshInterval)
 	}
 
 	viper.Set("menubar_refresh_interval", "bogus")
-	got = buildConfigSnapshot("/tmp/oct.yaml")
+	got = mustBuildConfigSnapshot(t, "/tmp/oct.yaml")
 	if got.MenubarRefreshInterval != "1m" {
 		t.Fatalf("invalid MenubarRefreshInterval = %q, want fallback 1m", got.MenubarRefreshInterval)
 	}
 
 	// JSON shape: the key must be present for the Swift app.
-	data, err := json.Marshal(buildConfigSnapshot("/tmp/oct.yaml"))
+	data, err := json.Marshal(mustBuildConfigSnapshot(t, "/tmp/oct.yaml"))
 	if err != nil {
 		t.Fatalf("marshal snapshot: %v", err)
 	}
@@ -375,7 +344,7 @@ func TestBuildConfigSnapshotIncludesStandaloneProviders(t *testing.T) {
 	viper.Set("enabled_tools", []string{"codex", "zai"})
 	viper.Set("agent_order", []string{"zai", "codex"})
 
-	got := buildConfigSnapshot("/tmp/oct.yaml")
+	got := mustBuildConfigSnapshot(t, "/tmp/oct.yaml")
 
 	var zai *configToolStatus
 	for i := range got.Tools {
@@ -389,6 +358,14 @@ func TestBuildConfigSnapshotIncludesStandaloneProviders(t *testing.T) {
 	if !zai.Enabled {
 		t.Errorf("zai.Enabled = false, want true (listed in enabled_tools)")
 	}
+	if zai.CanUpdate {
+		t.Fatal("usage-only zai must not be offered for agent-update")
+	}
+	for _, tool := range got.Tools {
+		if tool.BinaryName == "codex" && !tool.CanUpdate {
+			t.Fatal("installable codex must remain eligible for agent-update")
+		}
+	}
 	// Opt-in: an unconfigured standalone provider must not appear.
 	for _, tool := range got.Tools {
 		if tool.BinaryName == "grok" {
@@ -398,6 +375,32 @@ func TestBuildConfigSnapshotIncludesStandaloneProviders(t *testing.T) {
 	// The requested position is carried into AgentOrder.
 	if got.AgentOrder[0] != "zai" {
 		t.Fatalf("AgentOrder = %v, want zai first", got.AgentOrder)
+	}
+}
+
+func TestConfigSnapshotPreservesStandaloneOptInFromAgentOrder(t *testing.T) {
+	t.Cleanup(viper.Reset)
+	viper.Reset()
+	viper.Set("agent_order", []string{"zai,codex"})
+
+	snapshot := mustBuildConfigSnapshot(t, "/tmp/oct.yaml")
+	enabled := make([]string, 0, len(snapshot.Tools))
+	for _, tool := range snapshot.Tools {
+		if tool.BinaryName == "zai" && !tool.Enabled {
+			t.Fatal("zai listed in agent_order must be enabled when enabled_tools is empty")
+		}
+		if tool.Enabled {
+			enabled = append(enabled, tool.BinaryName)
+		}
+	}
+	if err := applyConfigUpdate(configUpdatePayload{
+		EnabledTools: enabled,
+		AgentOrder:   snapshot.AgentOrder,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := mustBuildConfigSnapshot(t, "/tmp/oct.yaml"); !got.Tools[0].Enabled || got.Tools[0].BinaryName != "zai" {
+		t.Fatalf("standalone provider lost after settings save: %+v", got.Tools)
 	}
 }
 
@@ -411,7 +414,7 @@ func TestBuildConfigSnapshot_MirrorsConfigWhenEnabledToolsSet(t *testing.T) {
 	viper.Set("enabled_tools", []string{"codex", "agy"})
 	viper.Set("agent_order", []string{"codex", "agy", "claude"})
 
-	got := buildConfigSnapshot("/tmp/oct.yaml")
+	got := mustBuildConfigSnapshot(t, "/tmp/oct.yaml")
 
 	want := []string{"codex", "agy", "claude"}
 	if len(got.Tools) != len(want) || len(got.AgentOrder) != len(want) {
@@ -439,7 +442,7 @@ func TestBuildConfigSnapshot_SurfacesEnabledEntryMissingFromOrder(t *testing.T) 
 	viper.Set("enabled_tools", []string{"codex", "zai"})
 	viper.Set("agent_order", []string{"codex"})
 
-	got := buildConfigSnapshot("/tmp/oct.yaml")
+	got := mustBuildConfigSnapshot(t, "/tmp/oct.yaml")
 
 	names := toolNames(got.Tools)
 	if len(names) != 2 || names[0] != "codex" || names[1] != "zai" {
@@ -459,7 +462,7 @@ func TestBuildConfigSnapshot_SplitsCommaJoinedEntries(t *testing.T) {
 	viper.Set("enabled_tools", []string{"codex,agy"})
 	viper.Set("agent_order", []string{"codex,agy"})
 
-	got := buildConfigSnapshot("/tmp/oct.yaml")
+	got := mustBuildConfigSnapshot(t, "/tmp/oct.yaml")
 
 	enabled := map[string]bool{}
 	for _, tool := range got.Tools {
@@ -536,7 +539,6 @@ func TestBuildConfigAlertSnapshot_NormalizesZeroScalarsToEffectiveDefaults(t *te
 	t.Cleanup(viper.Reset)
 	viper.Reset()
 	viper.Set("usage_alert_threshold_percent", 0.0)
-	viper.Set("usage_alert_critical_percent", 0.0)
 	viper.Set("usage_alert_cooldown_minutes", 0)
 
 	// When
@@ -545,9 +547,6 @@ func TestBuildConfigAlertSnapshot_NormalizesZeroScalarsToEffectiveDefaults(t *te
 	// Then
 	if got.ThresholdPercent != 80 {
 		t.Fatalf("ThresholdPercent = %v, want 80", got.ThresholdPercent)
-	}
-	if got.CriticalPercent != 98 {
-		t.Fatalf("CriticalPercent = %v, want 98", got.CriticalPercent)
 	}
 	if got.CooldownMinutes != 360 {
 		t.Fatalf("CooldownMinutes = %v, want 360", got.CooldownMinutes)

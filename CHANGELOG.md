@@ -4,6 +4,39 @@ All notable changes to this project will be documented in this file. See [standa
 
 > Version numbering reset to 0.1.x when the project moved to the `one-click-ai-tools` repository (July 2026). Entries below continue from the 0.4.x line of the previous `one-click-tools` repository.
 
+## Unreleased
+
+### Features
+
+* **analytics:** add pseudonymous command and installation statistics, provider and device-family counts, CLI/menubar opt-out, and usage-record clearing.
+* **menubar:** add an About tab with explicit feedback submission and update-check control, shared alert-threshold controls, and clearer settings loading feedback.
+
+### Changes
+
+* **menubar:** remove the server vendor name from the feedback privacy notice.
+
+### Bug Fixes
+
+* **ci:** keep Darwin-only menubar process tests out of Linux and Windows test builds.
+* **analytics:** reject running the private database server on Windows, where POSIX file-mode privacy cannot be enforced.
+* **ci:** exercise update subprocesses with native Windows executables and limit POSIX permission assertions to supported platforms.
+* **installer:** bind the auto-launched beta helper to its matching CLI binary and report failed standalone downloads.
+* **schedule:** keep a failed crontab read from silently disabling a scheduled task.
+* **menubar:** run updates for the unsaved provider selection and detect newer prerelease versions.
+* **update:** reject human-only explain and dry-run flags in JSON mode.
+* **config:** restore the previous automatic-update schedule if saving settings fails.
+* **update:** keep prerelease installations on the prerelease channel and compare beta versions correctly.
+* **menubar:** update every selected installable provider while excluding usage-only providers from update runs and install prompts.
+* **menubar:** wait for Foundation to publish fast subprocess exits before reading their status.
+* **menubar:** show skipped package-manager errors as update failures instead of reporting nothing to update.
+* **config:** retain usage-only providers enabled through agent_order when saving settings.
+* **update:** install and resolve the bundled menubar helper beside a custom-path oct executable.
+* **update:** keep npm-missing guidance instead of trying POSIX shell installers on Windows.
+* **usage:** serialize Antigravity CLI refreshes between processes to protect the cached refresh interval.
+* **installer:** choose the menubar helper track from the release version even with a custom command name.
+* **config:** fail settings snapshots when automatic-update schedule inspection fails instead of reporting it disabled.
+* **docs:** align usage-alert examples with the supported thresholds, quiet timer, and snooze behavior.
+
 ### [0.1.6](https://github.com/suho-han/one-click-ai-tools/compare/v0.1.5...v0.1.6) (2026-09-30)
 
 

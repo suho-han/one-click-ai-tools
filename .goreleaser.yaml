@@ -17,6 +17,8 @@ builds:
       - arm64
     main: ./main.go
     binary: oct
+    ldflags:
+      - -s -w -X github.com/suho-han/one-click-ai-tools/internal/telemetry.Endpoint={{ .Env.OCT_ANALYTICS_ENDPOINT }}
 
 archives:
   - name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"

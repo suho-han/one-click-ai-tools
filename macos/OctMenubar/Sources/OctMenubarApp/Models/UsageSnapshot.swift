@@ -59,15 +59,27 @@ struct ProviderCard: Equatable, Identifiable {
     let planSource: String?
     let status: ProviderStatus
     let metrics: [UsageMetric]
+    /// Unused rate-limit reset credits reported by the provider, nil when
+    /// the provider has no such concept — drives the "( 🎁 N )" badge.
+    let resetCredits: Int?
     let message: String?
 
-    init(name: String, plan: String = "unknown", planSource: String? = nil, status: ProviderStatus, metrics: [UsageMetric], message: String?) {
+    init(
+        name: String,
+        plan: String = "unknown",
+        planSource: String? = nil,
+        status: ProviderStatus,
+        metrics: [UsageMetric],
+        resetCredits: Int? = nil,
+        message: String?
+    ) {
         self.id = name
         self.name = name
         self.plan = plan
         self.planSource = planSource
         self.status = status
         self.metrics = metrics
+        self.resetCredits = resetCredits
         self.message = message
     }
 
@@ -216,6 +228,9 @@ struct UsageResponse: Decodable, Equatable {
         let unit: String
         let buckets: [String: String]?
         let bucketResets: [String: String]?
+        /// Unused rate-limit reset credits (Codex "rate_limit_reset_credits"
+        /// on wham/usage); nil when the provider does not report the concept.
+        let resetCredits: Int?
         let message: String?
 
         enum CodingKeys: String, CodingKey {
@@ -227,6 +242,7 @@ struct UsageResponse: Decodable, Equatable {
             case unit
             case buckets
             case bucketResets = "bucket_resets"
+            case resetCredits = "reset_credits"
             case message
         }
     }
@@ -256,6 +272,7 @@ extension UsageSnapshot {
                 planSource: normalizedPlanSource(result.planSource),
                 status: effectiveStatus(for: result),
                 metrics: visibleMetrics(for: result.provider, unit: result.unit, buckets: result.buckets, resets: result.bucketResets, now: now),
+                resetCredits: result.resetCredits,
                 message: composedMessage(for: result)
             )
         }

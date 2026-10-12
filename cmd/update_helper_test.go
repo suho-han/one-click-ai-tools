@@ -56,6 +56,9 @@ func withDarwinSelfUpdate(t *testing.T) {
 
 func TestInstallMenubarHelperFromArchive(t *testing.T) {
 	withDarwinSelfUpdate(t)
+	// The source default version is a beta, which would route the install to
+	// OctMenubarApp-beta; this test pins the stable helper name.
+	stubMenubarTrack(t, "0.1.6")
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("USERPROFILE", home)
@@ -71,7 +74,7 @@ func TestInstallMenubarHelperFromArchive(t *testing.T) {
 	if err := os.MkdirAll(extractDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := installMenubarHelperFromArchive(archivePath, extractDir); err != nil {
+	if err := installMenubarHelperFromArchive(archivePath, extractDir, filepath.Join(home, ".local", "bin", "oct")); err != nil {
 		t.Fatalf("installMenubarHelperFromArchive: %v", err)
 	}
 
@@ -91,6 +94,46 @@ func TestInstallMenubarHelperFromArchive(t *testing.T) {
 	}
 }
 
+func TestInstallMenubarHelperFollowsCustomBetaExecutable(t *testing.T) {
+	withDarwinSelfUpdate(t)
+	stubMenubarTrack(t, "0.1.6-beta.1")
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	customDir := filepath.Join(t.TempDir(), "custom-bin")
+	if err := os.MkdirAll(customDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	octPath := filepath.Join(customDir, "oct-beta")
+	defaultHelper := filepath.Join(home, ".local", "bin", betaHelperName)
+	if err := os.MkdirAll(filepath.Dir(defaultHelper), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(defaultHelper, []byte("OLD-HELPER"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	archivePath := filepath.Join(t.TempDir(), "asset.tar.gz")
+	createUpdateArchive(t, archivePath, map[string]string{
+		"oct":           "#!/bin/sh\n",
+		"OctMenubarApp": "NEW-HELPER",
+	})
+	extractDir := t.TempDir()
+	if err := installMenubarHelperFromArchive(archivePath, extractDir, octPath); err != nil {
+		t.Fatal(err)
+	}
+	installed := filepath.Join(customDir, betaHelperName)
+	if content, err := os.ReadFile(installed); err != nil || string(content) != "NEW-HELPER" {
+		t.Fatalf("custom helper = %q, %v", content, err)
+	}
+	resolved, _ := resolveMenubarHelperPath(map[string]string{"HOME": home}, octPath, t.TempDir())
+	if resolved != installed {
+		t.Fatalf("resolved helper = %q, want custom installation %q", resolved, installed)
+	}
+	if content, err := os.ReadFile(defaultHelper); err != nil || string(content) != "OLD-HELPER" {
+		t.Fatalf("unrelated default helper changed: %q, %v", content, err)
+	}
+}
+
 func TestInstallMenubarHelperFromArchiveMissingHelper(t *testing.T) {
 	withDarwinSelfUpdate(t)
 	home := t.TempDir()
@@ -105,7 +148,7 @@ func TestInstallMenubarHelperFromArchiveMissingHelper(t *testing.T) {
 	if err := os.MkdirAll(extractDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	err := installMenubarHelperFromArchive(archivePath, extractDir)
+	err := installMenubarHelperFromArchive(archivePath, extractDir, filepath.Join(home, ".local", "bin", "oct"))
 	if err == nil || !strings.Contains(err.Error(), "not bundled") {
 		t.Fatalf("err = %v, want not-bundled error (older release archives)", err)
 	}
@@ -126,7 +169,7 @@ func TestInstallMenubarHelperSkipsNonDarwin(t *testing.T) {
 	if err := os.MkdirAll(extractDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := installMenubarHelperFromArchive(archivePath, extractDir); err != nil {
+	if err := installMenubarHelperFromArchive(archivePath, extractDir, filepath.Join(dir, "oct")); err != nil {
 		t.Fatalf("non-darwin install must be a silent no-op, got %v", err)
 	}
 }

@@ -45,11 +45,8 @@ from stdin.`,
 		if err != nil {
 			return err
 		}
-		if err := applyConfigUpdate(payload); err != nil {
+		if err := applyConfigUpdateAndSave(payload); err != nil {
 			return err
-		}
-		if err := writeConfig(); err != nil {
-			return fmt.Errorf("failed to write config: %w", err)
 		}
 		fmt.Fprintln(cmd.OutOrStdout(), "Config updated.")
 		return nil

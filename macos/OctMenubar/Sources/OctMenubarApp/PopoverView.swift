@@ -50,6 +50,10 @@ struct PopoverView: View {
     }
 
     private var loadedContent: some View {
+        withResetCreditAlerts(loadedScrollContent)
+    }
+
+    private var loadedScrollContent: some View {
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 16) {
                 HeaderView(snapshot: viewModel.snapshot, isRefreshing: viewModel.isRefreshing, releaseMonitor: releaseMonitor)
@@ -69,6 +73,38 @@ struct PopoverView: View {
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .scrollIndicators(.visible)
+    }
+
+    /// Confirmation and failure dialogs for the reset-credit spend. Both sit
+    /// on the popover itself — the tap happens on a provider card's badge,
+    /// but the decision (and any error) belongs to the whole window. The two
+    /// are never active at once (a pending card OR an error), so chaining
+    /// them on one node is safe.
+    private func withResetCreditAlerts<V: View>(_ content: V) -> some View {
+        content
+            .alert(
+                "Reset \(viewModel.pendingResetCreditCard?.name ?? "") usage now?",
+                isPresented: Binding(
+                    get: { viewModel.pendingResetCreditCard != nil },
+                    set: { shown in if !shown { viewModel.cancelResetCredit() } }
+                )
+            ) {
+                Button("Use 1 Reset Credit") { viewModel.confirmResetCredit() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("One of \(viewModel.pendingResetCreditCard?.resetCredits ?? 0) remaining credits will be spent to clear this account's rate-limit windows immediately. Credits do not renew.")
+            }
+            .alert(
+                "Reset Failed",
+                isPresented: Binding(
+                    get: { viewModel.resetCreditError != nil },
+                    set: { shown in if !shown { viewModel.resetCreditError = nil } }
+                )
+            ) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(viewModel.resetCreditError ?? "")
+            }
     }
 
     private var providerSection: some View {
@@ -109,7 +145,12 @@ struct PopoverView: View {
     private func providerColumn(_ providers: [ProviderCard], columnWidths: UsageRowMetrics.ColumnWidths) -> some View {
         VStack(alignment: .leading, spacing: providerColumnSpacing) {
             ForEach(providers) { provider in
-                ProviderCardView(provider: provider, columnWidths: columnWidths, isRefreshing: viewModel.isRefreshing)
+                ProviderCardView(
+                    provider: provider,
+                    columnWidths: columnWidths,
+                    isRefreshing: viewModel.isRefreshing,
+                    onResetCreditTap: provider.resetCredits == nil ? nil : { viewModel.requestResetCredit(for: provider) }
+                )
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

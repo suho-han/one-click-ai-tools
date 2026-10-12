@@ -42,12 +42,12 @@ type alertSettingsModel struct {
 var alertSettingsRows = []struct{ key, label string }{
 	{"enabled", "Enabled"},
 	{"threshold_percent", "Threshold percent"},
-	{"critical_percent", "Critical percent"},
 	{"cooldown_minutes", "Cooldown minutes"},
 	{"quiet", "Quiet timer"},
 	{"threshold.default", "Threshold default"},
 	{"threshold.5h", "Threshold 5h"},
 	{"threshold.7d", "Threshold 7d"},
+	{"threshold.1m", "Threshold 1m"},
 }
 
 const alertSettingsViewChrome = 6
@@ -58,22 +58,19 @@ func alertSettingsDraftFromViper() alertSettingsDraft {
 	if threshold <= 0 {
 		threshold = 80
 	}
-	// Runtime evaluation inherits 5h/7d windows from the global default
+	// Runtime evaluation inherits window thresholds from the global default
 	// (thresholdFor: window -> default -> legacy percent), so the draft must
 	// show the same inherited value instead of the legacy percent.
 	effectiveDefault := alertThresholdOrDefault(cfg.GlobalThresholds, "default", threshold)
 	values := map[string]string{
 		"enabled":           strconv.FormatBool(cfg.Enabled),
 		"threshold_percent": formatAlertSettingNumber(threshold),
-		"critical_percent":  formatAlertSettingNumber(cfg.CriticalPct),
 		"cooldown_minutes":  strconv.Itoa(cfg.CooldownMinutes),
 		"quiet":             alertQuietDraftValue(cfg.QuietUntil),
 		"threshold.default": formatAlertSettingNumber(effectiveDefault),
 		"threshold.5h":      formatAlertSettingNumber(alertThresholdOrDefault(cfg.GlobalThresholds, "5h", effectiveDefault)),
 		"threshold.7d":      formatAlertSettingNumber(alertThresholdOrDefault(cfg.GlobalThresholds, "7d", effectiveDefault)),
-	}
-	if cfg.CriticalPct <= 0 {
-		values["critical_percent"] = "98"
+		"threshold.1m":      formatAlertSettingNumber(alertThresholdOrDefault(cfg.GlobalThresholds, "1m", effectiveDefault)),
 	}
 	if cfg.CooldownMinutes <= 0 {
 		values["cooldown_minutes"] = "360"
@@ -306,7 +303,7 @@ func validateAlertSettingsValue(key, value string) error {
 			return fmt.Errorf("invalid cooldown_minutes %q: must be a positive integer", value)
 		}
 		return nil
-	case "threshold_percent", "critical_percent", "threshold.default", "threshold.5h", "threshold.7d":
+	case "threshold_percent", "threshold.default", "threshold.5h", "threshold.7d", "threshold.1m":
 		_, err := parseAlertPercent(strings.ReplaceAll(key, ".", " "), value)
 		return err
 	case "quiet":

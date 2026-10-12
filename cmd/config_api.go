@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,24 +20,39 @@ type configToolStatus struct {
 	Name       string `json:"name"`
 	BinaryName string `json:"binary_name"`
 	Enabled    bool   `json:"enabled"`
+	CanUpdate  bool   `json:"can_update"`
+	// Installed version, filled only by snapshots that probed for it
+	// (`config list --json --probe-versions`); empty means not installed.
+	Version string `json:"version,omitempty"`
+}
+
+// configScheduleSnapshot reports the platform scheduler's persisted state for
+// one oct-managed task. Interval is empty when the task is disabled or the
+// interval cannot be recovered from the platform (hand-edited schedules,
+// Windows schtasks); Hour is only meaningful for weekly/daily.
+type configScheduleSnapshot struct {
+	Enabled  bool   `json:"enabled"`
+	Interval string `json:"interval"`
+	Hour     int    `json:"hour"`
 }
 
 type configSnapshot struct {
-	ConfigFile             string              `json:"config_file"`
-	MenubarTitleMode       string              `json:"menubar_title_mode"`
-	MenubarRefreshInterval string              `json:"menubar_refresh_interval"`
-	SessionRefreshEnabled  bool                `json:"session_refresh_enabled"`
-	SessionRefreshInterval string              `json:"session_refresh_interval"`
-	SessionRefreshHour     int                 `json:"session_refresh_hour"`
-	AgentOrder             []string            `json:"agent_order"`
-	Tools                  []configToolStatus  `json:"tools"`
-	Alert                  configAlertSnapshot `json:"alert"`
+	ConfigFile             string                 `json:"config_file"`
+	MenubarTitleMode       string                 `json:"menubar_title_mode"`
+	MenubarRefreshInterval string                 `json:"menubar_refresh_interval"`
+	SessionRefreshEnabled  bool                   `json:"session_refresh_enabled"`
+	SessionRefreshInterval string                 `json:"session_refresh_interval"`
+	SessionRefreshHour     int                    `json:"session_refresh_hour"`
+	TelemetryEnabled       bool                   `json:"telemetry_enabled"`
+	AgentUpdateSchedule    configScheduleSnapshot `json:"agent_update_schedule"`
+	AgentOrder             []string               `json:"agent_order"`
+	Tools                  []configToolStatus     `json:"tools"`
+	Alert                  configAlertSnapshot    `json:"alert"`
 }
 
 type configAlertSnapshot struct {
 	Enabled          bool                  `json:"enabled"`
 	ThresholdPercent float64               `json:"threshold_percent"`
-	CriticalPercent  float64               `json:"critical_percent"`
 	CooldownMinutes  int                   `json:"cooldown_minutes"`
 	QuietUntil       string                `json:"quiet_until"`
 	Thresholds       configAlertThresholds `json:"thresholds"`
@@ -46,22 +62,32 @@ type configAlertThresholds struct {
 	Default   float64 `json:"default"`
 	FiveHours float64 `json:"5h"`
 	SevenDays float64 `json:"7d"`
+	Monthly   float64 `json:"1m"`
+}
+
+// configScheduleUpdatePayload carries the settings UI's desired agent-update
+// schedule. A nil payload leaves the platform scheduler untouched.
+type configScheduleUpdatePayload struct {
+	Enabled  *bool  `json:"enabled"`
+	Interval string `json:"interval"`
+	Hour     *int   `json:"hour"`
 }
 
 type configUpdatePayload struct {
-	EnabledTools           []string                  `json:"enabled_tools"`
-	MenubarTitleMode       string                    `json:"menubar_title_mode"`
-	SessionRefreshEnabled  *bool                     `json:"session_refresh_enabled"`
-	SessionRefreshInterval string                    `json:"session_refresh_interval"`
-	SessionRefreshHour     *int                      `json:"session_refresh_hour"`
-	AgentOrder             []string                  `json:"agent_order"`
-	Alert                  *configAlertUpdatePayload `json:"alert"`
+	EnabledTools           []string                     `json:"enabled_tools"`
+	MenubarTitleMode       string                       `json:"menubar_title_mode"`
+	SessionRefreshEnabled  *bool                        `json:"session_refresh_enabled"`
+	SessionRefreshInterval string                       `json:"session_refresh_interval"`
+	SessionRefreshHour     *int                         `json:"session_refresh_hour"`
+	TelemetryEnabled       *bool                        `json:"telemetry_enabled"`
+	AgentUpdateSchedule    *configScheduleUpdatePayload `json:"agent_update_schedule"`
+	AgentOrder             []string                     `json:"agent_order"`
+	Alert                  *configAlertUpdatePayload    `json:"alert"`
 }
 
 type configAlertUpdatePayload struct {
 	Enabled          *bool                        `json:"enabled"`
 	ThresholdPercent *float64                     `json:"threshold_percent"`
-	CriticalPercent  *float64                     `json:"critical_percent"`
 	CooldownMinutes  *int                         `json:"cooldown_minutes"`
 	QuietUntil       *string                      `json:"quiet_until"`
 	Thresholds       *configAlertThresholdPayload `json:"thresholds"`
@@ -71,12 +97,12 @@ type configAlertThresholdPayload struct {
 	Default   *float64 `json:"default"`
 	FiveHours *float64 `json:"5h"`
 	SevenDays *float64 `json:"7d"`
+	Monthly   *float64 `json:"1m"`
 }
 
 type configAlertUpdate struct {
 	Enabled          *bool
 	ThresholdPercent *float64
-	CriticalPercent  *float64
 	CooldownMinutes  *int
 	QuietUntil       *string
 	Thresholds       *configAlertThresholdUpdate
@@ -86,6 +112,7 @@ type configAlertThresholdUpdate struct {
 	Default   *float64
 	FiveHours *float64
 	SevenDays *float64
+	Monthly   *float64
 }
 
 func parseConfigUpdatePayload(raw string) (configUpdatePayload, error) {
@@ -100,7 +127,11 @@ func parseConfigUpdatePayload(raw string) (configUpdatePayload, error) {
 	return payload, nil
 }
 
-func buildConfigSnapshot(configFile string) configSnapshot {
+func buildConfigSnapshot(configFile string) (configSnapshot, error) {
+	agentUpdateSchedule, err := buildAgentUpdateScheduleSnapshot()
+	if err != nil {
+		return configSnapshot{}, err
+	}
 	enabledTools := viper.GetStringSlice("enabled_tools")
 	rawOrder := viper.GetStringSlice("agent_order")
 	orderedTools := update.GetOrderedTools(rawOrder)
@@ -125,6 +156,7 @@ func buildConfigSnapshot(configFile string) configSnapshot {
 			Name:       tool.Name,
 			BinaryName: tool.BinaryName,
 			Enabled:    configToolEnabled(enabledTools, tool),
+			CanUpdate:  true,
 		})
 	}
 	appendStandalone = func(p usage.Provider) {
@@ -136,7 +168,7 @@ func buildConfigSnapshot(configFile string) configSnapshot {
 		tools = append(tools, configToolStatus{
 			Name:       p.Name,
 			BinaryName: p.Name,
-			Enabled:    standaloneProviderEnabled(enabledTools, p),
+			Enabled:    standaloneProviderEnabled(enabledTools, rawOrder, p),
 		})
 	}
 
@@ -192,10 +224,87 @@ func buildConfigSnapshot(configFile string) configSnapshot {
 		SessionRefreshEnabled:  viper.GetBool("session_refresh_enabled"),
 		SessionRefreshInterval: normalizedConfigRefreshInterval(viper.GetString("session_refresh_interval")),
 		SessionRefreshHour:     normalizedConfigRefreshHour(viper.GetInt("session_refresh_hour")),
+		TelemetryEnabled:       viper.GetBool("telemetry_enabled"),
+		AgentUpdateSchedule:    agentUpdateSchedule,
 		AgentOrder:             agentOrder,
 		Tools:                  tools,
 		Alert:                  buildConfigAlertSnapshot(),
+	}, nil
+}
+
+// configScheduleScheduler is the scheduler source for the config API's
+// agent-update schedule surface; a var so tests can stub the platform
+// scheduler.
+var configScheduleScheduler = schedule.GetScheduler
+
+// buildAgentUpdateScheduleSnapshot reads back the persisted agent-update
+// schedule straight from the platform scheduler (launchd plist / crontab /
+// schtasks). If inspection fails, no settings snapshot can safely be saved:
+// reporting "off" would turn an unrelated settings save into a disable.
+func buildAgentUpdateScheduleSnapshot() (configScheduleSnapshot, error) {
+	scheduler, err := configScheduleScheduler()
+	if err != nil {
+		return configScheduleSnapshot{}, fmt.Errorf("scheduler unavailable: %w", err)
 	}
+	state, err := scheduler.Describe(schedule.AgentUpdateTask)
+	if err != nil {
+		return configScheduleSnapshot{}, fmt.Errorf("failed to read the current agent-update schedule: %w", err)
+	}
+	hour := state.Hour
+	if !state.Enabled {
+		// Report the effective default the next enable would use, so the
+		// settings UI's hour control starts somewhere sensible instead of at
+		// midnight just because the schedule is off.
+		hour = 9
+	}
+	return configScheduleSnapshot{Enabled: state.Enabled, Interval: state.Interval, Hour: hour}, nil
+}
+
+// applyConfigUpdateAndSave restores the platform schedule when config
+// persistence fails. The scheduler is a separate store, so a failed save
+// must not leave an apparently rejected automatic update enabled.
+func applyConfigUpdateAndSave(payload configUpdatePayload) error {
+	var scheduler schedule.Scheduler
+	var previous schedule.CurrentSchedule
+	if desired := payload.AgentUpdateSchedule; desired != nil {
+		var err error
+		scheduler, err = configScheduleScheduler()
+		if err != nil {
+			return fmt.Errorf("scheduler unavailable: %w", err)
+		}
+		previous, err = scheduler.Describe(schedule.AgentUpdateTask)
+		if err != nil {
+			return fmt.Errorf("failed to read the current agent-update schedule: %w", err)
+		}
+		if previous.Enabled && previous.Interval == "" &&
+			(desired.Enabled == nil || !*desired.Enabled || strings.TrimSpace(desired.Interval) != "") {
+			return fmt.Errorf("cannot change an agent-update schedule with an unknown interval through config update")
+		}
+	}
+	if err := applyConfigUpdate(payload); err != nil {
+		return err
+	}
+	if err := writeConfig(); err != nil {
+		saveErr := fmt.Errorf("failed to write config: %w", err)
+		if scheduler == nil {
+			return saveErr
+		}
+		after, inspectErr := scheduler.Describe(schedule.AgentUpdateTask)
+		if inspectErr == nil && after == previous {
+			return saveErr
+		}
+		var restoreErr error
+		if previous.Enabled {
+			restoreErr = scheduler.Enable(schedule.AgentUpdateTask, previous.Interval, previous.Hour)
+		} else {
+			restoreErr = scheduler.Disable(schedule.AgentUpdateTask)
+		}
+		if restoreErr != nil {
+			return errors.Join(saveErr, fmt.Errorf("failed to restore previous agent-update schedule: %w", restoreErr))
+		}
+		return saveErr
+	}
+	return nil
 }
 
 func applyConfigUpdate(payload configUpdatePayload) error {
@@ -236,6 +345,9 @@ func applyConfigUpdate(payload configUpdatePayload) error {
 	if payload.SessionRefreshEnabled != nil {
 		viper.Set("session_refresh_enabled", *payload.SessionRefreshEnabled)
 	}
+	if payload.TelemetryEnabled != nil {
+		viper.Set("telemetry_enabled", *payload.TelemetryEnabled)
+	}
 	if shouldSetInterval {
 		viper.Set("session_refresh_interval", interval)
 	}
@@ -243,6 +355,62 @@ func applyConfigUpdate(payload configUpdatePayload) error {
 		viper.Set("session_refresh_hour", hour)
 	}
 	applyConfigAlertUpdate(alert)
+	return applyAgentUpdateScheduleUpdate(payload.AgentUpdateSchedule)
+}
+
+// applyAgentUpdateScheduleUpdate syncs the platform scheduler with the
+// payload's desired agent-update schedule. The settings UI sends the full
+// payload on every save, so an update matching the persisted scheduler state
+// is skipped — only a real change runs Enable/Disable (rewriting the launchd
+// plist or crontab). An enabled payload with no usable interval is the
+// round-trip of an "enabled, interval unknown" state: it passes only when the
+// current state matches, never guesses an interval.
+func applyAgentUpdateScheduleUpdate(payload *configScheduleUpdatePayload) error {
+	if payload == nil {
+		return nil
+	}
+	enabled := payload.Enabled != nil && *payload.Enabled
+	scheduler, err := configScheduleScheduler()
+	if err != nil {
+		return fmt.Errorf("scheduler unavailable: %w", err)
+	}
+	current, err := scheduler.Describe(schedule.AgentUpdateTask)
+	if err != nil {
+		return fmt.Errorf("failed to read the current agent-update schedule: %w", err)
+	}
+
+	hour := 9
+	if payload.Hour != nil {
+		if *payload.Hour < 0 || *payload.Hour > 23 {
+			return fmt.Errorf("invalid agent_update_schedule hour %d (must be 0-23)", *payload.Hour)
+		}
+		hour = *payload.Hour
+	}
+	if !enabled {
+		if !current.Enabled {
+			return nil
+		}
+		if err := scheduler.Disable(schedule.AgentUpdateTask); err != nil {
+			return fmt.Errorf("failed to disable the agent-update schedule: %w", err)
+		}
+		return nil
+	}
+
+	interval := strings.TrimSpace(payload.Interval)
+	parsed, err := schedule.ParseInterval(interval)
+	if err != nil {
+		if interval == "" && current.Enabled {
+			return nil
+		}
+		return fmt.Errorf("invalid agent_update_schedule interval: %w", err)
+	}
+	if current.Enabled && current.Interval == parsed &&
+		(!schedule.IntervalUsesHour(parsed) || current.Hour == hour) {
+		return nil
+	}
+	if err := scheduler.Enable(schedule.AgentUpdateTask, parsed, hour); err != nil {
+		return fmt.Errorf("failed to enable the agent-update schedule: %w", err)
+	}
 	return nil
 }
 
@@ -255,15 +423,11 @@ func buildConfigAlertSnapshot() configAlertSnapshot {
 	if threshold <= 0 {
 		threshold = 80
 	}
-	critical := alert.CriticalPct
-	if critical <= 0 {
-		critical = 98
-	}
 	cooldown := alert.CooldownMinutes
 	if cooldown <= 0 {
 		cooldown = 360
 	}
-	// Runtime evaluation inherits 5h/7d windows from the global default
+	// Runtime evaluation inherits window thresholds from the global default
 	// (thresholdFor: window -> default -> legacy percent). The Swift settings
 	// payload always sends the complete alert object, so reporting the legacy
 	// percent here would persist it as an explicit window override on save.
@@ -275,13 +439,13 @@ func buildConfigAlertSnapshot() configAlertSnapshot {
 	return configAlertSnapshot{
 		Enabled:          alert.Enabled,
 		ThresholdPercent: threshold,
-		CriticalPercent:  critical,
 		CooldownMinutes:  cooldown,
 		QuietUntil:       quietUntil,
 		Thresholds: configAlertThresholds{
 			Default:   effectiveDefault,
 			FiveHours: configAlertThreshold(alert.GlobalThresholds, "5h", effectiveDefault),
 			SevenDays: configAlertThreshold(alert.GlobalThresholds, "7d", effectiveDefault),
+			Monthly:   configAlertThreshold(alert.GlobalThresholds, "1m", effectiveDefault),
 		},
 	}
 }
@@ -298,10 +462,6 @@ func normalizeConfigAlertUpdate(payload *configAlertUpdatePayload) (configAlertU
 		return configAlertUpdate{}, nil
 	}
 	thresholdPercent, err := normalizeConfigAlertPercent("threshold_percent", payload.ThresholdPercent)
-	if err != nil {
-		return configAlertUpdate{}, err
-	}
-	criticalPercent, err := normalizeConfigAlertPercent("critical_percent", payload.CriticalPercent)
 	if err != nil {
 		return configAlertUpdate{}, err
 	}
@@ -327,7 +487,6 @@ func normalizeConfigAlertUpdate(payload *configAlertUpdatePayload) (configAlertU
 	return configAlertUpdate{
 		Enabled:          payload.Enabled,
 		ThresholdPercent: thresholdPercent,
-		CriticalPercent:  criticalPercent,
 		CooldownMinutes:  payload.CooldownMinutes,
 		QuietUntil:       quietUntil,
 		Thresholds:       thresholds,
@@ -361,10 +520,15 @@ func normalizeConfigAlertThresholds(payload *configAlertThresholdPayload) (*conf
 	if err != nil {
 		return nil, err
 	}
+	monthly, err := normalizeConfigAlertPercent("thresholds.1m", payload.Monthly)
+	if err != nil {
+		return nil, err
+	}
 	return &configAlertThresholdUpdate{
 		Default:   defaultThreshold,
 		FiveHours: fiveHours,
 		SevenDays: sevenDays,
+		Monthly:   monthly,
 	}, nil
 }
 
@@ -374,9 +538,6 @@ func applyConfigAlertUpdate(alert configAlertUpdate) {
 	}
 	if alert.ThresholdPercent != nil {
 		viper.Set("usage_alert_threshold_percent", *alert.ThresholdPercent)
-	}
-	if alert.CriticalPercent != nil {
-		viper.Set("usage_alert_critical_percent", *alert.CriticalPercent)
 	}
 	if alert.CooldownMinutes != nil {
 		viper.Set("usage_alert_cooldown_minutes", *alert.CooldownMinutes)
@@ -395,6 +556,9 @@ func applyConfigAlertUpdate(alert configAlertUpdate) {
 	}
 	if alert.Thresholds.SevenDays != nil {
 		viper.Set("usage_alert_thresholds.7d", *alert.Thresholds.SevenDays)
+	}
+	if alert.Thresholds.Monthly != nil {
+		viper.Set("usage_alert_thresholds.1m", *alert.Thresholds.Monthly)
 	}
 }
 
@@ -558,10 +722,12 @@ func canonicalConfigProvider(rawTool string) (string, bool) {
 	return "", false
 }
 
-// standaloneProviderEnabled reports whether a standalone usage provider was
-// explicitly listed in enabled_tools. Unlike installable tools they are
-// opt-in: an empty enabled_tools list does NOT enable them.
-func standaloneProviderEnabled(enabledTools []string, p usage.Provider) bool {
+// standaloneProviderEnabled follows usage's opt-in authority: when
+// enabled_tools is empty, agent_order opts standalone providers in.
+func standaloneProviderEnabled(enabledTools, agentOrder []string, p usage.Provider) bool {
+	if len(enabledTools) == 0 {
+		enabledTools = agentOrder
+	}
 	for _, enabled := range enabledTools {
 		for _, part := range strings.Split(enabled, ",") {
 			if resolved, ok := usage.LookupStandalone(part); ok && resolved.Name == p.Name {

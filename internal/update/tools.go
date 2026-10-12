@@ -260,3 +260,47 @@ func GetFilteredTools(enabled []string, ordered []Tool) []Tool {
 	}
 	return result
 }
+
+// resolveOnlyTools maps an explicit --only selection onto the ordered tool
+// registry, bypassing the enabled_tools filter. It returns nil (with no
+// error) when the selection is empty — meaning "no restriction" — and an
+// error naming every known tool when any selected name matches nothing.
+func resolveOnlyTools(only []string, ordered []Tool) ([]Tool, error) {
+	names := splitToolNames(only)
+	if len(names) == 0 {
+		return nil, nil
+	}
+	matched := make([]Tool, 0, len(names))
+	matchedNames := make(map[string]bool, len(names))
+	for _, t := range ordered {
+		for _, name := range names {
+			normalized := NormalizeToolName(name)
+			if normalized == "" || matchedNames[normalized] {
+				continue
+			}
+			if t.MatchesName(name) {
+				matched = append(matched, t)
+				matchedNames[normalized] = true
+				break
+			}
+		}
+	}
+	var unmatched []string
+	for _, name := range names {
+		if !matchedNames[NormalizeToolName(name)] {
+			unmatched = append(unmatched, name)
+		}
+	}
+	if len(unmatched) > 0 {
+		valid := make([]string, 0, len(ordered))
+		for _, t := range ordered {
+			valid = append(valid, t.BinaryName)
+		}
+		return nil, fmt.Errorf(
+			"unknown tool(s): %s (valid tools: %s)",
+			strings.Join(unmatched, ", "),
+			strings.Join(valid, ", "),
+		)
+	}
+	return matched, nil
+}

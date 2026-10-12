@@ -313,3 +313,60 @@ func TestAddCodexBackendWindowKeepsFirstWindowPerBucket(t *testing.T) {
 		t.Fatalf("expected primary reset to win, got %q", resets["5h"])
 	}
 }
+
+func TestFetchCodexUsageBackendSurfacesResetCredits(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp)
+	t.Setenv("CODEX_HOME", filepath.Join(tmp, ".codex"))
+
+	codexDir := filepath.Join(tmp, ".codex")
+	if err := os.MkdirAll(codexDir, 0o755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(codexDir, "auth.json"), []byte(`{"tokens":{"access_token":"test-token","account_id":"acct-1"}}`), 0o600); err != nil {
+		t.Fatalf("write auth failed: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"plan_type":"prolite","rate_limit":{"primary_window":{"used_percent":2,"limit_window_seconds":604800,"reset_at":1792022631}},"rate_limit_reset_credits":{"available_count":2,"applicable_available_count":0}}`)
+	}))
+	defer server.Close()
+	t.Setenv("OCT_CODEX_USAGE_ENDPOINT", server.URL)
+
+	result := FetchCodexUsage(t.Context())
+	if result.Status != "ok" {
+		t.Fatalf("expected ok, got %s", result.Status)
+	}
+	if result.ResetCredits == nil || *result.ResetCredits != 2 {
+		t.Fatalf("expected reset_credits 2, got %v", result.ResetCredits)
+	}
+}
+
+func TestFetchCodexUsageBackendOmitsMissingResetCredits(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("HOME", tmp)
+	t.Setenv("USERPROFILE", tmp)
+	t.Setenv("CODEX_HOME", filepath.Join(tmp, ".codex"))
+
+	codexDir := filepath.Join(tmp, ".codex")
+	if err := os.MkdirAll(codexDir, 0o755); err != nil {
+		t.Fatalf("mkdir failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(codexDir, "auth.json"), []byte(`{"tokens":{"access_token":"test-token","account_id":"acct-1"}}`), 0o600); err != nil {
+		t.Fatalf("write auth failed: %v", err)
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"plan_type":"prolite","rate_limit":{"primary_window":{"used_percent":2,"limit_window_seconds":604800,"reset_at":1792022631}}}`)
+	}))
+	defer server.Close()
+	t.Setenv("OCT_CODEX_USAGE_ENDPOINT", server.URL)
+
+	result := FetchCodexUsage(t.Context())
+	if result.ResetCredits != nil {
+		t.Fatalf("expected nil reset_credits when backend omits the field, got %v", *result.ResetCredits)
+	}
+}

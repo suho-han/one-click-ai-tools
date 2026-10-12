@@ -60,6 +60,7 @@ directly and treat message heuristics as internal.
 | `unit` | string | always | `percent`, `requests`, `sessions`, `msgs`, or `USD`. New units may be added. |
 | `buckets` | map[string]string | optional | Per-window values, same string convention as `used`. Window keys seen today: `5h`, `7d`, `1m`; each provider emits its own subset. |
 | `bucket_resets` | map[string]string | optional | Per-window reset timestamps. **Format is currently provider-dependent**: RFC 3339 (e.g. `2026-09-26T08:00:00+09:00`) for some providers, unix-epoch-seconds-as-string (e.g. `1790412359`) for others. Do not assume one format; normalize by checking the first character for `[0-9]`. |
+| `reset_credits` | integer | optional | Unused Codex rate-limit reset credits. Present even when the reported count is `0`; absent for providers without this concept. |
 | `source_detail` | string | optional | Diagnostic detail about the credential/refresh state used for the fetch. Free-form; not a stable vocabulary. |
 | `message` | string | optional | Short human-readable note, **truncated to 48 characters** in JSON output. Not a stable vocabulary — parse at your own risk. |
 

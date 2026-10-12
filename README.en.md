@@ -79,6 +79,15 @@ oct usage            # human-readable table
 oct usage --json     # for scripts/pipes
 ```
 
+### Usage analytics and opt-out
+
+Release builds enable usage analytics by default. They send command names, execution source (CLI, menubar, or noninteractive), version, OS, device family, outcome, duration, explicitly selected providers, and a random installation ID. Return visits are counted by installation, so this is **pseudonymous analytics, not complete anonymity**. Prompts, credentials, accounts, arguments and flag values, error text, quota or cost data, and file paths are not sent. Periodic menubar checks and background polling are excluded.
+
+To stop future collection, run `oct config set telemetry-enabled false`, or turn off **Share usage analytics** under menubar Settings → General and press **Save**. `DO_NOT_TRACK=1` or `OCT_TELEMETRY_ENABLED=false` also disables collection temporarily. Opting out does not delete previously stored records or the local installation ID at `~/.oct/telemetry/installation-id`; deleting that file creates a new ID on the next enabled run. Analytics records are retained for 90 days. IP addresses are not stored in analytics records or used for location inference, though network operators can observe the sending IP in transit.
+
+Menubar **Settings → About → Project → Feedback** sends your text and the receipt time only when you click **Send feedback**. Submissions are not linked to installation IDs or accounts and are retained for 90 days. Feedback is separate from usage analytics opt-out; failed submissions are not retried automatically. Do not include passwords, API keys, or personal information.
+
+
 ## 🗺️ Command map
 
 | Step | Command | What it does |
@@ -236,7 +245,13 @@ oct menubar install-helper # install to ~/.local/bin/OctMenubarApp
 <details>
 <summary><b>⚙️ Settings screen scope and fetch timeout</b></summary>
 
-In the menubar app's Settings, General is merged into the Configuration screen. Its alert section exposes only safe global alert settings; it does not expose provider-specific thresholds or snooze controls. Use `oct alert config ...` and `oct alert snooze ...` for those advanced controls.
+The menubar Settings window has Providers (selection and updates), Display (appearance and usage), Alerts (global rules), Automation (session refresh and launch at login), and About (app details, version, update checks, and project links) tabs. Edits persist when switching tabs and are saved with the pinned Save changes button. The Terminal command-launching Tools tab is gone; run those commands directly with the `oct` CLI. Alerts exposes only safe global settings; use `oct alert config ...` and `oct alert snooze ...` for provider-specific thresholds or snooze controls.
+
+While the initial configuration loads, a progress indicator appears in the center of the Settings window. After loading, the success message fades out after five seconds; errors remain visible.
+
+Alert threshold sliders select 5% steps from 5% through 95%, then 99%. Select "Use the same threshold for 5h, 7d, and 1m" to apply one Alert threshold to all three windows; deselect it to edit only the three window-specific sliders. The checkbox choice persists across launches, but resets if an external configuration introduces divergent window values.
+
+About shows the running menubar app version and links to the GitHub repository and sponsorship page. "Automatically check for updates" takes effect immediately: when enabled, it checks GitHub Releases every five minutes and offers a download-page link; disabling it stops checks and notifications. It never installs updates automatically.
 
 The overall fetch deadline of `oct usage --json` (15s by default) is tunable via the `OCT_USAGE_FETCH_TIMEOUT` environment variable (e.g. `OCT_USAGE_FETCH_TIMEOUT=8s oct usage`). It is clamped to the 5–18s range, so a partial result always arrives within the menubar helper's 20s process timeout.
 

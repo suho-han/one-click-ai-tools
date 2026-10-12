@@ -47,6 +47,17 @@ struct ConfigTool: Codable, Equatable, Identifiable {
     let name: String
     let binaryName: String
     var enabled: Bool
+    /// Installed version, present only in snapshots that probed for it
+    /// (`config list --json --probe-versions`, used by the settings load).
+    /// nil = the installed oct is too old to report versions; "" = probed but
+    /// not installed. Synthesized Codable decoding reads optionals with
+    /// decodeIfPresent, so older snapshots decode unchanged.
+    var version: String?
+    /// The CLI marks usage-only providers false. Missing on older CLI
+    /// snapshots defaults to the previous installable-tool behavior.
+    var canUpdate: Bool? = nil
+
+    var supportsUpdate: Bool { canUpdate ?? true }
 
     var id: String { binaryName }
 
@@ -54,25 +65,125 @@ struct ConfigTool: Codable, Equatable, Identifiable {
         case name
         case binaryName = "binary_name"
         case enabled
+        case version
+        case canUpdate = "can_update"
     }
+}
+
+/// The platform scheduler's persisted agent-update schedule, mirrored from
+/// the oct snapshot (`agent_update_schedule`). `interval` is empty when the
+/// schedule is off or its interval cannot be recovered from the platform
+/// (hand-edited schedules) — that state round-trips unchanged instead of
+/// being rewritten to a guessed value.
+struct AgentUpdateSchedule: Codable, Equatable {
+    var enabled: Bool
+    var interval: String
+    var hour: Int
+
+    static let off = AgentUpdateSchedule(enabled: false, interval: "", hour: 9)
+
+    enum CodingKeys: String, CodingKey {
+        case enabled
+        case interval
+        case hour
+    }
+
+    init(enabled: Bool, interval: String, hour: Int) {
+        self.enabled = enabled
+        self.interval = interval
+        self.hour = hour
+    }
+
+    /// Tolerant decoding: snapshots from an older oct CLI carry no
+    /// `agent_update_schedule`.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            enabled: try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? false,
+            interval: try container.decodeIfPresent(String.self, forKey: .interval) ?? "",
+            hour: try container.decodeIfPresent(Int.self, forKey: .hour) ?? 9
+        )
+    }
+
+    /// Sentinel picker tag for "on with an unrecoverable interval".
+    static let customTag = "custom"
+    /// Sentinel picker tag for "off".
+    static let offTag = "off"
+
+    var isCustom: Bool { enabled && interval.isEmpty }
+
+    /// Picker tag for the current state: off, a concrete interval, or the
+    /// custom sentinel for an enabled-but-unknown schedule.
+    var pickerValue: String {
+        guard enabled else { return Self.offTag }
+        return interval.isEmpty ? Self.customTag : interval
+    }
+
+    /// Applies a picker tag. "custom" keeps the interval empty so an unknown
+    /// schedule round-trips instead of being rewritten.
+    mutating func setPickerValue(_ value: String) {
+        if value == Self.offTag {
+            self = .off
+            return
+        }
+        enabled = true
+        if value != Self.customTag {
+            interval = value
+        }
+    }
+
+    var usesHour: Bool { SessionRefreshIntervalOption.usesHour(interval) }
 }
 
 struct AlertThresholds: Codable, Equatable {
     var defaultThreshold: Double
     var fiveHours: Double
     var sevenDays: Double
+    var monthly: Double
 
     enum CodingKeys: String, CodingKey {
         case defaultThreshold = "default"
         case fiveHours = "5h"
         case sevenDays = "7d"
+        case monthly = "1m"
+    }
+
+    static let goDefaults = AlertThresholds(defaultThreshold: 80, fiveHours: 80, sevenDays: 80, monthly: 80)
+
+    init(
+        defaultThreshold: Double,
+        fiveHours: Double,
+        sevenDays: Double,
+        monthly: Double
+    ) {
+        self.defaultThreshold = defaultThreshold
+        self.fiveHours = fiveHours
+        self.sevenDays = sevenDays
+        self.monthly = monthly
+    }
+
+    var hasSharedWindows: Bool {
+        fiveHours == defaultThreshold && sevenDays == defaultThreshold && monthly == defaultThreshold
+    }
+
+    /// Tolerant decoding: snapshots from an older oct CLI carry no `1m`
+    /// (and legacy ones may omit other window keys), and the alerts screen
+    /// must still load instead of failing with a missing-data error.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let defaults = AlertThresholds.goDefaults
+        self.init(
+            defaultThreshold: try container.decodeIfPresent(Double.self, forKey: .defaultThreshold) ?? defaults.defaultThreshold,
+            fiveHours: try container.decodeIfPresent(Double.self, forKey: .fiveHours) ?? defaults.fiveHours,
+            sevenDays: try container.decodeIfPresent(Double.self, forKey: .sevenDays) ?? defaults.sevenDays,
+            monthly: try container.decodeIfPresent(Double.self, forKey: .monthly) ?? defaults.monthly
+        )
     }
 }
 
 struct AlertSettings: Codable, Equatable {
     var enabled: Bool
     var thresholdPercent: Double
-    var criticalPercent: Double
     var cooldownMinutes: Int
     var quietUntil: String
     var thresholds: AlertThresholds
@@ -80,14 +191,37 @@ struct AlertSettings: Codable, Equatable {
     static let goDefaults = AlertSettings(
         enabled: false,
         thresholdPercent: 80,
-        criticalPercent: 98,
         cooldownMinutes: 360,
         quietUntil: "",
-        thresholds: AlertThresholds(defaultThreshold: 80, fiveHours: 80, sevenDays: 80)
+        thresholds: .goDefaults
     )
 
     /// Preset quiet timer durations in hours, mirroring the Go CLI choices.
     static let quietChoices: [Int] = [1, 2, 4, 6, 12]
+
+    /// Preset cooldown durations in minutes offered by the settings picker.
+    /// Every preset satisfies the CLI payload contract (positive, ≤ 24h).
+    static let cooldownChoices: [Int] = [15, 30, 60, 120, 180, 360, 720, 1440]
+
+    /// Picker choices for cooldown: the presets plus the configured value when
+    /// the CLI wrote a custom duration, so an out-of-preset selection still
+    /// has a matching tag instead of rendering as a blank menu item.
+    static func cooldownMenuChoices(current: Int) -> [Int] {
+        guard current > 0, !cooldownChoices.contains(current) else { return cooldownChoices }
+        return (cooldownChoices + [current]).sorted()
+    }
+
+    /// Human label for a cooldown duration: minutes below an hour, otherwise
+    /// hours with a single decimal for fractional values ("15 min", "6 hr",
+    /// "1.5 hr").
+    static func cooldownLabel(for minutes: Int) -> String {
+        guard minutes >= 60 else { return "\(minutes) min" }
+        let hours = Double(minutes) / 60
+        if hours == hours.rounded() {
+            return "\(Int(hours)) hr"
+        }
+        return String(format: "%.1f hr", hours)
+    }
 
     /// Maps a quiet_until timestamp to the picker bucket shown for it: 0 when
     /// the timer is off or expired, otherwise the smallest preset covering the
@@ -118,7 +252,6 @@ struct AlertSettings: Codable, Equatable {
     enum CodingKeys: String, CodingKey {
         case enabled
         case thresholdPercent = "threshold_percent"
-        case criticalPercent = "critical_percent"
         case cooldownMinutes = "cooldown_minutes"
         case quietUntil = "quiet_until"
         case thresholds
@@ -127,29 +260,45 @@ struct AlertSettings: Codable, Equatable {
     init(
         enabled: Bool,
         thresholdPercent: Double,
-        criticalPercent: Double,
         cooldownMinutes: Int,
         quietUntil: String,
         thresholds: AlertThresholds
     ) {
         self.enabled = enabled
         self.thresholdPercent = thresholdPercent
-        self.criticalPercent = criticalPercent
         self.cooldownMinutes = cooldownMinutes
         self.quietUntil = quietUntil
         self.thresholds = thresholds
     }
 
+    /// Slider stops are 5%, 10%, …, 95%, and the CLI's 99% ceiling.
+    /// Existing off-step configuration values remain untouched until edited.
+    static func sliderThreshold(for raw: Double) -> Double {
+        if raw >= 97 { return 99 }
+        return min(max((raw / 5).rounded() * 5, 5), 95)
+    }
+
+    mutating func setSharedThreshold(_ percent: Double) {
+        thresholdPercent = percent
+        thresholds = AlertThresholds(
+            defaultThreshold: percent,
+            fiveHours: percent,
+            sevenDays: percent,
+            monthly: percent
+        )
+    }
+
     /// Tolerant decoding: snapshots from an older oct CLI carry no
     /// `quiet_until` (they still had quiet_hours/timezone), and the alerts
     /// screen must still load instead of failing with a missing-data error.
+    /// `critical_percent` was removed from the payload; older Go snapshots
+    /// that still carry it decode fine because extra keys are ignored.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let defaults = AlertSettings.goDefaults
         self.init(
             enabled: try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? defaults.enabled,
             thresholdPercent: try container.decodeIfPresent(Double.self, forKey: .thresholdPercent) ?? defaults.thresholdPercent,
-            criticalPercent: try container.decodeIfPresent(Double.self, forKey: .criticalPercent) ?? defaults.criticalPercent,
             cooldownMinutes: try container.decodeIfPresent(Int.self, forKey: .cooldownMinutes) ?? defaults.cooldownMinutes,
             quietUntil: try container.decodeIfPresent(String.self, forKey: .quietUntil) ?? "",
             thresholds: try container.decodeIfPresent(AlertThresholds.self, forKey: .thresholds) ?? defaults.thresholds
@@ -161,19 +310,25 @@ struct ConfigurationSnapshot: Codable, Equatable {
     let configFile: String
     let menubarTitleMode: MenubarTitleMode
     let menubarRefreshInterval: String
+    let telemetryEnabled: Bool
     let sessionRefreshEnabled: Bool
     let sessionRefreshInterval: String
     let sessionRefreshHour: Int
-    let tools: [ConfigTool]
+    let agentUpdateSchedule: AgentUpdateSchedule
+    /// Mutable so a background agent update can publish fresh tool versions
+    /// into the snapshot (in lockstep with the draft) without a re-probe.
+    var tools: [ConfigTool]
     let alert: AlertSettings
 
     enum CodingKeys: String, CodingKey {
         case configFile = "config_file"
         case menubarTitleMode = "menubar_title_mode"
         case menubarRefreshInterval = "menubar_refresh_interval"
+        case telemetryEnabled = "telemetry_enabled"
         case sessionRefreshEnabled = "session_refresh_enabled"
         case sessionRefreshInterval = "session_refresh_interval"
         case sessionRefreshHour = "session_refresh_hour"
+        case agentUpdateSchedule = "agent_update_schedule"
         case tools
         case alert
     }
@@ -182,18 +337,22 @@ struct ConfigurationSnapshot: Codable, Equatable {
         configFile: String,
         menubarTitleMode: MenubarTitleMode,
         menubarRefreshInterval: String = "1m",
+        telemetryEnabled: Bool = true,
         sessionRefreshEnabled: Bool,
         sessionRefreshInterval: String,
         sessionRefreshHour: Int,
+        agentUpdateSchedule: AgentUpdateSchedule = .off,
         tools: [ConfigTool],
         alert: AlertSettings = .goDefaults
     ) {
         self.configFile = configFile
         self.menubarTitleMode = menubarTitleMode
         self.menubarRefreshInterval = menubarRefreshInterval
+        self.telemetryEnabled = telemetryEnabled
         self.sessionRefreshEnabled = sessionRefreshEnabled
         self.sessionRefreshInterval = sessionRefreshInterval
         self.sessionRefreshHour = sessionRefreshHour
+        self.agentUpdateSchedule = agentUpdateSchedule
         self.tools = tools
         self.alert = alert
     }
@@ -204,9 +363,11 @@ struct ConfigurationSnapshot: Codable, Equatable {
             configFile: try container.decode(String.self, forKey: .configFile),
             menubarTitleMode: try container.decodeIfPresent(MenubarTitleMode.self, forKey: .menubarTitleMode) ?? .oct,
             menubarRefreshInterval: try container.decodeIfPresent(String.self, forKey: .menubarRefreshInterval) ?? "1m",
+            telemetryEnabled: try container.decodeIfPresent(Bool.self, forKey: .telemetryEnabled) ?? true,
             sessionRefreshEnabled: try container.decode(Bool.self, forKey: .sessionRefreshEnabled),
             sessionRefreshInterval: try container.decode(String.self, forKey: .sessionRefreshInterval),
             sessionRefreshHour: try container.decode(Int.self, forKey: .sessionRefreshHour),
+            agentUpdateSchedule: try container.decodeIfPresent(AgentUpdateSchedule.self, forKey: .agentUpdateSchedule) ?? .off,
             tools: try container.decode([ConfigTool].self, forKey: .tools),
             alert: try container.decodeIfPresent(AlertSettings.self, forKey: .alert) ?? .goDefaults
         )
@@ -267,18 +428,22 @@ struct ConfigurationSnapshot: Codable, Equatable {
 struct ConfigurationUpdatePayload: Codable, Equatable {
     let enabledTools: [String]
     let menubarTitleMode: MenubarTitleMode
+    let telemetryEnabled: Bool
     let sessionRefreshEnabled: Bool
     let sessionRefreshInterval: String
     let sessionRefreshHour: Int
+    let agentUpdateSchedule: AgentUpdateSchedule
     let agentOrder: [String]
     let alert: AlertSettings
 
     enum CodingKeys: String, CodingKey {
         case enabledTools = "enabled_tools"
         case menubarTitleMode = "menubar_title_mode"
+        case telemetryEnabled = "telemetry_enabled"
         case sessionRefreshEnabled = "session_refresh_enabled"
         case sessionRefreshInterval = "session_refresh_interval"
         case sessionRefreshHour = "session_refresh_hour"
+        case agentUpdateSchedule = "agent_update_schedule"
         case agentOrder = "agent_order"
         case alert
     }
@@ -287,24 +452,32 @@ struct ConfigurationUpdatePayload: Codable, Equatable {
 struct ConfigurationDraft: Equatable {
     var configFile: String
     var menubarTitleMode: MenubarTitleMode
+    var telemetryEnabled: Bool
     var sessionRefreshEnabled: Bool
     var sessionRefreshInterval: String
     var sessionRefreshHour: Int
+    var agentUpdateSchedule: AgentUpdateSchedule
     var tools: [ConfigTool]
     var alert: AlertSettings
 
     init(snapshot: ConfigurationSnapshot) {
         configFile = snapshot.configFile
         menubarTitleMode = snapshot.menubarTitleMode
+        telemetryEnabled = snapshot.telemetryEnabled
         sessionRefreshEnabled = snapshot.sessionRefreshEnabled
         sessionRefreshInterval = snapshot.sessionRefreshInterval
         sessionRefreshHour = snapshot.sessionRefreshHour
+        agentUpdateSchedule = snapshot.agentUpdateSchedule
         tools = snapshot.tools
         alert = snapshot.alert
     }
 
     var hasEnabledTool: Bool {
         tools.contains { $0.enabled }
+    }
+
+    var hasEnabledUpdateTool: Bool {
+        tools.contains { $0.enabled && $0.supportsUpdate }
     }
 
     mutating func setTool(_ binaryName: String, enabled: Bool) {
@@ -338,9 +511,11 @@ struct ConfigurationDraft: Equatable {
         ConfigurationUpdatePayload(
             enabledTools: tools.filter(\.enabled).map(\.binaryName),
             menubarTitleMode: menubarTitleMode,
+            telemetryEnabled: telemetryEnabled,
             sessionRefreshEnabled: sessionRefreshEnabled,
             sessionRefreshInterval: sessionRefreshInterval,
             sessionRefreshHour: sessionRefreshHour,
+            agentUpdateSchedule: agentUpdateSchedule,
             agentOrder: tools.map(\.binaryName),
             alert: alert
         )

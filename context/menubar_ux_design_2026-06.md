@@ -1,5 +1,13 @@
 # Menubar UX Design
 
+> **Status (archived 2026-09-30, merged from `PROJECT_CONTEXT/`):** superseded.
+> This design targeted the legacy `NSMenu` menubar; the custom popover lane it
+> deferred to ([menubar_custom_ui_plan_2026-06.md](menubar_custom_ui_plan_2026-06.md))
+> shipped and is now the primary UI, so the deferred "next iteration" ideas
+> here (header title, settings entry, card-like grouping) landed there. Kept
+> for its information-hierarchy rationale: summary → providers → detail →
+> global actions.
+
 ## Goal
 `oct menubar`를 “터미널 명령 바로가기”에서 “현재 usage 상태를 한눈에 보고 필요한 액션으로 짧게 진입하는 status item”으로 바꾼다.
 
@@ -109,7 +117,7 @@ menubar에서 `oct usage` 같은 plain PATH 호출을 쓰면 다른 글로벌 �
 
 - 현재 구현은 native `NSMenu` 해석본이다.
 - 참고 UI와 같은 card-like custom panel은 `NSStatusItem + NSPopover + SwiftUI` lane으로 별도 전환이 필요하다.
-- 이 전환 계획은 `PROJECT_CONTEXT/menubar-custom-ui-plan.md`에 분리해 둔다.
+- 이 전환 계획은 `context/menubar_custom_ui_plan_2026-06.md`에 분리해 둔다.
 - 즉, 현재 문서는 legacy/native-menu UX를 다루고, custom popover 설계/구현은 별도 트랙으로 관리한다.
 
 ## Deferred ideas (not in this step)

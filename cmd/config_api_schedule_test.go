@@ -1,0 +1,261 @@
+package cmd
+
+import (
+	"bytes"
+	"encoding/json"
+	"errors"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"github.com/spf13/viper"
+	"github.com/suho-han/one-click-ai-tools/internal/schedule"
+)
+
+// fakeConfigScheduler records scheduler calls so the config API's
+// agent-update schedule surface can be tested without touching launchd.
+type fakeConfigScheduler struct {
+	current     schedule.CurrentSchedule
+	describeErr error
+	enabled     []schedule.CurrentSchedule
+	disabled    int
+}
+
+func (f *fakeConfigScheduler) Enable(_ schedule.Task, interval string, hour int) error {
+	f.enabled = append(f.enabled, schedule.CurrentSchedule{Enabled: true, Interval: interval, Hour: hour})
+	f.current = schedule.CurrentSchedule{Enabled: true, Interval: interval, Hour: hour}
+	return nil
+}
+
+func (f *fakeConfigScheduler) Disable(_ schedule.Task) error {
+	f.disabled++
+	f.current = schedule.CurrentSchedule{}
+	return nil
+}
+
+func (f *fakeConfigScheduler) Status(schedule.Task) (string, error) {
+	if f.current.Enabled {
+		return "enabled", nil
+	}
+	return "disabled", nil
+}
+
+func (f *fakeConfigScheduler) Describe(schedule.Task) (schedule.CurrentSchedule, error) {
+	return f.current, f.describeErr
+}
+
+func withFakeConfigScheduler(t *testing.T, fake *fakeConfigScheduler) {
+	t.Helper()
+	orig := configScheduleScheduler
+	configScheduleScheduler = func() (schedule.Scheduler, error) { return fake, nil }
+	t.Cleanup(func() { configScheduleScheduler = orig })
+}
+
+// boolPtr/intPtr come from config_api_test.go.
+
+func TestApplyAgentUpdateScheduleUpdate(t *testing.T) {
+	tests := []struct {
+		name        string
+		current     schedule.CurrentSchedule
+		describeErr error
+		payload     *configScheduleUpdatePayload
+		wantEnable  *schedule.CurrentSchedule
+		wantDisable int
+		wantErr     bool
+	}{
+		{
+			name:    "nil payload never touches the scheduler",
+			current: schedule.CurrentSchedule{Enabled: true, Interval: "daily", Hour: 8},
+			payload: nil,
+		},
+		{
+			name:    "matching enabled schedule is skipped",
+			current: schedule.CurrentSchedule{Enabled: true, Interval: "daily", Hour: 8},
+			payload: &configScheduleUpdatePayload{Enabled: boolPtr(true), Interval: "daily", Hour: intPtr(8)},
+		},
+		{
+			name:    "matching hourly schedule ignores the hour",
+			current: schedule.CurrentSchedule{Enabled: true, Interval: "1h", Hour: 0},
+			payload: &configScheduleUpdatePayload{Enabled: boolPtr(true), Interval: "1h", Hour: intPtr(5)},
+		},
+		{
+			name:       "changed interval enables with the new value",
+			current:    schedule.CurrentSchedule{Enabled: true, Interval: "daily", Hour: 8},
+			payload:    &configScheduleUpdatePayload{Enabled: boolPtr(true), Interval: "weekly", Hour: intPtr(8)},
+			wantEnable: &schedule.CurrentSchedule{Enabled: true, Interval: "weekly", Hour: 8},
+		},
+		{
+			name:       "off to daily enables with the payload hour",
+			current:    schedule.CurrentSchedule{},
+			payload:    &configScheduleUpdatePayload{Enabled: boolPtr(true), Interval: "daily", Hour: intPtr(7)},
+			wantEnable: &schedule.CurrentSchedule{Enabled: true, Interval: "daily", Hour: 7},
+		},
+		{
+			name:        "disable runs only when currently enabled",
+			current:     schedule.CurrentSchedule{Enabled: true, Interval: "daily", Hour: 8},
+			payload:     &configScheduleUpdatePayload{Enabled: boolPtr(false)},
+			wantDisable: 1,
+		},
+		{
+			name:    "disable on an already disabled schedule is skipped",
+			current: schedule.CurrentSchedule{},
+			payload: &configScheduleUpdatePayload{Enabled: boolPtr(false)},
+		},
+		{
+			name:    "enabled with unknown interval round-trips when unchanged",
+			current: schedule.CurrentSchedule{Enabled: true},
+			payload: &configScheduleUpdatePayload{Enabled: boolPtr(true), Interval: "", Hour: intPtr(9)},
+		},
+		{
+			name:    "enabled with unknown interval from a disabled state is rejected",
+			current: schedule.CurrentSchedule{},
+			payload: &configScheduleUpdatePayload{Enabled: boolPtr(true), Interval: "", Hour: intPtr(9)},
+			wantErr: true,
+		},
+		{
+			name:    "hour outside 0-23 is rejected",
+			current: schedule.CurrentSchedule{},
+			payload: &configScheduleUpdatePayload{Enabled: boolPtr(true), Interval: "daily", Hour: intPtr(24)},
+			wantErr: true,
+		},
+		{
+			name:        "describe failure surfaces instead of rewriting",
+			current:     schedule.CurrentSchedule{},
+			describeErr: errors.New("launchd unreachable"),
+			payload:     &configScheduleUpdatePayload{Enabled: boolPtr(false)},
+			wantErr:     true,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			fake := &fakeConfigScheduler{current: tc.current, describeErr: tc.describeErr}
+			withFakeConfigScheduler(t, fake)
+
+			err := applyAgentUpdateScheduleUpdate(tc.payload)
+			if tc.wantErr {
+				if err == nil {
+					t.Fatalf("expected an error, got nil")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("applyAgentUpdateScheduleUpdate: %v", err)
+			}
+			if got := len(fake.enabled); (tc.wantEnable != nil) != (got == 1) {
+				t.Fatalf("enable calls = %d, want 1=%v", got, tc.wantEnable != nil)
+			}
+			if tc.wantEnable != nil && fake.enabled[0] != *tc.wantEnable {
+				t.Fatalf("enabled with %+v, want %+v", fake.enabled[0], *tc.wantEnable)
+			}
+			if fake.disabled != tc.wantDisable {
+				t.Fatalf("disable calls = %d, want %d", fake.disabled, tc.wantDisable)
+			}
+		})
+	}
+}
+
+func TestConfigUpdateRestoresScheduleWhenConfigWriteFails(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		previous schedule.CurrentSchedule
+		desired  configScheduleUpdatePayload
+	}{
+		{"enable", schedule.CurrentSchedule{}, configScheduleUpdatePayload{Enabled: boolPtr(true), Interval: "daily", Hour: intPtr(8)}},
+		{"disable", schedule.CurrentSchedule{Enabled: true, Interval: "daily", Hour: 8}, configScheduleUpdatePayload{Enabled: boolPtr(false)}},
+		{"rewrite", schedule.CurrentSchedule{Enabled: true, Interval: "weekly", Hour: 7}, configScheduleUpdatePayload{Enabled: boolPtr(true), Interval: "daily", Hour: intPtr(8)}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			viper.Reset()
+			t.Cleanup(viper.Reset)
+			blocker := filepath.Join(t.TempDir(), "not-a-directory")
+			if err := os.WriteFile(blocker, []byte("block"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			viper.SetConfigFile(filepath.Join(blocker, "config.yaml"))
+			fake := &fakeConfigScheduler{current: tc.previous}
+			withFakeConfigScheduler(t, fake)
+
+			err := applyConfigUpdateAndSave(configUpdatePayload{AgentUpdateSchedule: &tc.desired})
+			if err == nil || !strings.Contains(err.Error(), "failed to write config") {
+				t.Fatalf("save error = %v, want failed config persistence", err)
+			}
+			if fake.current != tc.previous {
+				t.Fatalf("schedule after rejected save = %+v, want restored %+v", fake.current, tc.previous)
+			}
+			if len(fake.enabled)+fake.disabled != 2 {
+				t.Fatalf("scheduler calls = %d, want change and rollback", len(fake.enabled)+fake.disabled)
+			}
+		})
+	}
+}
+
+func TestConfigUpdateRejectsIrreversibleUnknownSchedule(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	fake := &fakeConfigScheduler{current: schedule.CurrentSchedule{Enabled: true}}
+	withFakeConfigScheduler(t, fake)
+	err := applyConfigUpdateAndSave(configUpdatePayload{
+		AgentUpdateSchedule: &configScheduleUpdatePayload{Enabled: boolPtr(false)},
+	})
+	if err == nil || !strings.Contains(err.Error(), "unknown interval") {
+		t.Fatalf("update error = %v, want unknown schedule rejection", err)
+	}
+	if fake.disabled != 0 || !fake.current.Enabled {
+		t.Fatalf("unknown schedule changed despite rejection: %+v", fake)
+	}
+}
+
+func TestConfigListJSONDoesNotInventDisabledScheduleOnInspectionFailure(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	viper.SetConfigFile(filepath.Join(t.TempDir(), "config.yaml"))
+	fake := &fakeConfigScheduler{
+		current:     schedule.CurrentSchedule{Enabled: true, Interval: "daily", Hour: 8},
+		describeErr: errors.New("crontab read failed"),
+	}
+	withFakeConfigScheduler(t, fake)
+	oldJSON := configListJSON
+	configListJSON = true
+	t.Cleanup(func() { configListJSON = oldJSON })
+	var output bytes.Buffer
+	configListCmd.SetOut(&output)
+	t.Cleanup(func() { configListCmd.SetOut(nil) })
+
+	err := configListCmd.RunE(configListCmd, nil)
+	if err == nil || !strings.Contains(err.Error(), "crontab read failed") {
+		t.Fatalf("config list error = %v, want scheduler inspection failure", err)
+	}
+	if output.Len() != 0 {
+		t.Fatalf("failed inspection emitted unsafe JSON snapshot: %s", output.String())
+	}
+
+	fake.describeErr = nil
+	if err := configListCmd.RunE(configListCmd, nil); err != nil {
+		t.Fatal(err)
+	}
+	var recovered configSnapshot
+	if err := json.Unmarshal(output.Bytes(), &recovered); err != nil {
+		t.Fatal(err)
+	}
+	if !recovered.AgentUpdateSchedule.Enabled || recovered.AgentUpdateSchedule.Interval != "daily" {
+		t.Fatalf("recovered snapshot lost running schedule: %+v", recovered.AgentUpdateSchedule)
+	}
+}
+
+func TestDisplayVersion(t *testing.T) {
+	tests := []struct{ raw, want string }{
+		{"2.1.288 (Claude Code)", "2.1.288"},
+		{"0.160.0", "0.160.0"},
+		{"opencode v2.0.20", "2.0.20"},
+		{"GitHub Copilot CLI 1.0.86.", "1.0.86"},
+		{"2026.09.18-9a7762b", "2026.09.18-9a7762b"},
+		{"1.2.16", "1.2.16"},
+		{"", ""},
+	}
+	for _, tc := range tests {
+		if got := displayVersion(tc.raw); got != tc.want {
+			t.Fatalf("displayVersion(%q) = %q, want %q", tc.raw, got, tc.want)
+		}
+	}
+}

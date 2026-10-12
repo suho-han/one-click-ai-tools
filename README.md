@@ -38,6 +38,10 @@ curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/sc
 # 특정 버전 설치
 curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | OCT_VERSION=v0.1.6 sh
 
+# 베타/prerelease 설치 — 안정판 oct를 덮지 않고 oct-beta 명령으로 함께 설치되며,
+# 메뉴바 헬퍼도 별도 이름(OctMenubarApp-beta)으로 분리 실행됩니다
+curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | OCT_VERSION=v0.1.6-beta.1 sh
+
 # 설치 경로 변경
 curl -fsSL https://raw.githubusercontent.com/suho-han/one-click-ai-tools/main/scripts/install.sh | OCT_INSTALL_DIR=/usr/local/bin sh
 
@@ -78,6 +82,15 @@ oct agent-update
 oct usage            # 사람용 테이블
 oct usage --json     # 스크립트/파이프용
 ```
+
+### 사용 분석 및 수집 거부
+
+배포판은 기본적으로 사용 분석을 켭니다. 명령 이름, 실행 방식(CLI·메뉴바·비대화형), 버전·OS·기기 제품군, 성공 여부·실행 시간, 명시적으로 선택한 프로바이더와 무작위 설치 ID를 전송합니다. 설치별 재방문도 집계하므로 **완전 익명이 아닌 가명 기반 분석**입니다. 프롬프트, 자격증명, 계정, 명령 인자·옵션 값, 오류 내용, 사용량·비용 및 파일 경로는 전송하지 않습니다. 주기적인 메뉴바 조회와 백그라운드 점검은 제외합니다.
+
+이후 수집을 끄려면 `oct config set telemetry-enabled false`를 실행하거나 메뉴바 Settings → General에서 **Share usage analytics**를 끄고 **Save**를 누르세요. `DO_NOT_TRACK=1` 또는 `OCT_TELEMETRY_ENABLED=false`로 일시적으로 끌 수도 있습니다. 수집 거부는 이미 보관된 기록이나 로컬 설치 ID를 삭제하지 않습니다. ID는 `~/.oct/telemetry/installation-id`에 있으며, 파일을 삭제하면 다음 활성 실행에서 새 ID가 만들어집니다. 분석 기록은 90일간 보관합니다. IP 주소는 분석 기록에 저장하거나 위치 추정에 사용하지 않지만, 네트워크 사업자는 전송 중 발신 IP를 볼 수 있습니다.
+
+메뉴바 **Settings → About → Project → Feedback**에서 **Send feedback**을 눌렀을 때만 작성한 텍스트와 수신 시각이 전송·저장됩니다. 설치 ID나 계정과 연결하지 않으며, 90일간 보관합니다. 사용 분석 수집 거부와 별개이고 전송 실패 시 자동 재전송하지 않습니다. 비밀번호·API 키·개인정보는 입력하지 마세요.
+
 
 ## 🗺️ 명령어 지도
 
@@ -235,7 +248,13 @@ oct menubar install-helper # ~/.local/bin/OctMenubarApp 로 설치
 <details>
 <summary><b>⚙️ Settings 화면 범위와 페치 타임아웃</b></summary>
 
-메뉴바 앱의 Settings에서는 General 설정이 Configuration 화면으로 합쳐집니다. 이 화면의 알림 항목은 안전한 전역 알림 설정만 노출하며, 프로바이더별 임계값이나 snooze 제어는 노출하지 않습니다. 그런 고급 설정은 `oct alert config ...`와 `oct alert snooze ...`를 사용하세요.
+메뉴바 앱의 Settings는 Providers(도구 선택·업데이트), Display(외형·사용량 표시), Alerts(전역 알림), Automation(세션 갱신·로그인 시 실행), About(앱 정보·버전·업데이트 확인·프로젝트 링크) 탭으로 나뉩니다. 변경한 설정은 탭을 이동해도 유지되며, 창 하단의 Save changes로 저장합니다. Terminal 명령 실행용 Tools 탭은 없으며 명령은 `oct` CLI에서 직접 실행할 수 있습니다. Alerts 탭은 안전한 전역 설정만 노출하고, 프로바이더별 임계값이나 snooze 제어는 노출하지 않습니다. 그런 고급 설정은 `oct alert config ...`와 `oct alert snooze ...`를 사용하세요.
+
+설정을 처음 불러오는 동안 진행 표시가 Settings 창 가운데에 나타납니다. 불러오기가 끝나면 성공 안내가 5초 뒤 페이드아웃되며, 오류 안내는 자동으로 사라지지 않습니다.
+
+Alerts 탭의 임계값 슬라이더는 5% 간격(5~95%)과 마지막 99%를 선택합니다. "Use the same threshold for 5h, 7d, and 1m"을 선택하면 세 기간에 동일한 Alert threshold가 적용되고, 해제하면 각 기간의 슬라이더만 표시됩니다. 체크 상태는 다음 실행에도 유지되지만, 외부 설정에서 세 값이 달라지면 자동으로 해제됩니다.
+
+About 탭에는 실행 중인 메뉴바 앱 버전, GitHub 저장소와 후원 링크가 표시됩니다. "Automatically check for updates"는 즉시 적용되는 앱 설정으로, 켜면 5분마다 새 GitHub Release를 확인해 다운로드 페이지 링크를 보여주고 끄면 확인과 알림을 중지합니다. 업데이트를 자동 설치하지는 않습니다.
 
 `oct usage --json`의 전체 페치 deadline(기본 15초)은 `OCT_USAGE_FETCH_TIMEOUT` 환경변수로 조정할 수 있습니다 (예: `OCT_USAGE_FETCH_TIMEOUT=8s oct usage`). 5~18초 범위로 클램프되어 menubar helper의 20초 프로세스 타임아웃 안에 항상 부분 결과가 도착합니다.
 

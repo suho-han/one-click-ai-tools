@@ -53,15 +53,20 @@ func TestWaitForMenubarReady_timesOutWithoutReadyFile(t *testing.T) {
 func TestMenubarCommandReturnsForegroundFailure(t *testing.T) {
 	oldRunMenubar := runMenubarCommand
 	oldDaemon := menubarDaemon
+	oldForeground := menubarForeground
 	t.Cleanup(func() {
 		runMenubarCommand = oldRunMenubar
 		menubarDaemon = oldDaemon
+		menubarForeground = oldForeground
 	})
 
 	runMenubarCommand = func() error {
 		return errors.New("ready timeout")
 	}
+	// Bare `oct menubar` now registers the daemon and starts via launchd;
+	// the foreground failure path needs --foreground.
 	menubarDaemon = false
+	menubarForeground = true
 
 	err := menubarCmd.RunE(menubarCmd, nil)
 	if err == nil || !strings.Contains(err.Error(), "menubar failed: ready timeout") {

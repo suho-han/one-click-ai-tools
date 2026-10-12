@@ -1,0 +1,239 @@
+package update
+
+import (
+	"bytes"
+	"context"
+	"os"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+
+	"github.com/spf13/viper"
+)
+
+func TestStandaloneInstallerPropagatesDownloadFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("standalone installers require bash")
+	}
+	binDir := t.TempDir()
+	writeStubExecutable(t, filepath.Join(binDir, "curl"), "echo 'download failed' >&2\nexit 22\n")
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	tool := Tool{Name: "Kimi Code", BinaryName: "kimi"}
+	for _, manager := range []Manager{CursorAgent, AntigravityInstaller, KimiInstaller} {
+		output, err := runInstallWithFallback(t.Context(), manager, tool)
+		if err == nil || !strings.Contains(string(output), "download failed") {
+			t.Fatalf("%s installer returned output %q, error %v; want curl failure", manager, output, err)
+		}
+	}
+}
+
+func TestExplainResolvedManagerFallsBackWhenNpmMissing(t *testing.T) {
+	reset := stubManagerDetection(t)
+	defer reset()
+
+	manager, reason := explainResolvedManager(t.Context(), Tool{
+		Name:       "Kimi Code",
+		Package:    "@moonshot-ai/kimi-code",
+		BinaryName: "kimi",
+	})
+	if installerGOOS == "windows" {
+		if manager != Npm || reason != "npm not found" {
+			t.Fatalf("Windows fallback = %q (%s), want npm guidance", manager, reason)
+		}
+	} else {
+		if manager != KimiInstaller || reason != "official install script (npm not found)" {
+			t.Fatalf("shell-capable fallback = %q (%s), want Kimi installer", manager, reason)
+		}
+	}
+}
+
+func TestExplainResolvedManagerReportsMissingNpmForNpmOnlyTools(t *testing.T) {
+	reset := stubManagerDetection(t)
+	defer reset()
+
+	manager, reason := explainResolvedManager(t.Context(), Tool{
+		Name:       "MiniMax",
+		Package:    "mmx-cli",
+		BinaryName: "mmx",
+	})
+	if manager != Npm {
+		t.Fatalf("explainResolvedManager(minimax, npm missing) = %q, want %q", manager, Npm)
+	}
+	if reason != "npm not found" {
+		t.Fatalf("reason = %q, want %q", reason, "npm not found")
+	}
+}
+
+func TestExplainResolvedManagerKeepsNpmDefaultWhenNpmAvailable(t *testing.T) {
+	reset := stubManagerDetection(t)
+	defer reset()
+	binaryLookup = func(name string) (string, error) {
+		if name == "npm" {
+			return "/usr/local/bin/npm", nil
+		}
+		return "", errExecutableNotFound
+	}
+
+	manager, reason := explainResolvedManager(t.Context(), Tool{
+		Name:       "Kimi Code",
+		Package:    "@moonshot-ai/kimi-code",
+		BinaryName: "kimi",
+	})
+	if manager != Npm || reason != "default fallback" {
+		t.Fatalf("explainResolvedManager(kimi, npm present) = (%q, %q), want (npm, default fallback)", manager, reason)
+	}
+}
+
+func TestInstallerManagersReadVersionFromBinary(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Setenv("OCT_UPDATE_TEST_PROCESS", "1")
+		t.Setenv("OCT_UPDATE_TEST_VERSION", "fake-tool 9.9.9")
+	}
+	binDir := t.TempDir()
+	fakes := map[Manager]string{
+		ClaudeInstaller:   "claude",
+		CodexInstaller:    "codex",
+		CopilotInstaller:  "copilot",
+		KimiInstaller:     "kimi",
+		QwenInstaller:     "qwen",
+		OpenCodeInstaller: "opencode",
+	}
+	for _, binary := range fakes {
+		path := filepath.Join(binDir, executableName(binary))
+		writeStubExecutable(t, path, "echo \"fake-tool 9.9.9\"\n")
+	}
+
+	t.Setenv("PATH", binDir)
+
+	for manager, binary := range fakes {
+		tool := Tool{Name: "Fake", BinaryName: binary}
+		if got := manager.GetInstalledVersion(context.Background(), tool); !strings.Contains(got, "9.9.9") {
+			t.Fatalf("%s.GetInstalledVersion() = %q, want it to report 9.9.9", manager, got)
+		}
+	}
+}
+
+func TestMissingBinaryProbesBackingExecutableOnly(t *testing.T) {
+	reset := stubManagerDetection(t)
+	defer reset()
+
+	if got := Npm.missingBinary(); got != "npm" {
+		t.Fatalf("Npm.missingBinary() = %q, want %q when npm is absent", got, "npm")
+	}
+	if got := Brew.missingBinary(); got != "brew" {
+		t.Fatalf("Brew.missingBinary() = %q, want %q when brew is absent", got, "brew")
+	}
+	if got := KimiInstaller.missingBinary(); got != "" {
+		t.Fatalf("KimiInstaller.missingBinary() = %q, want \"\" (script installers have no probe)", got)
+	}
+
+	binaryLookup = func(name string) (string, error) {
+		if name == "npm" {
+			return "/usr/local/bin/npm", nil
+		}
+		return "", errExecutableNotFound
+	}
+	if got := Npm.missingBinary(); got != "" {
+		t.Fatalf("Npm.missingBinary() = %q, want \"\" when npm is present", got)
+	}
+}
+
+func TestMissingManagerGuidance(t *testing.T) {
+	tool := Tool{Name: "MiniMax", BinaryName: "mmx"}
+
+	got := missingManagerGuidance("npm", tool)
+	for _, want := range []string{"npm not found in PATH", "MiniMax installs via npm", "install Node.js first", "oct agent-update"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("guidance = %q, want it to mention %q", got, want)
+		}
+	}
+
+	got = missingManagerGuidance("brew", tool)
+	if !strings.Contains(got, "brew not found in PATH") || !strings.Contains(got, "https://brew.sh") {
+		t.Fatalf("guidance = %q, want Homebrew install guidance", got)
+	}
+
+	got = missingManagerGuidance("cargo", tool)
+	if !strings.Contains(got, "cargo not found in PATH") {
+		t.Fatalf("guidance = %q, want generic %q guidance", got, "cargo")
+	}
+}
+
+// Explain plans must reflect the platform's executable install path when npm
+// is unavailable: shell installers on Unix, actionable npm guidance on Windows.
+func TestExplainPlansMissingNpmByPlatform(t *testing.T) {
+	reset := stubManagerDetection(t)
+	defer reset()
+
+	tools := []Tool{
+		{Name: "Kimi Code", Package: "@moonshot-ai/kimi-code", BinaryName: "kimi"},
+		{Name: "MiniMax", Package: "mmx-cli", BinaryName: "mmx"},
+	}
+	byName := map[string]Plan{}
+	for _, plan := range ExplainPlans(t.Context(), tools) {
+		byName[plan.Tool.BinaryName] = plan
+	}
+
+	kimi := byName["kimi"]
+	if installerGOOS == "windows" {
+		if kimi.Manager != Npm || kimi.Reason != "npm not found" {
+			t.Fatalf("Windows Kimi plan = (%q, %q), want npm guidance", kimi.Manager, kimi.Reason)
+		}
+		if strings.Contains(strings.Join(kimi.InstallCommand, " "), "install.sh") {
+			t.Fatal("Windows plan must not advertise a POSIX shell installer")
+		}
+	} else {
+		if kimi.Manager != KimiInstaller {
+			t.Fatalf("plan manager for kimi = %q, want %q", kimi.Manager, KimiInstaller)
+		}
+		if joined := strings.Join(kimi.InstallCommand, " "); !strings.Contains(joined, "https://code.kimi.com/kimi-code/install.sh") {
+			t.Fatalf("kimi plan command = %q, want the official install script", joined)
+		}
+	}
+
+	mmx := byName["mmx"]
+	if mmx.Manager != Npm || mmx.Reason != "npm not found" {
+		t.Fatalf("plan for mmx = (%q, %q), want (npm, npm not found)", mmx.Manager, mmx.Reason)
+	}
+}
+
+// TestRunGuidesMissingNpmInsteadOfExecError drives the full Run loop for an
+// npm-only tool (MiniMax) on a machine without npm: the tool must be skipped
+// with actionable guidance instead of the raw exec failure.
+func TestRunGuidesMissingNpmInsteadOfExecError(t *testing.T) {
+	reset := stubManagerDetection(t)
+	defer reset()
+
+	origEnabled := viper.Get("enabled_tools")
+	origOrder := viper.Get("agent_order")
+	viper.Set("enabled_tools", []string{"minimax"})
+	viper.Set("agent_order", []string{"minimax"})
+	t.Cleanup(func() {
+		viper.Set("enabled_tools", origEnabled)
+		viper.Set("agent_order", origOrder)
+	})
+
+	var out bytes.Buffer
+	err := Run(t.Context(), Options{
+		Input:  strings.NewReader("y\n"),
+		Output: &out,
+	})
+	if err == nil || !strings.Contains(err.Error(), "1 tool(s) failed") {
+		t.Fatalf("Run() error = %v, want 1 tool failure", err)
+	}
+
+	text := out.String()
+	if !strings.Contains(text, "npm not found in PATH") {
+		t.Fatalf("Run output missing npm guidance:\n%s", text)
+	}
+	if !strings.Contains(text, "install Node.js first") {
+		t.Fatalf("Run output missing Node.js install hint:\n%s", text)
+	}
+	if strings.Contains(text, "executable file not found") {
+		t.Fatalf("Run output leaked the raw exec error:\n%s", text)
+	}
+	if !strings.Contains(text, "✗ Skipped") {
+		t.Fatalf("Run output should mark the tool as skipped:\n%s", text)
+	}
+}

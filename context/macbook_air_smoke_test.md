@@ -20,7 +20,7 @@ Use this document to quickly confirm:
 For full validation or remote operations, see:
 - `context/local_test.md`
 - `context/menubar_helper_operations.md`
-- `PROJECT_CONTEXT/remote-macos-validation-status.md`
+- `context/remote_macos_validation_status_2026-06.md` (archived remote validation record)
 
 ## Quick start
 

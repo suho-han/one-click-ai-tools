@@ -185,7 +185,7 @@ func TestMaybeSendUsageAlertsConcurrentWritersKeepState(t *testing.T) {
 	}
 }
 
-func TestSnoozeSuppressionAndCriticalOverride(t *testing.T) {
+func TestSnoozeSuppression(t *testing.T) {
 	origNotify := notifyFn
 	defer func() { notifyFn = origNotify }()
 	notifyCount := 0
@@ -200,13 +200,14 @@ func TestSnoozeSuppressionAndCriticalOverride(t *testing.T) {
 		ThresholdPct:    80,
 		CooldownMinutes: 120,
 		StatePath:       statePath,
-		CriticalPct:     98,
 	}
 	now := time.Now()
 	if err := SetSnooze(statePath, "", "", now.Add(1*time.Hour)); err != nil {
 		t.Fatalf("SetSnooze failed: %v", err)
 	}
 
+	// Snooze suppresses every alert — there is no critical priority that
+	// bypasses it anymore.
 	belowCrit := []usage.UsageResult{{Provider: "codex", Unit: "percent", Used: "96", Buckets: map[string]string{"5h": "96"}}}
 	if err := MaybeSendUsageAlerts(belowCrit, cfg, now); err != nil {
 		t.Fatalf("MaybeSendUsageAlerts failed: %v", err)
@@ -215,23 +216,20 @@ func TestSnoozeSuppressionAndCriticalOverride(t *testing.T) {
 		t.Fatalf("expected snooze suppression below critical")
 	}
 
-	critical := []usage.UsageResult{{Provider: "codex", Unit: "percent", Used: "99", Buckets: map[string]string{"5h": "99"}}}
-	if err := MaybeSendUsageAlerts(critical, cfg, now.Add(1*time.Minute)); err != nil {
+	extreme := []usage.UsageResult{{Provider: "codex", Unit: "percent", Used: "99", Buckets: map[string]string{"5h": "99"}}}
+	if err := MaybeSendUsageAlerts(extreme, cfg, now.Add(1*time.Minute)); err != nil {
 		t.Fatalf("MaybeSendUsageAlerts failed: %v", err)
 	}
-	if notifyCount == 0 {
-		t.Fatalf("expected critical override notification")
+	if notifyCount != 0 {
+		t.Fatalf("expected snooze to suppress 99%% too (critical bypass removed)")
 	}
 }
 
 func TestAlertPriority(t *testing.T) {
-	if p := computeAlertPriority(99, 90, 98); p != alertPriorityCritical {
-		t.Fatalf("expected critical, got %s", p)
-	}
-	if p := computeAlertPriority(92, 90, 98); p != alertPriorityHigh {
+	if p := computeAlertPriority(92, 90); p != alertPriorityHigh {
 		t.Fatalf("expected high, got %s", p)
 	}
-	if p := computeAlertPriority(89, 90, 98); p != alertPriorityNormal {
+	if p := computeAlertPriority(89, 90); p != alertPriorityNormal {
 		t.Fatalf("expected normal, got %s", p)
 	}
 }
@@ -251,7 +249,6 @@ func TestMaybeSendUsageAlertsMessageIncludesPriorityLabel(t *testing.T) {
 		ThresholdPct:    80,
 		CooldownMinutes: 120,
 		StatePath:       statePath,
-		CriticalPct:     98,
 		ProviderThreshold: map[string]map[string]float64{
 			"codex": {"5h": 90},
 		},
@@ -335,7 +332,7 @@ func TestSnoozeWindowScopeAppliesAcrossProviders(t *testing.T) {
 	}
 }
 
-func TestCriticalBoundaryBypassesQuietAndSnooze(t *testing.T) {
+func TestQuietAndSnoozeSuppressHighValues(t *testing.T) {
 	origNotify := notifyFn
 	defer func() { notifyFn = origNotify }()
 	notifyCount := 0
@@ -351,23 +348,24 @@ func TestCriticalBoundaryBypassesQuietAndSnooze(t *testing.T) {
 		ThresholdPct:    80,
 		CooldownMinutes: 120,
 		StatePath:       statePath,
-		CriticalPct:     98,
 		QuietUntil:      now.Add(1 * time.Hour),
 	}
 
 	if err := SetSnooze(statePath, "", "", now.Add(1*time.Hour)); err != nil {
 		t.Fatalf("SetSnooze failed: %v", err)
 	}
+	// Quiet timer and snooze now suppress everything — the removed critical
+	// priority no longer bypasses either one.
 	results := []usage.UsageResult{{Provider: "codex", Unit: "percent", Used: "98", Buckets: map[string]string{"5h": "98"}}}
 	if err := MaybeSendUsageAlerts(results, cfg, now); err != nil {
 		t.Fatalf("MaybeSendUsageAlerts failed: %v", err)
 	}
-	if notifyCount == 0 {
-		t.Fatalf("expected critical boundary(98%%) to bypass quiet+snooze")
+	if notifyCount != 0 {
+		t.Fatalf("expected quiet+snooze to suppress 98%% (critical bypass removed)")
 	}
 }
 
-func TestCooldownAndSnooze_NoDuplicateSendsBelowCritical(t *testing.T) {
+func TestCooldownAndSnooze_NoDuplicateSends(t *testing.T) {
 	origNotify := notifyFn
 	defer func() { notifyFn = origNotify }()
 	notifyCount := 0
@@ -382,7 +380,6 @@ func TestCooldownAndSnooze_NoDuplicateSendsBelowCritical(t *testing.T) {
 		ThresholdPct:    80,
 		CooldownMinutes: 120,
 		StatePath:       statePath,
-		CriticalPct:     98,
 	}
 
 	now := time.Now()

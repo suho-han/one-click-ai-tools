@@ -3,7 +3,6 @@
 package cmd
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -47,16 +46,25 @@ func findMenubarStopTargets() ([]menubarTargetProcess, error) {
 	if err != nil {
 		return nil, err
 	}
-	currentPID := os.Getpid()
+	return menubarStopTargetsFromOutput(string(out), os.Getpid(), currentMenubarTrack()), nil
+}
+
+// menubarStopTargetsFromOutput applies the menubar stop-target rules to a
+// `ps -axo pid=,command=` dump, keeping only processes in the caller's own
+// track so beta and stable menubars observe each other as unrelated.
+func menubarStopTargetsFromOutput(out string, currentPID int, callerTrack string) []menubarTargetProcess {
 	var targets []menubarTargetProcess
-	for _, line := range bytes.Split(out, []byte{'\n'}) {
-		pid, command, ok := parsePSLine(string(line))
+	for _, line := range strings.Split(out, "\n") {
+		pid, command, ok := parsePSLine(line)
 		if !ok || !isMenubarStopTarget(pid, currentPID, command) {
+			continue
+		}
+		if menubarProcessTrack(command) != callerTrack {
 			continue
 		}
 		targets = append(targets, menubarTargetProcess{pid: pid, command: command})
 	}
-	return targets, nil
+	return targets
 }
 
 // findMenubarInstancePIDs reports running menubar instances (the single-

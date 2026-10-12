@@ -352,6 +352,93 @@ final class UsageSnapshotTests: XCTestCase {
         )
     }
 
+    func testUsageSnapshotSurfacesResetCreditsBadge() throws {
+        // reset_credits flows from `oct usage --json` (Codex
+        // rate_limit_reset_credits.available_count) into the card badge.
+        // Providers without the field decode as nil so the badge is omitted.
+        let json = #"""
+        {
+          "summary": { "total": 2, "ok": 2, "warn": 0, "error": 0 },
+          "results": [
+            {
+              "provider": "codex",
+              "plan": "prolite",
+              "status": "ok",
+              "used": "2.0",
+              "unit": "percent",
+              "buckets": { "7d": "2.0" },
+              "reset_credits": 2,
+              "message": "Usage fetched from Codex backend API (weekly bucket)"
+            },
+            {
+              "provider": "claude-code",
+              "status": "ok",
+              "used": "23.0",
+              "unit": "percent",
+              "buckets": { "7d": "23.0" },
+              "message": "Usage fetched from Anthropic OAuth API"
+            }
+          ]
+        }
+        """#
+
+        let response = try JSONDecoder().decode(UsageResponse.self, from: Data(json.utf8))
+        let snapshot = UsageSnapshot.from(
+            response: response,
+            refreshDate: Date(timeIntervalSince1970: 1_781_284_364),
+            refreshInterval: 60
+        )
+
+        XCTAssertEqual(snapshot.providers[0].resetCredits, 2)
+        XCTAssertNil(snapshot.providers[1].resetCredits)
+    }
+
+    func testResetCreditConsumeResultDecodesCLIJSON() throws {
+        // The shape `oct usage reset-credit --json --yes` emits after a
+        // successful spend; available_count_after drives the badge refresh.
+        let json = #"""
+        {
+          "provider": "codex:han***o36",
+          "available_count_before": 2,
+          "credits": [{"id": "c1", "status": "available", "title": "Full reset", "description": "", "granted_at": "", "expires_at": ""}],
+          "consumed": true,
+          "code": "reset",
+          "windows_reset": 1,
+          "redeem_request_id": "0f4a1f5e-1111-4222-8333-444455556666",
+          "available_count_after": 1,
+          "usage_after": {"7d": "0.0"}
+        }
+        """#
+
+        let result = try JSONDecoder().decode(ResetCreditConsumeResult.self, from: Data(json.utf8))
+        XCTAssertEqual(result.provider, "codex:han***o36")
+        XCTAssertEqual(result.availableCountBefore, 2)
+        XCTAssertTrue(result.consumed)
+        XCTAssertEqual(result.code, "reset")
+        XCTAssertEqual(result.windowsReset, 1)
+        XCTAssertEqual(result.availableCountAfter, 1)
+        XCTAssertEqual(result.usageAfter?["7d"], "0.0")
+        XCTAssertNil(result.error)
+    }
+
+    func testResetCreditConsumeResultDecodesQueryMode() throws {
+        // Query mode (--json without --yes) spends nothing: consumed stays
+        // false and the after-fields are absent.
+        let json = #"""
+        {
+          "provider": "codex",
+          "available_count_before": 3,
+          "credits": [],
+          "consumed": false
+        }
+        """#
+
+        let result = try JSONDecoder().decode(ResetCreditConsumeResult.self, from: Data(json.utf8))
+        XCTAssertFalse(result.consumed)
+        XCTAssertNil(result.code)
+        XCTAssertNil(result.availableCountAfter)
+    }
+
     func testResetCountdownFormatsCompactDurations() {
         XCTAssertEqual(ResetCountdown.text(for: 3 * 3600 + 12 * 60), "3h 12m")
         XCTAssertEqual(ResetCountdown.text(for: 2 * 86400 + 4 * 3600), "2d 4h")
@@ -454,13 +541,13 @@ final class UsageSnapshotTests: XCTestCase {
           "alert": {
             "enabled": true,
             "threshold_percent": 82.5,
-            "critical_percent": 97.5,
             "cooldown_minutes": 120,
             "quiet_until": "2026-09-26T22:00:00Z",
             "thresholds": {
               "default": 81,
               "5h": 82.5,
-              "7d": 90
+              "7d": 90,
+              "1m": 95
             }
           },
           "tools": [
@@ -493,10 +580,9 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.alert, AlertSettings(
             enabled: true,
             thresholdPercent: 82.5,
-            criticalPercent: 97.5,
             cooldownMinutes: 120,
             quietUntil: "2026-09-26T22:00:00Z",
-            thresholds: AlertThresholds(defaultThreshold: 81, fiveHours: 82.5, sevenDays: 90)
+            thresholds: AlertThresholds(defaultThreshold: 81, fiveHours: 82.5, sevenDays: 90, monthly: 95)
         ))
         XCTAssertEqual(snapshot.tools.map(\.binaryName), ["codex", "commandcode", "claude"])
         XCTAssertEqual(snapshot.tools.map(\.enabled), [true, true, false])
@@ -566,13 +652,31 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertEqual(snapshot.configFile, "/Users/me/.oct/config.yaml")
         XCTAssertEqual(snapshot.menubarTitleMode, .oct)
         XCTAssertEqual(snapshot.alert, .goDefaults)
+        XCTAssertTrue(snapshot.telemetryEnabled, "A pre-telemetry CLI snapshot defaults to enabled.")
         XCTAssertEqual(snapshot.tools.map(\.binaryName), ["codex"])
+    }
+
+    func testConfigurationSnapshotDecodesExplicitTelemetryOptOut() throws {
+        let json = #"""
+        {
+          "config_file": "/tmp/config.yaml",
+          "telemetry_enabled": false,
+          "session_refresh_enabled": false,
+          "session_refresh_interval": "daily",
+          "session_refresh_hour": 9,
+          "tools": []
+        }
+        """#
+        let snapshot = try JSONDecoder().decode(ConfigurationSnapshot.self, from: Data(json.utf8))
+        XCTAssertFalse(snapshot.telemetryEnabled)
+        XCTAssertFalse(ConfigurationDraft(snapshot: snapshot).updatePayload().telemetryEnabled)
     }
 
     func testConfigurationDraftBuildsUpdatePayloadAfterEdits() throws {
         let snapshot = ConfigurationSnapshot(
             configFile: "/tmp/config.yaml",
             menubarTitleMode: .oct,
+            telemetryEnabled: false,
             sessionRefreshEnabled: false,
             sessionRefreshInterval: "daily",
             sessionRefreshHour: 9,
@@ -592,29 +696,30 @@ final class UsageSnapshotTests: XCTestCase {
         draft.moveTool("claude", by: -1)
         draft.alert.enabled = true
         draft.alert.thresholdPercent = 82.5
-        draft.alert.criticalPercent = 97.5
         draft.alert.cooldownMinutes = 120
         draft.alert.quietUntil = "2026-09-26T22:00:00Z"
         draft.alert.thresholds.defaultThreshold = 81
         draft.alert.thresholds.fiveHours = 82.5
         draft.alert.thresholds.sevenDays = 90
+        draft.alert.thresholds.monthly = 95
 
         let payload = draft.updatePayload()
 
         XCTAssertEqual(payload.enabledTools, ["codex", "claude", "commandcode"])
         XCTAssertEqual(payload.menubarTitleMode, .oct)
+        XCTAssertFalse(payload.telemetryEnabled)
         XCTAssertTrue(payload.sessionRefreshEnabled)
         XCTAssertEqual(payload.sessionRefreshInterval, "weekly")
         XCTAssertEqual(payload.sessionRefreshHour, 22)
         XCTAssertEqual(payload.agentOrder, ["codex", "claude", "commandcode"])
         XCTAssertTrue(payload.alert.enabled)
         XCTAssertEqual(payload.alert.thresholdPercent, 82.5)
-        XCTAssertEqual(payload.alert.criticalPercent, 97.5)
         XCTAssertEqual(payload.alert.cooldownMinutes, 120)
         XCTAssertEqual(payload.alert.quietUntil, "2026-09-26T22:00:00Z")
         XCTAssertEqual(payload.alert.thresholds.defaultThreshold, 81)
         XCTAssertEqual(payload.alert.thresholds.fiveHours, 82.5)
         XCTAssertEqual(payload.alert.thresholds.sevenDays, 90)
+        XCTAssertEqual(payload.alert.thresholds.monthly, 95)
 
         let encoded = try JSONEncoder().encode(payload)
         let json = try JSONSerialization.jsonObject(with: encoded) as! [String: Any]
@@ -623,22 +728,24 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertEqual(Set(json.keys), [
             "enabled_tools",
             "menubar_title_mode",
+            "telemetry_enabled",
             "session_refresh_enabled",
             "session_refresh_interval",
             "session_refresh_hour",
+            "agent_update_schedule",
             "agent_order",
             "alert",
         ])
         XCTAssertEqual(Set(alert.keys), [
             "enabled",
             "threshold_percent",
-            "critical_percent",
             "cooldown_minutes",
             "quiet_until",
             "thresholds",
         ])
-        XCTAssertEqual(Set(thresholds.keys), ["default", "5h", "7d"])
+        XCTAssertEqual(Set(thresholds.keys), ["default", "5h", "7d", "1m"])
         XCTAssertEqual(json["enabled_tools"] as? [String], ["codex", "claude", "commandcode"])
+        XCTAssertEqual(json["telemetry_enabled"] as? Bool, false)
         XCTAssertEqual(json["menubar_title_mode"] as? String, "oct")
         XCTAssertEqual(json["session_refresh_enabled"] as? Bool, true)
         XCTAssertEqual(json["session_refresh_interval"] as? String, "weekly")
@@ -646,12 +753,43 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertEqual(json["agent_order"] as? [String], ["codex", "claude", "commandcode"])
         XCTAssertEqual(alert["enabled"] as? Bool, true)
         XCTAssertEqual(alert["threshold_percent"] as? Double, 82.5)
-        XCTAssertEqual(alert["critical_percent"] as? Double, 97.5)
         XCTAssertEqual(alert["cooldown_minutes"] as? Int, 120)
         XCTAssertEqual(alert["quiet_until"] as? String, "2026-09-26T22:00:00Z")
         XCTAssertEqual(thresholds["default"] as? Double, 81)
         XCTAssertEqual(thresholds["5h"] as? Double, 82.5)
         XCTAssertEqual(thresholds["7d"] as? Double, 90)
+        XCTAssertEqual(thresholds["1m"] as? Double, 95)
+    }
+
+    func testAlertSliderStopsAtFivePercentStepsAndNinetyNine() {
+        XCTAssertEqual(AlertSettings.sliderThreshold(for: 1), 5)
+        XCTAssertEqual(AlertSettings.sliderThreshold(for: 47.4), 45)
+        XCTAssertEqual(AlertSettings.sliderThreshold(for: 47.5), 50)
+        XCTAssertEqual(AlertSettings.sliderThreshold(for: 95), 95)
+        XCTAssertEqual(AlertSettings.sliderThreshold(for: 96.9), 95)
+        XCTAssertEqual(AlertSettings.sliderThreshold(for: 97), 99)
+        XCTAssertEqual(AlertSettings.sliderThreshold(for: 99), 99)
+    }
+
+    func testSharedAlertThresholdUpdatesFallbackAndEveryWindow() {
+        var alert = AlertSettings.goDefaults
+        alert.thresholds.fiveHours = 35
+        alert.thresholds.sevenDays = 60
+        alert.thresholds.monthly = 85
+        XCTAssertFalse(alert.thresholds.hasSharedWindows)
+
+        alert.setSharedThreshold(95)
+        XCTAssertEqual(alert.thresholdPercent, 95)
+        XCTAssertEqual(alert.thresholds, AlertThresholds(
+            defaultThreshold: 95, fiveHours: 95, sevenDays: 95, monthly: 95
+        ))
+        XCTAssertTrue(alert.thresholds.hasSharedWindows)
+
+        alert.thresholds.sevenDays = 99
+        XCTAssertFalse(alert.thresholds.hasSharedWindows)
+        XCTAssertEqual(alert.thresholds.fiveHours, 95)
+        XCTAssertEqual(alert.thresholds.monthly, 95)
+        XCTAssertEqual(alert.thresholdPercent, 95)
     }
 
     func testConfigurationSnapshotRejectsMalformedAlertJSON() {
@@ -684,6 +822,7 @@ final class UsageSnapshotTests: XCTestCase {
         let snapshot = ConfigurationSnapshot(
             configFile: "/tmp/config.yaml",
             menubarTitleMode: .compact,
+            telemetryEnabled: false,
             sessionRefreshEnabled: false,
             sessionRefreshInterval: "daily",
             sessionRefreshHour: 9,
@@ -694,10 +833,12 @@ final class UsageSnapshotTests: XCTestCase {
         var draft = ConfigurationDraft(snapshot: snapshot)
         draft.menubarTitleMode = .oct
         draft.setTool("codex", enabled: false)
+        draft.telemetryEnabled = true
 
         draft.revert(to: snapshot)
 
         XCTAssertEqual(draft.menubarTitleMode, .compact)
+        XCTAssertFalse(draft.telemetryEnabled)
         XCTAssertEqual(draft.tools.map(\.enabled), [true])
     }
 
@@ -797,6 +938,31 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertTrue(source.contains("provider.plan"), "Provider card should still render the plan value")
         XCTAssertFalse(source.contains("Text(\"PLAN\")"), "Provider card should not render the old full-width PLAN label")
         XCTAssertFalse(source.contains("private var planStrip"), "Provider card should remove the old full-width plan strip")
+    }
+
+    func testMessageBubbleRaisesWholeCardAboveLaterSiblingCards() throws {
+        let testFile = URL(fileURLWithPath: #filePath)
+        let packageRoot = testFile
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let providerPath = packageRoot.appendingPathComponent("Sources/OctMenubarApp/Views/ProviderCardView.swift")
+        let source = try String(contentsOf: providerPath, encoding: .utf8)
+
+        // The bubble hangs below the badge and overflows past the card's
+        // bottom edge, so it must win paint order twice: against the metric
+        // strip inside the card (title-row zIndex) and against the next
+        // card in the column, which paints later and would otherwise cover
+        // the overflow (card-root zIndex).
+        let zIndexRanges = source.ranges(of: ".zIndex(showsMessage ? 1 : 0)")
+        XCTAssertEqual(zIndexRanges.count, 2, "Provider card needs the bubble's zIndex at both the title row and the card root")
+        if zIndexRanges.count == 2, let cardRootRange = source.range(of: ".onChange(of: isRefreshing)") {
+            XCTAssertLessThan(
+                cardRootRange.lowerBound,
+                zIndexRanges[1].lowerBound,
+                "The card-root zIndex must sit on the card body itself (after the refresh handlers), not just the title row"
+            )
+        }
     }
 
     func testRefreshMetadataRendersBelowProviderSection() throws {

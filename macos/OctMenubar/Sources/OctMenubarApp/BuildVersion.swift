@@ -4,6 +4,7 @@
 // version.
 enum MenubarBuildVersion {
     static let version = "dev"
+    static let analyticsEndpoint = ""
 
     // Embedded verbatim in the binary so doctor can read the helper's
     // version by scanning the file instead of executing it: running an older

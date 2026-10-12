@@ -1,5 +1,14 @@
 # Remote macOS Validation Status
 
+> **Status (archived 2026-09-30, merged from `PROJECT_CONTEXT/`):** historical
+> validation record (that session made no repository source changes). The
+> macmini (`100.114.89.25`) remains an archive/secondary validation host only;
+> the primary macOS work host is `100.73.225.85` — see
+> [macbook_air_smoke_test.md](macbook_air_smoke_test.md). The still-relevant
+> operational takeaways (non-interactive SSH PATH bootstrap, helper
+> build/install validation flow) now live in
+> [menubar_helper_operations.md](menubar_helper_operations.md).
+
 ## Summary
 
 이 문서는 원격 macOS 호스트(`suhohan@100.114.89.25`)에서 수행한 `one-click-tools` 운영/검증 기록을 정리한다.

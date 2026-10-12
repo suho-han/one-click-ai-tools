@@ -65,4 +65,53 @@ final class ReleaseUpdateTests: XCTestCase {
             current: "0.1.6", remoteTag: "v0.1.7", htmlURL: "ftp://example.com/v0.1.7"
         ))
     }
+
+    @MainActor
+    func testAutomaticUpdateCheckToggleHidesReleaseAndPersists() async {
+        let suite = "oct-release-monitor-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ReleaseStubProtocol.self]
+        let session = URLSession(configuration: configuration)
+        defer { session.invalidateAndCancel() }
+
+        let monitor = ReleaseUpdateMonitor(currentVersion: "0.1.6", session: session, defaults: defaults)
+        await monitor.checkNow()
+        XCTAssertEqual(monitor.availableUpdate?.tag, "v0.1.7")
+
+        monitor.setAutomaticallyChecksForUpdates(false)
+        XCTAssertFalse(monitor.automaticallyChecksForUpdates)
+        XCTAssertNil(monitor.availableUpdate)
+        await monitor.checkNow()
+        XCTAssertNil(monitor.availableUpdate)
+
+        let reopened = ReleaseUpdateMonitor(currentVersion: "0.1.6", session: session, defaults: defaults)
+        XCTAssertFalse(reopened.automaticallyChecksForUpdates)
+        reopened.setAutomaticallyChecksForUpdates(true)
+        await reopened.checkNow()
+        XCTAssertEqual(reopened.availableUpdate?.tag, "v0.1.7")
+    }
+}
+
+private final class ReleaseStubProtocol: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        let response = HTTPURLResponse(
+            url: request.url!,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(
+            self,
+            didLoad: Data(#"{"tag_name":"v0.1.7","html_url":"https://github.com/suho-han/one-click-ai-tools/releases/tag/v0.1.7"}"#.utf8)
+        )
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }

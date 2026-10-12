@@ -1,9 +1,11 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @State private var selectedTab: SettingsTab = .configuration
-    @State private var lastActionFeedback: SettingsFeedback?
+    @State private var selectedTab: SettingsTab = .providers
     @ObservedObject var configurationStore: ConfigurationStore
+    @StateObject private var feedbackStore = FeedbackStore(
+        service: FeedbackService(endpoint: FeedbackService.configuredEndpoint())
+    )
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -13,11 +15,28 @@ struct SettingsView: View {
         }
         .padding(16)
         .frame(minWidth: 640, idealWidth: 640, maxWidth: 640, minHeight: 480, alignment: .topLeading)
+        .overlay {
+            if selectedTab != .about && configurationStore.isLoading && configurationStore.draft == nil {
+                ProgressView("Loading configuration")
+            }
+        }
         .onAppear {
             // Reload-on-open policy: picks up external (CLI) config changes.
             // The draft itself lives in the shared store, so closing and
-            // reopening the window never discards unsaved edits.
-            Task { await configurationStore.loadDraft() }
+            // reopening the window never discards unsaved edits. The version
+            // check runs alongside it so the per-provider update buttons are
+            // ready by the time the Providers rows render.
+            Task {
+                await configurationStore.loadDraft()
+                await configurationStore.checkAgentVersions()
+                await configurationStore.loadMenubarDaemonState()
+            }
+        }
+        .onDisappear {
+            // The run-outcome chips (Updated!/Latest/Failed) describe the
+            // last run for this viewing session: closing the window clears
+            // them so the next open starts from plain version strings.
+            configurationStore.settingsWindowDidClose()
         }
     }
 
@@ -35,20 +54,35 @@ struct SettingsView: View {
         VStack(alignment: .leading, spacing: 0) {
             SettingsTabSelector(selection: $selectedTab)
 
-            Group {
-                switch selectedTab {
-                case .configuration:
-                    SettingsConfigurationTab(
-                        configDraft: $configurationStore.draft,
-                        isLoading: configurationStore.isLoading,
-                        feedback: configurationStore.feedback,
-                        onDraftChange: markConfigurationChanged,
-                        onLoad: { Task { await configurationStore.loadDraft() } }
-                    )
-                case .tools:
-                    SettingsToolsTab(feedback: lastActionFeedback, onAction: runAction)
+            SettingsConfigurationTab(
+                selectedTab: selectedTab,
+                configDraft: $configurationStore.draft,
+                isLoading: configurationStore.isLoading,
+                releaseMonitor: .shared,
+                feedbackStore: feedbackStore,
+                feedback: configurationStore.feedback,
+                toolUpdateStates: configurationStore.toolUpdateStates,
+                isAgentUpdating: configurationStore.isAgentUpdating,
+                singleUpdateBinaries: configurationStore.singleUpdateBinaries,
+                agentUpdateProgress: configurationStore.agentUpdateProgress,
+                versionChecks: configurationStore.versionChecks,
+                failureReport: configurationStore.failureReport,
+                onDraftChange: markConfigurationChanged,
+                onLoad: { Task { await configurationStore.loadDraft() } },
+                onRunAgentUpdate: { installMissing in
+                    Task { await configurationStore.runAgentUpdateNow(installMissing: installMissing) }
+                },
+                onUpdateProvider: { binaryName in
+                    Task { await configurationStore.runAgentUpdateNow(installMissing: false, onlyBinary: binaryName) }
+                },
+                onDismissFailureReport: {
+                    configurationStore.dismissFailureReport()
+                },
+                menubarDaemonState: configurationStore.menubarDaemonState,
+                onMenubarDaemonToggle: { enabled in
+                    Task { await configurationStore.setMenubarDaemonEnabled(enabled) }
                 }
-            }
+            )
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -93,19 +127,6 @@ struct SettingsView: View {
         }
     }
 
-    private func runAction(_ action: OctMenubarAction) {
-        // Terminal launches run off the main thread; the window stays
-        // responsive and only the feedback line updates.
-        Task {
-            do {
-                try await OctCLIService().run(action: action)
-                lastActionFeedback = .success("Launched \(action.settingsTitle) in Terminal.")
-            } catch {
-                lastActionFeedback = .error(error.localizedDescription)
-            }
-        }
-    }
-
     private func revertConfiguration() {
         configurationStore.revertDraft()
     }
@@ -123,21 +144,6 @@ struct SettingsView: View {
             configurationStore.feedback = .warning("Select at least one provider.")
         } else {
             configurationStore.feedback = nil
-        }
-    }
-}
-
-private extension OctMenubarAction {
-    var settingsTitle: String {
-        switch self {
-        case .openUsage:
-            return "Open usage"
-        case .openMonitor:
-            return "Open monitor"
-        case .runAlertCheck:
-            return "Run alert"
-        case .runSessionRefresh:
-            return "Session refresh"
         }
     }
 }

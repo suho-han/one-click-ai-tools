@@ -1,5 +1,12 @@
 # oct Improvement Phases (2026-06)
 
+> **Status (archived 2026-09-30, merged from `PROJECT_CONTEXT/`):** all three
+> phases executed. Phase 1 → `oct release-doctor`; Phase 2 → `oct menubar
+> doctor|build-helper|install-helper`; Phase 3 → `agent-update
+> --dry-run/--explain`, `oct doctor shell`, and the session-refresh
+> before/after diff summary. Current phased plan:
+> [roadmap_2026-09-12.md](roadmap_2026-09-12.md).
+
 > **For Hermes:** Implement in order: release lane -> menubar lane -> CLI trust lane.
 
 **Goal:** 최근 릴리스/원격 검증에서 드러난 운영 마찰을 줄이고, `oct`를 배포/운영/디버깅 가능한 CLI로 끌어올린다.
@@ -80,7 +87,7 @@
 ### Scripts / docs
 - `scripts/release-package.sh`
 - `README.md`
-- `PROJECT_CONTEXT/remote-macos-validation-status.md`
+- `context/remote_macos_validation_status_2026-06.md`
 
 ---
 
