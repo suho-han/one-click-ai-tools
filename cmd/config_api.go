@@ -164,7 +164,7 @@ func buildConfigSnapshot(configFile string) configSnapshot {
 		tools = append(tools, configToolStatus{
 			Name:       p.Name,
 			BinaryName: p.Name,
-			Enabled:    standaloneProviderEnabled(enabledTools, p),
+			Enabled:    standaloneProviderEnabled(enabledTools, rawOrder, p),
 		})
 	}
 
@@ -719,10 +719,12 @@ func canonicalConfigProvider(rawTool string) (string, bool) {
 	return "", false
 }
 
-// standaloneProviderEnabled reports whether a standalone usage provider was
-// explicitly listed in enabled_tools. Unlike installable tools they are
-// opt-in: an empty enabled_tools list does NOT enable them.
-func standaloneProviderEnabled(enabledTools []string, p usage.Provider) bool {
+// standaloneProviderEnabled follows usage's opt-in authority: when
+// enabled_tools is empty, agent_order opts standalone providers in.
+func standaloneProviderEnabled(enabledTools, agentOrder []string, p usage.Provider) bool {
+	if len(enabledTools) == 0 {
+		enabledTools = agentOrder
+	}
 	for _, enabled := range enabledTools {
 		for _, part := range strings.Split(enabled, ",") {
 			if resolved, ok := usage.LookupStandalone(part); ok && resolved.Name == p.Name {

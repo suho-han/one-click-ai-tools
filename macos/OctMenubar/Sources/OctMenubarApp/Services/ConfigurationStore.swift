@@ -392,7 +392,7 @@ final class ConfigurationStore: ObservableObject {
             upToDateCount += 1
             withAnimation { toolUpdateStates[binary] = .upToDate }
             markVersionCurrent(binary, installedVersion: nil)
-        case AgentUpdateEvent.statusFailed:
+        case AgentUpdateEvent.statusFailed, AgentUpdateEvent.statusSkipped:
             failedCount += 1
             withAnimation { toolUpdateStates[binary] = .failed(event.error ?? "update failed") }
             failures.append(
@@ -405,9 +405,9 @@ final class ConfigurationStore: ObservableObject {
             npmMissingCount += 1
             withAnimation { toolUpdateStates[binary] = .npmMissing }
         default:
-            // Skipped (deadline, missing manager) or not installed: fall back
-            // to the plain version chip.
-            withAnimation { toolUpdateStates.removeValue(forKey: binary) }
+            // Not installed is a benign skip; it has no attempted manager
+            // operation to report as a failure.
+            withAnimation { _ = toolUpdateStates.removeValue(forKey: binary) }
         }
     }
 

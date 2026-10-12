@@ -402,6 +402,32 @@ func TestBuildConfigSnapshotIncludesStandaloneProviders(t *testing.T) {
 	}
 }
 
+func TestConfigSnapshotPreservesStandaloneOptInFromAgentOrder(t *testing.T) {
+	t.Cleanup(viper.Reset)
+	viper.Reset()
+	viper.Set("agent_order", []string{"zai,codex"})
+
+	snapshot := buildConfigSnapshot("/tmp/oct.yaml")
+	enabled := make([]string, 0, len(snapshot.Tools))
+	for _, tool := range snapshot.Tools {
+		if tool.BinaryName == "zai" && !tool.Enabled {
+			t.Fatal("zai listed in agent_order must be enabled when enabled_tools is empty")
+		}
+		if tool.Enabled {
+			enabled = append(enabled, tool.BinaryName)
+		}
+	}
+	if err := applyConfigUpdate(configUpdatePayload{
+		EnabledTools: enabled,
+		AgentOrder:   snapshot.AgentOrder,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got := buildConfigSnapshot("/tmp/oct.yaml"); !got.Tools[0].Enabled || got.Tools[0].BinaryName != "zai" {
+		t.Fatalf("standalone provider lost after settings save: %+v", got.Tools)
+	}
+}
+
 // TestBuildConfigSnapshot_MirrorsConfigWhenEnabledToolsSet pins the menubar
 // contract: with a curated enabled_tools the snapshot lists exactly what the
 // config file contains — no catalog defaults padded on — so the menubar

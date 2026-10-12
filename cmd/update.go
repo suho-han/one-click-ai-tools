@@ -321,17 +321,14 @@ const menubarHelperBinaryName = "OctMenubarApp"
 // the legacy menubar keeps working, and archives from older releases do not
 // contain a helper at all. The temp+rename copy (copyExecutableFile) leaves
 // a running helper's inode intact.
-func installMenubarHelperFromArchive(archivePath, extractDir string) error {
+func installMenubarHelperFromArchive(archivePath, extractDir, octPath string) error {
 	if selfUpdateGOOS != "darwin" {
 		return nil
 	}
 	if err := extractTarGzBinary(archivePath, extractDir, menubarHelperBinaryName); err != nil {
 		return fmt.Errorf("helper not bundled in release archive: %w", err)
 	}
-	dst, err := defaultMenubarInstallPath()
-	if err != nil {
-		return err
-	}
+	dst := filepath.Join(filepath.Dir(octPath), menubarHelperNameForTrack(currentMenubarTrack()))
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
 	}
@@ -385,7 +382,7 @@ func installReleaseAsset(ctx context.Context, repo string, asset releaseAsset) e
 	// The oct replacement above is the critical step and has already
 	// succeeded; a helper install failure from here on must not fail the
 	// update, so warn instead.
-	if err := installMenubarHelperFromArchive(archivePath, extractDir); err != nil {
+	if err := installMenubarHelperFromArchive(archivePath, extractDir, targetPath); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: menubar helper not updated: %v\n", err)
 	}
 	return nil

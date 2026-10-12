@@ -322,6 +322,34 @@ final class AgentUpdateBackgroundTests: XCTestCase {
         XCTAssertNil(store.failureReport, "dismissing the alert clears the report")
     }
 
+    func testSkippedManagerErrorIsReportedWhileUninstalledSkipIsBenign() async throws {
+        let snapshot = makeSnapshot()
+        let stub = try writeExecutableStub("""
+        echo '{"event":"run_start","total":2}'
+        echo '{"event":"tool_done","binary":"claude","name":"Claude Code","status":"skipped","error":"brew not found in PATH"}'
+        echo '{"event":"tool_done","binary":"codex","status":"skipped_not_installed"}'
+        echo '{"event":"run_done","failed":1}'
+        exit 1
+        """)
+        let store = ConfigurationStore(
+            service: OctCLIService(executableURL: stub, processTimeout: 10, refreshDeadline: 15),
+            snapshot: snapshot
+        )
+        store.draft = ConfigurationDraft(snapshot: snapshot)
+
+        await store.runAgentUpdateNow(installMissing: false)
+
+        XCTAssertEqual(store.toolUpdateStates["claude"], .failed("brew not found in PATH"))
+        XCTAssertNil(store.toolUpdateStates["codex"])
+        if case .warning = store.feedback?.kind {} else {
+            XCTFail("a skipped manager must warn, got \(String(describing: store.feedback))")
+        }
+        XCTAssertEqual(
+            store.failureReport,
+            AgentUpdateFailureReport(failures: [.init(providerName: "Claude Code", error: "brew not found in PATH")])
+        )
+    }
+
     /// Multiple failures aggregate into one report with one entry per
     /// provider, keeping the installer's own error text.
     func testFailureReportAggregatesMultipleFailures() async throws {

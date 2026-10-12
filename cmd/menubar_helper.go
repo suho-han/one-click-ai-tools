@@ -128,6 +128,12 @@ func menubarHelperCandidates(env map[string]string, execPath string, workingDir 
 		}
 	}
 
+	// Self-update places the bundled helper beside the executable, including
+	// custom OCT_INSTALL_DIR installs that are absent from PATH.
+	if execPath = strings.TrimSpace(execPath); execPath != "" {
+		appendCandidate(filepath.Join(filepath.Dir(execPath), helperName))
+	}
+
 	if rawPath := strings.TrimSpace(env["PATH"]); rawPath != "" {
 		for _, dir := range filepath.SplitList(rawPath) {
 			if strings.TrimSpace(dir) == "" {

@@ -28,6 +28,9 @@ All notable changes to this project will be documented in this file. See [standa
 * **update:** keep prerelease installations on the prerelease channel and compare beta versions correctly.
 * **menubar:** update every selected installable provider while excluding usage-only providers from update runs and install prompts.
 * **menubar:** wait for Foundation to publish fast subprocess exits before reading their status.
+* **menubar:** show skipped package-manager errors as update failures instead of reporting nothing to update.
+* **config:** retain usage-only providers enabled through agent_order when saving settings.
+* **update:** install and resolve the bundled menubar helper beside a custom-path oct executable.
 
 ### [0.1.6](https://github.com/suho-han/one-click-ai-tools/compare/v0.1.5...v0.1.6) (2026-09-30)
 
