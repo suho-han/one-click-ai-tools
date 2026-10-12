@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 )
 
@@ -74,6 +75,10 @@ var (
 	commandOutput         = defaultCommandOutput
 	errExecutableNotFound = exec.ErrNotFound
 )
+
+// installerGOOS allows the fallback selection to be checked on non-Windows
+// test hosts without attempting to execute a shell installer.
+var installerGOOS = runtime.GOOS
 var noChangePatterns = map[Manager][]string{
 	Npm:                {"up to date"},
 	Pnpm:               {"already up to date"},
@@ -145,8 +150,9 @@ func ResolveManagerForInstall(ctx context.Context, t Tool) Manager {
 
 // installDefaultManager resolves the fall-back manager for a tool no
 // detection step claimed. When the default would be npm but npm itself is
-// missing, tools with an official standalone install script use that instead;
-// npm-only tools keep the npm manager so the run reports actionable guidance.
+// missing, tools with an official standalone install script use that instead
+// on platforms where the shell installer can run; npm-only tools and Windows
+// keep the npm manager so the run reports actionable guidance.
 func installDefaultManager(t Tool) Manager {
 	m, ok := defaultManagerForTool(t)
 	if !ok {
@@ -175,6 +181,9 @@ func (m Manager) missingBinary() string {
 }
 
 func npmFreeInstallerFor(t Tool) (Manager, bool) {
+	if installerGOOS == "windows" {
+		return Unknown, false
+	}
 	m, ok := npmFreeInstallerManagers[NormalizeToolName(t.BinaryName)]
 	return m, ok
 }

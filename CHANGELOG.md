@@ -31,6 +31,9 @@ All notable changes to this project will be documented in this file. See [standa
 * **menubar:** show skipped package-manager errors as update failures instead of reporting nothing to update.
 * **config:** retain usage-only providers enabled through agent_order when saving settings.
 * **update:** install and resolve the bundled menubar helper beside a custom-path oct executable.
+* **update:** keep npm-missing guidance instead of trying POSIX shell installers on Windows.
+* **usage:** serialize Antigravity CLI refreshes between processes to protect the cached refresh interval.
+* **installer:** choose the menubar helper track from the release version even with a custom command name.
 
 ### [0.1.6](https://github.com/suho-han/one-click-ai-tools/compare/v0.1.5...v0.1.6) (2026-09-30)
 

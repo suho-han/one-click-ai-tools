@@ -62,6 +62,17 @@ type antigravityCLIUsageRow struct {
 }
 
 func fetchAntigravityCLIUsage(ctx context.Context, base UsageResult) (UsageResult, bool) {
+	unlock, err := lockAntigravityUsage(ctx)
+	if err != nil {
+		if cached, ok := serveAntigravityCachedUsage(base, time.Now(), "refresh lock unavailable"); ok {
+			return cached, true
+		}
+		base.Message = "No data: Antigravity usage unavailable (refresh lock unavailable)"
+		return base, true
+	}
+	defer unlock()
+	// Recheck only after acquiring the shared lock: another process may have
+	// refreshed or entered auth backoff while this one waited.
 	now := time.Now()
 	// Rate-limit the live agy run (min interval / auth backoff) and fall
 	// back to the last good numbers; see antigravity_cache.go for why the

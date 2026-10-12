@@ -457,6 +457,11 @@ func TestBuiltInToolManagerSupportMatrix(t *testing.T) {
 	}
 
 	for _, tool := range Tools {
+		if installerGOOS == "windows" {
+			if _, ok := npmFreeInstallerManagers[tool.BinaryName]; ok {
+				wantByBinary[tool.BinaryName] = Npm
+			}
+		}
 		want, ok := wantByBinary[tool.BinaryName]
 		if !ok {
 			t.Fatalf("missing support-matrix expectation for %q", tool.BinaryName)
@@ -464,6 +469,21 @@ func TestBuiltInToolManagerSupportMatrix(t *testing.T) {
 		if got := ResolveManagerForInstall(t.Context(), tool); got != want {
 			t.Fatalf("ResolveManagerForInstall(t.Context(), %s) = %q, want %q", tool.BinaryName, got, want)
 		}
+	}
+}
+
+func TestWindowsMissingNpmKeepsNodeGuidanceForStandaloneCapableTool(t *testing.T) {
+	reset := stubManagerDetection(t)
+	defer reset()
+	oldGOOS := installerGOOS
+	installerGOOS = "windows"
+	defer func() { installerGOOS = oldGOOS }()
+	tool := Tool{Name: "OpenAI Codex", BinaryName: "codex", Package: "@openai/codex"}
+	if manager := ResolveManagerForInstall(t.Context(), tool); manager != Npm {
+		t.Fatalf("Windows missing-npm manager = %q, want npm guidance instead of shell installer", manager)
+	}
+	if manager, why := explainResolvedManager(t.Context(), tool); manager != Npm || why != "npm not found" {
+		t.Fatalf("Windows explain manager = %q (%s), want npm not found", manager, why)
 	}
 }
 

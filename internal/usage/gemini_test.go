@@ -3,6 +3,8 @@ package usage
 import (
 	"context"
 	"errors"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -44,6 +46,88 @@ func withMockAntigravityUsageCommand(t *testing.T, output string, err error) fun
 		return output, err
 	}
 	return func() int { return calls }
+}
+
+func TestAntigravityCacheSerializesProcesses(t *testing.T) {
+	if path := os.Getenv("OCT_ANTIGRAVITY_LOCK_TEST_CACHE"); path != "" {
+		antigravityCachePath = func() string { return path }
+		counter := os.Getenv("OCT_ANTIGRAVITY_LOCK_TEST_COUNT")
+		antigravityUsageCommandOutput = func(context.Context, time.Duration, string, ...string) (string, error) {
+			file, err := os.OpenFile(counter, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600)
+			if err != nil {
+				return "", err
+			}
+			_, err = file.WriteString("x")
+			closeErr := file.Close()
+			if err != nil {
+				return "", err
+			}
+			if closeErr != nil {
+				return "", closeErr
+			}
+			time.Sleep(200 * time.Millisecond)
+			return "Gemini Models Weekly Limit Remaining 80% tomorrow", nil
+		}
+		result, ok := fetchAntigravityCLIUsage(t.Context(), baseAntigravityUsageResult())
+		if !ok || result.Status != "ok" {
+			t.Fatalf("child usage = %+v, ok=%v", result, ok)
+		}
+		return
+	}
+
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	cache := filepath.Join(dir, "antigravity-usage.json")
+	counter := filepath.Join(dir, "runs")
+	var commands []*exec.Cmd
+	for range 2 {
+		command := exec.CommandContext(t.Context(), executable, "-test.run=^TestAntigravityCacheSerializesProcesses$")
+		command.Env = append(os.Environ(),
+			"OCT_ANTIGRAVITY_LOCK_TEST_CACHE="+cache,
+			"OCT_ANTIGRAVITY_LOCK_TEST_COUNT="+counter,
+		)
+		if err := command.Start(); err != nil {
+			t.Fatal(err)
+		}
+		commands = append(commands, command)
+	}
+	for _, command := range commands {
+		if err := command.Wait(); err != nil {
+			t.Fatalf("usage subprocess: %v", err)
+		}
+	}
+	runs, err := os.ReadFile(counter)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(runs) != "x" {
+		t.Fatalf("concurrent processes launched agy %d times, want once", len(runs))
+	}
+}
+
+func TestAntigravityLockWaitHonorsUsageDeadline(t *testing.T) {
+	withRedirectedAntigravityCache(t)
+	unlock, err := lockAntigravityUsage(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlock()
+	oldCommand := antigravityUsageCommandOutput
+	t.Cleanup(func() { antigravityUsageCommandOutput = oldCommand })
+	antigravityUsageCommandOutput = func(context.Context, time.Duration, string, ...string) (string, error) {
+		t.Fatal("agy ran while another process held the cache lock")
+		return "", nil
+	}
+
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Millisecond)
+	defer cancel()
+	result, ok := fetchAntigravityCLIUsage(ctx, baseAntigravityUsageResult())
+	if !ok || result.Status != "warn" || !strings.Contains(result.Message, "refresh lock unavailable") {
+		t.Fatalf("locked fetch = %+v, ok=%v; want bounded warning", result, ok)
+	}
 }
 
 func TestParseAntigravityCLIUsage(t *testing.T) {

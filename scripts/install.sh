@@ -310,8 +310,8 @@ os_name=$(detect_os)
 arch_name=$(detect_arch)
 release_version=$(normalize_version)
 BIN_NAME=$(resolve_bin_name "$release_version")
-case "$BIN_NAME" in
-    oct-beta) HELPER_NAME=$BETA_HELPER_NAME ;;
+case "$release_version" in
+    *-beta*|*-rc*|*-alpha*|*-test*|*-dev) HELPER_NAME=$BETA_HELPER_NAME ;;
     *) HELPER_NAME=$STABLE_HELPER_NAME ;;
 esac
 asset="one-click-ai-tools_${os_name}_${arch_name}.tar.gz"

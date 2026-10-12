@@ -345,6 +345,27 @@ func TestRunJSONNpmMissingReportsNpmMissingStatus(t *testing.T) {
 	}
 }
 
+func TestRunJSONWindowsStandaloneFallbackReportsMissingNpm(t *testing.T) {
+	setTestHome(t, t.TempDir())
+	reset := stubManagerDetection(t)
+	defer reset()
+	oldGOOS := installerGOOS
+	installerGOOS = "windows"
+	defer func() { installerGOOS = oldGOOS }()
+	setAgentUpdateTools(t, []string{"codex"})
+
+	var out bytes.Buffer
+	err := Run(t.Context(), Options{JSON: true, InstallMissing: true, Input: strings.NewReader(""), Output: &out})
+	if err == nil || !strings.Contains(err.Error(), "1 tool(s) failed") {
+		t.Fatalf("Run() error = %v, want missing-manager failure", err)
+	}
+	events := decodeEventLines(t, out.String())
+	assertEventKinds(t, events, "run_start", "tool_start", "tool_done", "run_done")
+	if done := events[2]; done.Status != EventStatusNpmMissing || !strings.Contains(done.Error, "npm not found in PATH") {
+		t.Fatalf("tool_done = %+v, want npm_missing guidance, not a bash execution error", done)
+	}
+}
+
 // TestRunJSONFailedToolCarriesInstallerOutputTail pins the failure-dialog
 // contract: a failed tool_done must carry the installer's own error output
 // (as a capped tail), not just "exit status 1", so the menu bar app's alert
