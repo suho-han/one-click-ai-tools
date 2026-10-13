@@ -88,6 +88,19 @@ func runSelfUpdate(cmd *cobra.Command, opts selfUpdateOptions) error {
 			fmt.Fprintln(cmd.OutOrStdout(), "oct is managed by Homebrew. Use: brew upgrade one-click-tools")
 			return nil
 		}
+		// Match the tarball path's ask-before-installing behavior: a plain
+		// `oct update` must not launch a long brew upgrade unannounced.
+		// Non-interactive callers (menubar, scripts) pass --yes explicitly.
+		if !opts.yes {
+			ok, err := confirmBrewUpgrade(cmd)
+			if err != nil {
+				return err
+			}
+			if !ok {
+				fmt.Fprintln(cmd.OutOrStdout(), "oct update skipped. Run `brew upgrade one-click-tools` when ready.")
+				return nil
+			}
+		}
 		// A stuck brew upgrade would otherwise hang `oct update` forever.
 		brewCtx, cancelBrew := context.WithTimeout(cmd.Context(), 10*time.Minute)
 		defer cancelBrew()
@@ -255,6 +268,27 @@ func confirmSelfUpdate(cmd *cobra.Command, current, latest string) (bool, error)
 
 	fmt.Fprintf(out, "Update oct from %s to %s? [y/N]: ", current, latest)
 	reader := bufio.NewReader(in)
+	answer, err := reader.ReadString('\n')
+	if err != nil && !errors.Is(err, io.EOF) {
+		return false, err
+	}
+	answer = strings.TrimSpace(strings.ToLower(answer))
+	return answer == "y" || answer == "yes", nil
+}
+
+// confirmBrewUpgrade guards the brew track's implicit upgrade: the tarball
+// path asks before installing, and so should the path that shells out to
+// brew. Non-interactive callers (menubar, scripts) pass --yes explicitly.
+func confirmBrewUpgrade(cmd *cobra.Command) (bool, error) {
+	out := cmd.OutOrStdout()
+	if !isTerminalPrompt(cmd.InOrStdin(), out) {
+		fmt.Fprintln(out, "Non-interactive shell detected. Run `oct update --yes` to upgrade via Homebrew.")
+		return false, nil
+	}
+
+	fmt.Fprintln(out, "oct is managed by Homebrew — this runs `brew upgrade one-click-tools`.")
+	fmt.Fprint(out, "Proceed? [y/N]: ")
+	reader := bufio.NewReader(cmd.InOrStdin())
 	answer, err := reader.ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
 		return false, err
@@ -600,9 +634,10 @@ func extractZipBinary(archivePath, destDir, binaryName string) error {
 }
 
 func writeExtractedBinary(path string, src io.Reader, mode os.FileMode) error {
-	// Perm() strips any setuid/setgid bits from the archive entry; |0o755
-	// guarantees the owner can execute.
-	out, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode.Perm()|0o755)
+	// Perm() strips any setuid/setgid bits from the archive entry; masking
+	// to 0o755 keeps a world-writable archive entry (0o777) from producing a
+	// world-writable binary, and |0o500 keeps the owner able to execute.
+	out, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode.Perm()&0o755|0o500)
 	if err != nil {
 		return err
 	}
@@ -667,8 +702,9 @@ func replaceExecutable(src, target string) error {
 	if err := tmp.Close(); err != nil {
 		return err
 	}
-	// Perm() strips setuid/setgid from the source; |0o755 keeps it executable.
-	if err := os.Chmod(tmpName, info.Mode().Perm()|0o755); err != nil {
+	// Perm() strips setuid/setgid from the source; masking to 0o755 avoids
+	// preserving group/other write bits, and |0o500 keeps it executable.
+	if err := os.Chmod(tmpName, info.Mode().Perm()&0o755|0o500); err != nil {
 		return err
 	}
 	return os.Rename(tmpName, target)
