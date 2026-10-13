@@ -128,6 +128,51 @@ final class ReleaseUpdateInstallerTests: XCTestCase {
         }
         XCTAssertEqual(try String(contentsOf: attempts, encoding: .utf8), "attempt\n")
     }
+
+    // MARK: performUpdate flow (dialog swapped out — a modal would block tests)
+
+    private func makeUpdateScript(_ body: String) throws -> URL {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("oct-installer-\(UUID())")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let executable = directory.appendingPathComponent("oct")
+        try body.write(to: executable, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
+        return executable
+    }
+
+    func testPerformUpdatePresentsFailureAndClearsIsUpdating() async throws {
+        let executable = try makeUpdateScript("""
+        #!/bin/sh
+        echo "archive checksum mismatch" >&2
+        exit 1
+        """)
+        defer { try? FileManager.default.removeItem(at: executable.deletingLastPathComponent()) }
+        let installer = ReleaseUpdateInstaller(service: OctCLIService(executableURL: executable))
+        var titles: [String] = []
+        installer.presentResult = { titles.append($0.messageText) }
+
+        await installer.performUpdate()
+
+        XCTAssertFalse(installer.isUpdating, "a finished update must release the busy flag")
+        XCTAssertEqual(titles, ["oct update failed"])
+    }
+
+    func testPerformUpdatePresentsSuccessWithCLIOutput() async throws {
+        let executable = try makeUpdateScript("""
+        #!/bin/sh
+        echo "oct updated to v0.1.8"
+        exit 0
+        """)
+        defer { try? FileManager.default.removeItem(at: executable.deletingLastPathComponent()) }
+        let installer = ReleaseUpdateInstaller(service: OctCLIService(executableURL: executable))
+        var titles: [String] = []
+        installer.presentResult = { titles.append($0.messageText) }
+
+        await installer.performUpdate()
+
+        XCTAssertFalse(installer.isUpdating)
+        XCTAssertEqual(titles, ["oct update finished"])
+    }
 }
 
 private final class ReleaseStubProtocol: URLProtocol {
