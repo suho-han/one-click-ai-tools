@@ -6,9 +6,11 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/viper"
+	"github.com/suho-han/one-click-ai-tools/internal/notify"
 )
 
 type alertSettingsDraft struct {
@@ -60,7 +62,7 @@ func alertSettingsDraftFromViper() alertSettingsDraft {
 	cfg := buildAlertConfigFromViper(viper.GetBool("usage_alert_enabled"))
 	threshold := cfg.ThresholdPct
 	if threshold <= 0 {
-		threshold = 80
+		threshold = notify.DefaultUsageAlertThresholdPercent
 	}
 	// Runtime evaluation inherits window thresholds from the global default
 	// (thresholdFor: window -> default -> legacy percent), so the draft must
@@ -77,7 +79,7 @@ func alertSettingsDraftFromViper() alertSettingsDraft {
 		"threshold.1m":      formatAlertSettingNumber(alertThresholdOrDefault(cfg.GlobalThresholds, "1m", effectiveDefault)),
 	}
 	if cfg.CooldownMinutes <= 0 {
-		values["cooldown_minutes"] = "360"
+		values["cooldown_minutes"] = strconv.Itoa(notify.DefaultUsageAlertCooldownMinutes)
 	}
 	return alertSettingsDraft{values: values, initialQuiet: values["quiet"]}
 }
@@ -206,8 +208,11 @@ func (m alertSettingsModel) updateEdit(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.editing = false
 		m.validationError = ""
 	case "backspace", "delete":
-		if length := len(m.editingValue); length > 0 {
-			m.editingValue = m.editingValue[:length-1]
+		// Drop the last whole rune: byte-wise slicing would split a
+		// multi-byte character and leave invalid UTF-8 in the edit buffer.
+		if m.editingValue != "" {
+			_, size := utf8.DecodeLastRuneInString(m.editingValue)
+			m.editingValue = m.editingValue[:len(m.editingValue)-size]
 		}
 	default:
 		if len(msg.Runes) > 0 {
@@ -341,7 +346,7 @@ func applyAlertSettingsDraft(draft alertSettingsDraft) error {
 			return fmt.Errorf("apply %s: %w", row.key, err)
 		}
 	}
-	if err := persistViperConfig(); err != nil {
+	if err := writeConfig(); err != nil {
 		return fmt.Errorf("persist alert settings: %w", err)
 	}
 	return nil
