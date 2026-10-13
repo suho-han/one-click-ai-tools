@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestFetchCodexUsageMapsWeeklyBucketOnly(t *testing.T) {
@@ -368,5 +369,37 @@ func TestFetchCodexUsageBackendOmitsMissingResetCredits(t *testing.T) {
 	result := FetchCodexUsage(t.Context())
 	if result.ResetCredits != nil {
 		t.Fatalf("expected nil reset_credits when backend omits the field, got %v", *result.ResetCredits)
+	}
+}
+
+func TestCollectCodexLogFilesOrdersByModTime(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name string, modTime time.Time) string {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte("{}"), 0o600); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+		if err := os.Chtimes(path, modTime, modTime); err != nil {
+			t.Fatalf("chtimes %s: %v", name, err)
+		}
+		return path
+	}
+	older := write("rollout-2026-01-01-old.jsonl", time.Now().Add(-2*time.Hour))
+	newer := write("zz-latest.jsonl", time.Now().Add(-time.Hour))
+
+	files, err := collectCodexLogFiles(dir)
+	if err != nil {
+		t.Fatalf("collectCodexLogFiles: %v", err)
+	}
+	if len(files) != 2 {
+		t.Fatalf("files = %v, want both logs", files)
+	}
+	// The lexicographically-last name is not the newest: modification time
+	// picks the log, and path order only breaks ties.
+	if files[len(files)-1] != newer {
+		t.Fatalf("latest = %q, want %q", files[len(files)-1], newer)
+	}
+	if files[0] != older {
+		t.Fatalf("oldest = %q, want %q", files[0], older)
 	}
 }

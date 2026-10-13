@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/suho-han/one-click-ai-tools/internal/netclient"
 )
@@ -76,8 +77,14 @@ func FetchCodexUsageForHome(ctx context.Context, home string, provider string) U
 		return detectCodexPlanForHome(ctx, home)
 	})
 
-	if backendResult, ok := fetchCodexBackendUsage(ctx, result, home); ok {
+	if backendResult, backendFailure, ok := fetchCodexBackendUsage(ctx, result, home); ok {
 		return backendResult
+	} else if backendFailure != "" {
+		// The backend was attempted and failed; the local-log fallback below
+		// only estimates. Carry the reason in SourceDetail so the menubar
+		// Detail line says why the numbers are not backend numbers instead
+		// of silently presenting estimates as usage.
+		result.SourceDetail = "backend " + backendFailure
 	}
 
 	codexHome, ok := resolveCodexHome(home)
@@ -240,7 +247,14 @@ type codexBackendRateLimitWindow struct {
 	ResetAt            *int64   `json:"reset_at"`
 }
 
-func fetchCodexBackendUsage(ctx context.Context, base UsageResult, home string) (UsageResult, bool) {
+// fetchCodexBackendUsage queries the ChatGPT backend for the signed-in
+// account's rate-limit windows. It returns (result, ok, failure): ok marks a
+// successful backend answer, and failure names why an *attempted* call did
+// not answer ("http 401", "request failed", ...) so the local-log fallback
+// can carry a visible reason. No attempt — no auth configured and no
+// endpoint override — stays silent, since local logs are the expected
+// source for that setup.
+func fetchCodexBackendUsage(ctx context.Context, base UsageResult, home string) (UsageResult, string, bool) {
 	endpoint := strings.TrimSpace(os.Getenv("OCT_CODEX_USAGE_ENDPOINT"))
 	if endpoint == "" {
 		endpoint = "https://chatgpt.com/backend-api/wham/usage"
@@ -248,12 +262,12 @@ func fetchCodexBackendUsage(ctx context.Context, base UsageResult, home string) 
 
 	auth, hasAuth := readCodexBackendAuthFromHome(home)
 	if !hasAuth && os.Getenv("OCT_CODEX_USAGE_ENDPOINT") == "" {
-		return base, false
+		return base, "", false
 	}
 
 	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil {
-		return base, false
+		return base, "bad request", false
 	}
 	if auth.AccessToken != "" {
 		req.Header.Set("Authorization", "Bearer "+auth.AccessToken)
@@ -267,20 +281,20 @@ func fetchCodexBackendUsage(ctx context.Context, base UsageResult, home string) 
 
 	resp, err := netclient.DefaultClient.DoWithRetry(req)
 	if err != nil || resp == nil {
-		return base, false
+		return base, "request failed", false
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
-		return base, false
+		return base, fmt.Sprintf("http %d", resp.StatusCode), false
 	}
 
 	body, err := readAllCapped(resp.Body)
 	if err != nil {
-		return base, false
+		return base, "read failed", false
 	}
 	var payload codexBackendUsageResponse
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return base, false
+		return base, "unexpected response shape", false
 	}
 
 	result := base
@@ -311,7 +325,7 @@ func fetchCodexBackendUsage(ctx context.Context, base UsageResult, home string) 
 		result.Message = "Usage fetched from Codex backend API (5h bucket)"
 	} else {
 		if strings.TrimSpace(payload.PlanType) == "" {
-			return base, false
+			return base, "no windows reported", false
 		}
 		result.Used = "0"
 		result.Message = "Usage fetched from Codex backend API (no rate-limit window reported)"
@@ -323,7 +337,7 @@ func fetchCodexBackendUsage(ctx context.Context, base UsageResult, home string) 
 			codexLocalModelSourceDetailFromHome(home, 50),
 		)
 	}
-	return result, true
+	return result, "", true
 }
 
 func addCodexBackendWindow(buckets map[string]string, resets map[string]string, window *codexBackendRateLimitWindow) {
@@ -471,7 +485,23 @@ func collectCodexLogFiles(sessionDir string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	sort.Strings(logFiles)
+	// Order by modification time so "latest" survives naming changes; path
+	// order only held because the rollout-<timestamp> convention embedded
+	// the time in the name. Paths break ties so same-tick writes stay
+	// deterministic.
+	times := make(map[string]time.Time, len(logFiles))
+	for _, path := range logFiles {
+		if info, err := os.Stat(path); err == nil {
+			times[path] = info.ModTime()
+		}
+	}
+	sort.Slice(logFiles, func(i, j int) bool {
+		ti, tj := times[logFiles[i]], times[logFiles[j]]
+		if !ti.Equal(tj) {
+			return ti.Before(tj)
+		}
+		return logFiles[i] < logFiles[j]
+	})
 	return logFiles, nil
 }
 
