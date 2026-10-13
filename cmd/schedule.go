@@ -3,6 +3,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -145,24 +146,47 @@ var scheduleConfigCmd = &cobra.Command{
 			}
 		}
 
-		viper.Set("session_refresh_enabled", enabled)
-		viper.Set("session_refresh_interval", interval)
-		viper.Set("session_refresh_hour", hour)
-		if err := persistViperConfig(); err != nil {
-			return fmt.Errorf("failed to write config: %w", err)
+		// Capture the platform scheduler state before touching it: if the
+		// config write fails below, the scheduler is restored so it never
+		// contradicts the config file — the same discipline
+		// applyConfigUpdateAndSave applies to config API writes.
+		previous, err := s.Describe(task)
+		if err != nil {
+			return fmt.Errorf("failed to read the current schedule: %w", err)
 		}
 
 		if enabled {
 			if err := s.Enable(task, interval, hour); err != nil {
 				return fmt.Errorf("failed to enable schedule: %w", err)
 			}
+		} else if explicitDisable {
+			if err := s.Disable(task); err != nil {
+				return fmt.Errorf("failed to disable schedule: %w", err)
+			}
+		}
+
+		viper.Set("session_refresh_enabled", enabled)
+		viper.Set("session_refresh_interval", interval)
+		viper.Set("session_refresh_hour", hour)
+		if err := writeConfig(); err != nil {
+			saveErr := fmt.Errorf("failed to write config: %w", err)
+			var restoreErr error
+			if previous.Enabled {
+				restoreErr = s.Enable(task, previous.Interval, previous.Hour)
+			} else {
+				restoreErr = s.Disable(task)
+			}
+			if restoreErr != nil {
+				return errors.Join(saveErr, fmt.Errorf("failed to restore the previous schedule: %w", restoreErr))
+			}
+			return saveErr
+		}
+
+		if enabled {
 			fmt.Fprintf(cmd.OutOrStdout(), "Schedule config updated and enabled for %s (%s)\n", task, schedule.FormatSchedule(interval, hour))
 			return nil
 		}
 		if explicitDisable {
-			if err := s.Disable(task); err != nil {
-				return fmt.Errorf("failed to disable schedule: %w", err)
-			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Schedule config updated and disabled for %s\n", task)
 			return nil
 		}
@@ -185,7 +209,7 @@ func sessionRefreshScheduleConfig() (bool, string, int) {
 	}
 	hour := viper.GetInt("session_refresh_hour")
 	if hour < 0 || hour > 23 {
-		hour = 9
+		hour = schedule.DefaultHour
 	}
 	return enabled, interval, hour
 }
@@ -197,7 +221,7 @@ func init() {
 	scheduleCmd.AddCommand(scheduleConfigCmd)
 
 	enableCmd.Flags().String("interval", "daily", "Update interval (weekly, daily, 12h, 6h, or 1h)")
-	enableCmd.Flags().String("hour", "9", "Hour of the day (0-23)")
+	enableCmd.Flags().String("hour", strconv.Itoa(schedule.DefaultHour), "Hour of the day (0-23)")
 	for _, c := range []*cobra.Command{scheduleCmd, enableCmd, disableCmd} {
 		c.Flags().String("task", string(schedule.AgentUpdateTask), "Scheduled task (agent-update or session-refresh)")
 	}
