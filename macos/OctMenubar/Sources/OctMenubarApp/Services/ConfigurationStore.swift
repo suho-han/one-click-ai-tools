@@ -115,6 +115,9 @@ final class ConfigurationStore: ObservableObject {
     }
 
     func saveDraft() async {
+        // Re-entrancy guard: the Save button is disabled while saving, but
+        // the flag must also cover the window before the first render.
+        guard !isSaving else { return }
         guard let pendingDraft = draft, pendingDraft.hasEnabledTool else {
             feedback = .warning("Select at least one provider.")
             return
@@ -123,14 +126,20 @@ final class ConfigurationStore: ObservableObject {
         defer { isSaving = false }
         do {
             try await service.saveConfiguration(pendingDraft.updatePayload())
-            // Adopt the freshly saved state so the draft baseline matches;
-            // probed again so version labels survive the round-trip.
+        } catch {
+            feedback = .error(error.localizedDescription)
+            return
+        }
+        // The save itself succeeded. Refreshing the snapshot only re-bases
+        // the draft, so a refresh failure must not read as a failed save —
+        // the settings are live and the user should not re-click Save.
+        do {
             let fresh = try await service.fetchConfigurationSnapshot(probeVersions: true)
             snapshot = fresh
             draft = ConfigurationDraft(snapshot: fresh)
             feedback = .success("Saved.")
         } catch {
-            feedback = .error(error.localizedDescription)
+            feedback = .warning("Saved. Reopening Settings will load the latest state.")
         }
     }
 
