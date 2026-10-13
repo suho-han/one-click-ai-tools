@@ -145,3 +145,42 @@ func TestMinimaxRegionBaseURL(t *testing.T) {
 		t.Errorf("base = %q, want China host", got)
 	}
 }
+
+func TestFetchMinimaxUsageWeeklyExhaustionWarns(t *testing.T) {
+	t.Setenv("MINIMAX_CODING_API_KEY", "sk-cp-test")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"current_interval_total_count":100,"current_interval_usage_count":10,` +
+			`"current_weekly_total_count":2048,"current_weekly_usage_count":2048}`))
+	}))
+	defer server.Close()
+
+	t.Setenv("OCT_MINIMAX_USAGE_ENDPOINT", server.URL)
+	result := FetchMinimaxUsage(t.Context())
+
+	if result.Status != "warn" {
+		t.Fatalf("status = %q, want warn for an exhausted weekly window", result.Status)
+	}
+	if !strings.Contains(result.Message, "7d exhausted") {
+		t.Errorf("message = %q, want a 7d exhausted note", result.Message)
+	}
+}
+
+func TestFetchMinimaxUsageRateLimitedStatusWarns(t *testing.T) {
+	t.Setenv("MINIMAX_CODING_API_KEY", "sk-cp-test")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"current_interval_total_count":100,"current_interval_usage_count":50,` +
+			`"current_interval_status":"rate_limited",` +
+			`"current_weekly_total_count":2048,"current_weekly_usage_count":10}`))
+	}))
+	defer server.Close()
+
+	t.Setenv("OCT_MINIMAX_USAGE_ENDPOINT", server.URL)
+	result := FetchMinimaxUsage(t.Context())
+
+	if result.Status != "warn" {
+		t.Fatalf("status = %q, want warn when the interval is rate-limited", result.Status)
+	}
+	if !strings.Contains(result.Message, "5h rate_limited") {
+		t.Errorf("message = %q, want the rate-limited note", result.Message)
+	}
+}

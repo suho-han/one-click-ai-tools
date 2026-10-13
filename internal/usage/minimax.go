@@ -201,6 +201,17 @@ func FetchMinimaxUsage(ctx context.Context) UsageResult {
 	if v, ok := ParsePercent(result.Buckets["5h"]); ok && v >= 100 {
 		degraded = append(degraded, "5h exhausted")
 	}
+	if v, ok := ParsePercent(result.Buckets["7d"]); ok && v >= 100 {
+		degraded = append(degraded, "7d exhausted")
+	}
+	// The plan API can flag a window rate-limited while it still reports a
+	// meaningful percent, so non-ok statuses surface like exhaustion does.
+	if s := strings.TrimSpace(remains.IntervalStatus); s != "" && !strings.EqualFold(s, "ok") {
+		degraded = append(degraded, "5h "+s)
+	}
+	if s := strings.TrimSpace(remains.WeeklyStatus); s != "" && !strings.EqualFold(s, "ok") {
+		degraded = append(degraded, "7d "+s)
+	}
 	if len(degraded) > 0 {
 		result.Status = "warn"
 		result.Message += " (" + strings.Join(degraded, ", ") + ")"
