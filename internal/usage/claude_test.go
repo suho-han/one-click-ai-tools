@@ -401,3 +401,22 @@ func TestFetchClaudeUsage_FallbackToCredentialsFile(t *testing.T) {
 		t.Fatalf("expected used=25.5, got %s", result.Used)
 	}
 }
+
+func TestParseClaudeCLIResetTime(t *testing.T) {
+	// An IANA zone in the output resolves against that zone.
+	if got := parseClaudeCLIResetTime("Jan 2 at 3pm (America/Los_Angeles)"); got.IsZero() {
+		t.Fatal("expected a parsed reset time for an IANA zone, got zero")
+	} else if got.Location().String() != "America/Los_Angeles" {
+		t.Fatalf("location = %s, want America/Los_Angeles", got.Location().String())
+	}
+
+	// A zone name that cannot be loaded (e.g. an abbreviation) must yield
+	// zero: parsing against the local zone can be off by an hour across a
+	// DST boundary, and an absent reset beats a wrong one.
+	if got := parseClaudeCLIResetTime("Jan 2 at 3pm (PST)"); !got.IsZero() {
+		t.Fatalf("expected zero for an unresolvable zone, got %v", got)
+	}
+	if got := parseClaudeCLIResetTime(""); !got.IsZero() {
+		t.Fatalf("expected zero for empty input, got %v", got)
+	}
+}

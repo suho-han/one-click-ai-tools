@@ -425,9 +425,15 @@ func parseClaudeCLIResetTime(raw string) time.Time {
 	loc := time.Local
 	if open := strings.LastIndex(raw, "("); open >= 0 && strings.HasSuffix(raw, ")") {
 		name := strings.TrimSpace(strings.TrimSuffix(raw[open+1:], ")"))
-		if loaded, err := time.LoadLocation(name); err == nil {
-			loc = loaded
+		loaded, err := time.LoadLocation(name)
+		if err != nil {
+			// The output named a zone we cannot resolve (e.g. an
+			// abbreviation like "PST"). Falling back to the local zone can
+			// shift the reset time by an hour across a DST boundary, so
+			// drop it instead of showing a wrong "resets in ...".
+			return time.Time{}
 		}
+		loc = loaded
 		raw = strings.TrimSpace(raw[:open])
 	}
 
