@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -32,9 +31,6 @@ const (
 	zaiChinaBaseURL  = "https://open.bigmodel.cn"
 	zaiUsagePath     = "/api/monitor/usage/quota/limit"
 )
-
-// zaiUsageEndpoint allows overriding the API URL for testing (full URL).
-var zaiUsageEndpoint = zaiGlobalBaseURL + zaiUsagePath
 
 type zaiUsageResponse struct {
 	Data struct {
@@ -269,35 +265,14 @@ func zaiPercentString(raw json.RawMessage) (string, bool) {
 // fetchZaiUsage calls the Z.ai quota endpoint. The platform token goes in the
 // Authorization header verbatim -- the API rejects "Bearer "-prefixed values.
 func fetchZaiUsage(ctx context.Context, endpoint, token string) (*zaiUsageResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Authorization", token)
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Accept-Language", "en-US,en")
-	req.Header.Set("User-Agent", "one-click-tools/1.0")
-
-	resp, err := netclient.DefaultClient.DoWithRetry(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := readAllCapped(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-
 	var parsed zaiUsageResponse
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+	if err := netclient.DefaultClient.GetJSON(ctx, endpoint, map[string]string{
+		"Authorization":   token,
+		"Accept":          "application/json",
+		"Accept-Language": "en-US,en",
+		"User-Agent":      "one-click-tools/1.0",
+	}, &parsed); err != nil {
+		return nil, err
 	}
-
 	return &parsed, nil
 }

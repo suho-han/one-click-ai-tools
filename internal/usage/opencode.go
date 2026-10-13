@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -185,38 +184,16 @@ func FetchOpenCodeUsage(ctx context.Context) UsageResult {
 
 // fetchOpenCodeGoUsage calls the OpenCode Go usage API and parses the response.
 func fetchOpenCodeGoUsage(ctx context.Context, endpoint, apiKey string) (*openCodeGoUsageResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+	var parsed openCodeGoUsageResponse
+	if err := netclient.DefaultClient.GetJSON(ctx, endpoint, map[string]string{
+		"Authorization": "Bearer " + apiKey,
+		"Accept":        "application/json",
+		"User-Agent":    "one-click-tools/1.0",
+	}, &parsed); err != nil {
+		return nil, err
 	}
-
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "one-click-tools/1.0")
-
-	resp, err := netclient.DefaultClient.DoWithRetry(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := readAllCapped(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-
-	var usageResp openCodeGoUsageResponse
-	if err := json.Unmarshal(body, &usageResp); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	if len(usageResp.Usage) == 0 {
+	if len(parsed.Usage) == 0 {
 		return nil, fmt.Errorf("empty usage data in response")
 	}
-
-	return &usageResp, nil
+	return &parsed, nil
 }

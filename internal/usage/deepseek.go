@@ -2,9 +2,7 @@ package usage
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 	"strings"
 
@@ -128,34 +126,13 @@ func balanceSummary(infos []struct {
 
 // fetchDeepseekBalance calls the DeepSeek balance API and parses the response.
 func fetchDeepseekBalance(ctx context.Context, endpoint, apiKey string) (*deepseekBalanceResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("Authorization", "Bearer "+apiKey)
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "one-click-tools/1.0")
-
-	resp, err := netclient.DefaultClient.DoWithRetry(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := readAllCapped(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-
 	var parsed deepseekBalanceResponse
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+	if err := netclient.DefaultClient.GetJSON(ctx, endpoint, map[string]string{
+		"Authorization": "Bearer " + apiKey,
+		"Accept":        "application/json",
+		"User-Agent":    "one-click-tools/1.0",
+	}, &parsed); err != nil {
+		return nil, err
 	}
-
 	return &parsed, nil
 }

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -336,38 +335,16 @@ func fetchKimiUsageForHome(ctx context.Context, home string, provider string) Us
 
 // fetchKimiUsage calls the Kimi Code usage API and parses the response.
 func fetchKimiUsage(ctx context.Context, endpoint, token string) (*kimiUsageResponse, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+	var parsed kimiUsageResponse
+	if err := netclient.DefaultClient.GetJSON(ctx, endpoint, map[string]string{
+		"Authorization": "Bearer " + token,
+		"Accept":        "application/json",
+		"User-Agent":    "one-click-tools/1.0",
+	}, &parsed); err != nil {
+		return nil, err
 	}
-
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "one-click-tools/1.0")
-
-	resp, err := netclient.DefaultClient.DoWithRetry(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := readAllCapped(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-
-	var usageResp kimiUsageResponse
-	if err := json.Unmarshal(body, &usageResp); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
-	}
-
-	if strings.TrimSpace(usageResp.Usage.Used) == "" && len(usageResp.Limits) == 0 {
+	if strings.TrimSpace(parsed.Usage.Used) == "" && len(parsed.Limits) == 0 {
 		return nil, errKimiNoUsageData
 	}
-
-	return &usageResp, nil
+	return &parsed, nil
 }
