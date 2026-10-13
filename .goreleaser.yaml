@@ -47,3 +47,7 @@ release:
   # /releases/latest — used by install.sh and `oct update` — keeps pointing
   # at the latest stable version.
   prerelease: auto
+  header: |
+    ## Update
+
+    Run `oct update` to install the latest release. Restart the menu bar app afterward to use the updated helper.
