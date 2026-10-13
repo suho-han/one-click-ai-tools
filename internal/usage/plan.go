@@ -41,18 +41,9 @@ func normalizePlanSource(source string) string {
 	return source
 }
 
-func detectCodexPlan(ctx context.Context) (string, string) {
-	_ = ctx // no blocking I/O beyond file reads
-	home, ok := codexHomePath()
-	if !ok {
-		return "unknown", "codex auth unavailable"
-	}
-	return detectCodexPlanFromAuthJSON(home)
-}
-
-// detectCodexPlanForHome is detectCodexPlan for an explicit credential home
-// (the codex:<name> account rows). An empty home falls back to the standard
-// $CODEX_HOME/~/.codex chain.
+// detectCodexPlanForHome resolves the codex plan for an explicit credential
+// home (the codex:<name> account rows). An empty home falls back to the
+// standard $CODEX_HOME/~/.codex chain.
 func detectCodexPlanForHome(ctx context.Context, home string) (string, string) {
 	_ = ctx // no blocking I/O beyond file reads
 	resolved, ok := resolveCodexHome(home)
@@ -104,11 +95,6 @@ func detectClaudePlan(ctx context.Context, token string) (string, string) {
 		return plan, source
 	}
 	return "unknown", "claude plan not exposed"
-}
-
-func detectOpenCodePlan(ctx context.Context) (string, string) {
-	_ = ctx
-	return "unknown", "local opencode session logs do not expose plan"
 }
 
 func detectAntigravityPlan(ctx context.Context) (string, string) {
