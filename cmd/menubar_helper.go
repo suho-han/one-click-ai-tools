@@ -472,26 +472,30 @@ func copyExecutableFile(src, dst string) error {
 	}
 	defer in.Close()
 
-	// Write to a temp file and rename: replacing the destination in place
-	// (O_TRUNC) can crash a helper process that is already running from it,
-	// while rename leaves the old inode intact for the running process.
-	tmpDst := dst + ".new"
-	out, err := os.OpenFile(tmpDst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+	// Write to a unique temp file and rename: replacing the destination in
+	// place (O_TRUNC) can crash a helper process that is already running
+	// from it, while rename leaves the old inode intact for the running
+	// process. A fixed ".new" name would let two concurrent copies interleave
+	// into one file, so take a CreateTemp name like replaceExecutable does.
+	out, err := os.CreateTemp(filepath.Dir(dst), filepath.Base(dst)+".tmp-*")
 	if err != nil {
 		return err
 	}
+	tmpDst := out.Name()
+	defer os.Remove(tmpDst)
 	if _, err := io.Copy(out, in); err != nil {
 		out.Close()
-		os.Remove(tmpDst)
+		return err
+	}
+	if err := out.Sync(); err != nil {
+		out.Close()
 		return err
 	}
 	if err := out.Chmod(0o755); err != nil {
 		out.Close()
-		os.Remove(tmpDst)
 		return err
 	}
 	if err := out.Close(); err != nil {
-		os.Remove(tmpDst)
 		return err
 	}
 	return os.Rename(tmpDst, dst)
