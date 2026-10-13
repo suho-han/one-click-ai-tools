@@ -1002,8 +1002,7 @@ final class UsageSnapshotTests: XCTestCase {
             autoRefreshLabel: "Auto refresh: every 1m",
             providers: [
                 ProviderCard(name: "codex", status: .ok, metrics: [], message: nil),
-            ],
-            note: nil
+            ]
         )
         XCTAssertFalse(loaded.isPlaceholder, "a refreshed snapshot must not be flagged as placeholder")
     }

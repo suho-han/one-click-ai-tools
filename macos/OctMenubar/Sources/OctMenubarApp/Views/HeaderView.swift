@@ -2,13 +2,11 @@ import SwiftUI
 
 struct HeaderView: View {
     let snapshot: UsageSnapshot
-    let isRefreshing: Bool
     @ObservedObject var releaseMonitor: ReleaseUpdateMonitor
     @ObservedObject private var installer: ReleaseUpdateInstaller
 
-    init(snapshot: UsageSnapshot, isRefreshing: Bool, releaseMonitor: ReleaseUpdateMonitor) {
+    init(snapshot: UsageSnapshot, releaseMonitor: ReleaseUpdateMonitor) {
         self.snapshot = snapshot
-        self.isRefreshing = isRefreshing
         self.releaseMonitor = releaseMonitor
         self.installer = releaseMonitor.installer
     }

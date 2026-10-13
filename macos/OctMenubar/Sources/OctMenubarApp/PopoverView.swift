@@ -37,7 +37,7 @@ struct PopoverView: View {
     // a single spinner centered in the popover.
     private var loadingPlaceholder: some View {
         VStack {
-            HeaderView(snapshot: viewModel.snapshot, isRefreshing: viewModel.isRefreshing, releaseMonitor: releaseMonitor)
+            HeaderView(snapshot: viewModel.snapshot, releaseMonitor: releaseMonitor)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Spacer()
             ProgressView()
@@ -56,7 +56,7 @@ struct PopoverView: View {
     private var loadedScrollContent: some View {
         ScrollView(.vertical) {
             VStack(alignment: .leading, spacing: 16) {
-                HeaderView(snapshot: viewModel.snapshot, isRefreshing: viewModel.isRefreshing, releaseMonitor: releaseMonitor)
+                HeaderView(snapshot: viewModel.snapshot, releaseMonitor: releaseMonitor)
                 Divider()
                 providerSection
                 Divider()

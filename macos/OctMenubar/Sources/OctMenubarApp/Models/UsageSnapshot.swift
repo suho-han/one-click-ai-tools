@@ -10,7 +10,6 @@ struct UsageSnapshot: Equatable {
     let nextRefreshLabel: String
     let autoRefreshLabel: String
     let providers: [ProviderCard]
-    let note: String?
 
     static let placeholder = UsageSnapshot(
         statusItemTitle: "oct",
@@ -24,8 +23,7 @@ struct UsageSnapshot: Equatable {
             ProviderCard(name: "codex", status: .loading, metrics: [], message: "Waiting for first refresh"),
             ProviderCard(name: "claude-code", status: .loading, metrics: [], message: "Refresh timer starts after launch"),
             ProviderCard(name: "commandcode", status: .loading, metrics: [], message: "Billing API usage loads after refresh"),
-        ],
-        note: "Data will be loaded from oct usage --json after launch."
+        ]
     )
 
     static func error(message: String, refreshInterval: TimeInterval = 60) -> UsageSnapshot {
@@ -39,8 +37,7 @@ struct UsageSnapshot: Equatable {
             autoRefreshLabel: "Auto refresh: every \(DurationFormatter.label(for: refreshInterval))",
             providers: [
                 ProviderCard(name: "oct", status: .error, metrics: [], message: message),
-            ],
-            note: "Check oct path or run Refresh now after fixing the CLI location."
+            ]
         )
     }
 
@@ -56,7 +53,6 @@ struct ProviderCard: Equatable, Identifiable {
     let id: String
     let name: String
     let plan: String
-    let planSource: String?
     let status: ProviderStatus
     let metrics: [UsageMetric]
     /// Unused rate-limit reset credits reported by the provider, nil when
@@ -67,7 +63,6 @@ struct ProviderCard: Equatable, Identifiable {
     init(
         name: String,
         plan: String = "unknown",
-        planSource: String? = nil,
         status: ProviderStatus,
         metrics: [UsageMetric],
         resetCredits: Int? = nil,
@@ -76,7 +71,6 @@ struct ProviderCard: Equatable, Identifiable {
         self.id = name
         self.name = name
         self.plan = plan
-        self.planSource = planSource
         self.status = status
         self.metrics = metrics
         self.resetCredits = resetCredits
@@ -222,7 +216,6 @@ struct UsageResponse: Decodable, Equatable {
     struct Result: Decodable, Equatable {
         let provider: String
         let plan: String?
-        let planSource: String?
         let status: String
         let used: String
         let unit: String
@@ -236,7 +229,6 @@ struct UsageResponse: Decodable, Equatable {
         enum CodingKeys: String, CodingKey {
             case provider
             case plan
-            case planSource = "plan_source"
             case status
             case used
             case unit
@@ -269,7 +261,6 @@ extension UsageSnapshot {
             ProviderCard(
                 name: result.provider,
                 plan: normalizedPlan(result.plan),
-                planSource: normalizedPlanSource(result.planSource),
                 status: effectiveStatus(for: result),
                 metrics: visibleMetrics(for: result.provider, unit: result.unit, buckets: result.buckets, resets: result.bucketResets, now: now),
                 resetCredits: result.resetCredits,
@@ -287,8 +278,7 @@ extension UsageSnapshot {
             lastRefreshLabel: formatter.string(from: refreshDate),
             nextRefreshLabel: formatter.string(from: refreshDate.addingTimeInterval(refreshInterval)),
             autoRefreshLabel: "Auto refresh: every \(DurationFormatter.label(for: refreshInterval))",
-            providers: providers,
-            note: status == .error ? "One or more providers need attention." : "Data comes from oct usage --json without submitting prompts."
+            providers: providers
         )
     }
 
@@ -472,10 +462,6 @@ extension UsageSnapshot {
         return trimmed.isEmpty ? "unknown" : trimmed
     }
 
-    private static func normalizedPlanSource(_ raw: String?) -> String? {
-        let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return trimmed.isEmpty ? nil : trimmed
-    }
 }
 
 enum DurationFormatter {
