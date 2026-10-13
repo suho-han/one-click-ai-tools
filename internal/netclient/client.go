@@ -174,7 +174,7 @@ func (c *Client) GetJSON(ctx context.Context, url string, headers map[string]str
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxJSONBody))
 	if err != nil {
 		return fmt.Errorf("failed to read response: %w", err)
 	}
@@ -186,6 +186,11 @@ func (c *Client) GetJSON(ctx context.Context, url string, headers map[string]str
 	}
 	return nil
 }
+
+// maxJSONBody caps how much of a GetJSON response body is read into memory;
+// it matches the usage fetchers' readAllCapped cap. A misbehaving endpoint or
+// proxy can otherwise stream unbounded data within the request timeout.
+const maxJSONBody = 2 << 20
 
 func truncateBody(s string, max int) string {
 	// Drop control characters (newlines, ANSI escapes, NULs): the excerpt
