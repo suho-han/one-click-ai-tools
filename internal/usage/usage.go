@@ -261,11 +261,23 @@ func accountFetchJobs(p Provider) []fetchJob {
 	return jobs
 }
 
+// viperSliceCopy returns a fresh slice holding the string values of the given
+// viper keys, in order. viper returns its cached slices without copying, so
+// appending one onto the other directly could write into viper's backing
+// array and mutate the cached value.
+func viperSliceCopy(keys ...string) []string {
+	var out []string
+	for _, key := range keys {
+		out = append(out, viper.GetStringSlice(key)...)
+	}
+	return out
+}
+
 // requestedProviderNames lowercases and splits the raw agent_order and
 // enabled_tools config values (comma-separated entries allowed, matching
 // splitToolNames in internal/update) into a lookup set.
 func requestedProviderNames() map[string]bool {
-	raw := append(viper.GetStringSlice("agent_order"), viper.GetStringSlice("enabled_tools")...)
+	raw := viperSliceCopy("agent_order", "enabled_tools")
 	requested := make(map[string]bool, len(raw))
 	for _, entry := range raw {
 		for _, part := range strings.Split(strings.ToLower(entry), ",") {
@@ -281,7 +293,7 @@ func requestedProviderNames() map[string]bool {
 // order-preserving and deduplicated: agent_order entries first, then
 // enabled_tools.
 func orderedRequestedNames() []string {
-	raw := append(viper.GetStringSlice("agent_order"), viper.GetStringSlice("enabled_tools")...)
+	raw := viperSliceCopy("agent_order", "enabled_tools")
 	var names []string
 	seen := make(map[string]bool)
 	for _, entry := range raw {
@@ -472,13 +484,6 @@ func isTruthy(v string) bool {
 	}
 }
 
-func padRightRunes(s string, width int) string {
-	if utf8.RuneCountInString(s) >= width {
-		return s
-	}
-	return s + strings.Repeat(" ", width-utf8.RuneCountInString(s))
-}
-
 func terminalWidth() int {
 	if raw := strings.TrimSpace(os.Getenv("COLUMNS")); raw != "" {
 		if n, err := strconv.Atoi(raw); err == nil && n >= 40 {
@@ -515,6 +520,9 @@ func truncateText(s string, max int) string {
 // truncateAtRuneBoundary cuts s to at most max bytes without splitting a
 // multi-byte rune.
 func truncateAtRuneBoundary(s string, max int) string {
+	if max >= len(s) {
+		return s
+	}
 	for max > 0 && !utf8.RuneStart(s[max]) {
 		max--
 	}

@@ -202,19 +202,15 @@ func antigravityAuthFailureDetail(output string, err error) string {
 		lowered := strings.ToLower(line)
 		for _, marker := range antigravityAuthFailureMarkers {
 			if strings.Contains(lowered, marker) {
-				if len(line) > 120 {
-					return line[:120]
-				}
-				return line
+				// Cut on a rune boundary: agy output can carry multi-byte
+				// text, and a raw byte slice would leave invalid UTF-8 in
+				// the backoff record and the user-facing message.
+				return truncateAtRuneBoundary(line, 120)
 			}
 		}
 	}
 	if err != nil {
-		message := err.Error()
-		if len(message) > 120 {
-			return message[:120]
-		}
-		return message
+		return truncateAtRuneBoundary(err.Error(), 120)
 	}
 	return "authentication failed"
 }
