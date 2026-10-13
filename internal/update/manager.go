@@ -93,52 +93,61 @@ var noChangePatterns = map[Manager][]string{
 	Pip:                {"requirement already satisfied"},
 }
 
+// DetectManager resolves the manager that owns t's installed copy.
 func DetectManager(ctx context.Context, t Tool) Manager {
+	m, _ := detectManagerWithReason(ctx, t)
+	return m
+}
+
+// detectManagerWithReason pairs DetectManager's resolution with the reason it
+// was picked. Having exactly one pipeline keeps `--explain` output and the
+// install run from ever disagreeing about why a manager was chosen.
+func detectManagerWithReason(ctx context.Context, t Tool) (Manager, string) {
 	if m, ok := managerFromPackagePrefix(t.Package); ok {
-		return m
+		return m, "package prefix"
 	}
 
 	if isClaudeNativeTool(t) {
-		return ClaudeNative
+		return ClaudeNative, "active native binary"
 	}
 
 	if isAntigravityTool(t) {
 		if hasInstalledBinary(t) {
-			return AntigravityUpdater
+			return AntigravityUpdater, "active binary updater"
 		}
-		return AntigravityInstaller
+		return AntigravityInstaller, "tool-specific installer"
 	}
 
 	if isOpenCodeTool(t) && hasInstalledBinary(t) {
-		return OpenCodeNative
+		return OpenCodeNative, "active binary updater"
 	}
 
 	if isCopilotTool(t) && hasInstalledBinary(t) {
-		return CopilotNative
+		return CopilotNative, "active binary updater"
 	}
 
 	if isCursorTool(t) {
-		return CursorAgent
+		return CursorAgent, "tool-specific installer"
 	}
 
 	if m, ok := detectManagerFromBinaryPath(ctx, t); ok {
-		return m
+		return m, "active binary path"
 	}
 
 	if matchesInstalledPackage(ctx, Brew, t) {
-		return Brew
+		return Brew, "installed package lookup"
 	}
 	if matchesInstalledPackage(ctx, Pnpm, t) {
-		return Pnpm
+		return Pnpm, "installed package lookup"
 	}
 	if matchesInstalledPackage(ctx, Yarn, t) {
-		return Yarn
+		return Yarn, "installed package lookup"
 	}
 	if matchesInstalledPackage(ctx, Npm, t) {
-		return Npm
+		return Npm, "installed package lookup"
 	}
 
-	return Unknown
+	return Unknown, ""
 }
 
 func ResolveManagerForInstall(ctx context.Context, t Tool) Manager {
@@ -310,14 +319,6 @@ func detectManagerFromBinaryPath(ctx context.Context, t Tool) (Manager, bool) {
 		return candidates[0], true
 	}
 	return Unknown, false
-}
-
-func classifyManagerFromBinaryPath(ctx context.Context, path string) (Manager, bool) {
-	managers := classifyManagersFromBinaryPath(ctx, path)
-	if len(managers) == 0 {
-		return Unknown, false
-	}
-	return managers[0], true
 }
 
 func classifyManagersFromBinaryPath(ctx context.Context, path string) []Manager {

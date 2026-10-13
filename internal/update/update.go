@@ -51,10 +51,16 @@ type Plan struct {
 
 var confirmInstallPrompt = defaultConfirmInstallPrompt
 
-// installTimeout caps the whole update run (probes, brew update, installs,
-// recovery). The clock starts after the interactive confirmation prompt, so
-// user-input waiting is excluded. Swappable in tests.
+// installTimeout caps the install loop itself — installs and their
+// post-install version checks. Detection probes and the `brew update`
+// refresh run before the clock starts (uncapped: they are read-only and
+// typically fast), as does the interactive confirmation prompt. Swappable
+// in tests.
 var installTimeout = 10 * time.Minute
+
+// ErrUpdateFailed marks a run where at least one tool failed to update;
+// callers can match it with errors.Is.
+var ErrUpdateFailed = errors.New("update failed")
 
 func Run(ctx context.Context, opts ...Options) error {
 	if ctx == nil {
@@ -241,7 +247,7 @@ func Run(ctx context.Context, opts ...Options) error {
 		}
 		return nil
 	}
-	return fmt.Errorf("%w: %d tool(s) failed", errors.New("update failed"), failureCount)
+	return fmt.Errorf("%w: %d tool(s) failed", ErrUpdateFailed, failureCount)
 }
 
 func (p Plan) IsInstalled() bool {
@@ -398,34 +404,8 @@ func ExplainPlans(ctx context.Context, tools []Tool) []Plan {
 }
 
 func explainResolvedManager(ctx context.Context, t Tool) (Manager, string) {
-	if m, ok := managerFromPackagePrefix(t.Package); ok {
-		return m, "package prefix"
-	}
-	if isClaudeNativeTool(t) {
-		return ClaudeNative, "active native binary"
-	}
-	if isAntigravityTool(t) {
-		if hasInstalledBinary(t) {
-			return AntigravityUpdater, "active binary updater"
-		}
-		return AntigravityInstaller, "tool-specific installer"
-	}
-	if isOpenCodeTool(t) && hasInstalledBinary(t) {
-		return OpenCodeNative, "active binary updater"
-	}
-	if isCopilotTool(t) && hasInstalledBinary(t) {
-		return CopilotNative, "active binary updater"
-	}
-	if isCursorTool(t) {
-		return CursorAgent, "tool-specific installer"
-	}
-	if m, ok := detectManagerFromBinaryPath(ctx, t); ok {
-		return m, "active binary path"
-	}
-	for _, manager := range []Manager{Brew, Pnpm, Yarn, Npm} {
-		if matchesInstalledPackage(ctx, manager, t) {
-			return manager, "installed package lookup"
-		}
+	if m, reason := detectManagerWithReason(ctx, t); m != Unknown {
+		return m, reason
 	}
 	m, ok := defaultManagerForTool(t)
 	if !ok {
