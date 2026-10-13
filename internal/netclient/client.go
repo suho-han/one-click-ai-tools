@@ -9,6 +9,7 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -81,8 +82,15 @@ func (c *Client) DoWithRetry(req *http.Request) (*http.Response, error) {
 			resp.Body.Close()
 		}
 
-		// Exponential backoff: 1s, 2s, 4s...
+		// Exponential backoff: 1s, 2s, 4s... A 429 that carries Retry-After
+		// (the only 429 shape that retries at all) waits exactly as long as
+		// the endpoint asked instead of following the exponential schedule.
 		backoff := time.Duration(math.Pow(2, float64(i))) * time.Second
+		if resp != nil && resp.StatusCode == http.StatusTooManyRequests {
+			if wait, ok := retryAfterDelay(resp); ok {
+				backoff = wait
+			}
+		}
 		if sleepErr := retrySleep(req.Context(), backoff); sleepErr != nil {
 			return nil, sleepErr
 		}
@@ -103,8 +111,14 @@ func (c *Client) shouldRetry(resp *http.Response, err error) bool {
 
 	if resp != nil {
 		switch resp.StatusCode {
-		case http.StatusTooManyRequests,
-			http.StatusInternalServerError,
+		case http.StatusTooManyRequests:
+			// Retry a rate limit only when the endpoint dictates the wait:
+			// blind fixed backoff against a rate-limited endpoint extends the
+			// limit, and callers like the Claude usage fetcher run their own
+			// persistent backoff that needs the 429 surfaced immediately.
+			_, ok := retryAfterDelay(resp)
+			return ok
+		case http.StatusInternalServerError,
 			http.StatusBadGateway,
 			http.StatusServiceUnavailable,
 			http.StatusGatewayTimeout:
@@ -113,6 +127,32 @@ func (c *Client) shouldRetry(resp *http.Response, err error) bool {
 	}
 
 	return false
+}
+
+// maxRetryAfterDelay bounds how long a 429's Retry-After may make one call
+// sleep. Longer waits surface to the caller instead of parking a CLI run.
+const maxRetryAfterDelay = time.Minute
+
+// retryAfterDelay parses a 429 Retry-After header — delay-seconds or an
+// HTTP-date. ok is false when the header is absent, unparseable, non-positive,
+// or beyond maxRetryAfterDelay, in which case the response is not retried.
+func retryAfterDelay(resp *http.Response) (time.Duration, bool) {
+	if resp == nil {
+		return 0, false
+	}
+	value := strings.TrimSpace(resp.Header.Get("Retry-After"))
+	if value == "" {
+		return 0, false
+	}
+	if seconds, err := strconv.Atoi(value); err == nil {
+		d := time.Duration(seconds) * time.Second
+		return d, d > 0 && d <= maxRetryAfterDelay
+	}
+	if when, err := http.ParseTime(value); err == nil {
+		d := time.Until(when)
+		return d, d > 0 && d <= maxRetryAfterDelay
+	}
+	return 0, false
 }
 
 // GetJSON GETs url with the supplied headers and decodes the 200 body into
