@@ -16,6 +16,16 @@ enum MenubarTitleMode: String, Codable, CaseIterable, Identifiable {
             return "Compact %"
         }
     }
+
+    init(from decoder: Decoder) throws {
+        // A newer CLI may report a title mode this helper does not know; fall
+        // back instead of failing the whole snapshot decode. The app updates
+        // the CLI before restarting the helper, so "new oct + old helper" is
+        // a real window and tolerant decoding is what keeps the popover and
+        // Settings alive in it.
+        let raw = try decoder.singleValueContainer().decode(String.self)
+        self = MenubarTitleMode(rawValue: raw) ?? .oct
+    }
 }
 
 struct SessionRefreshIntervalOption: Equatable, Identifiable {
