@@ -11,10 +11,6 @@ func bootstrapPATH(base string) string {
 	return execenv.BuildPATH(base)
 }
 
-func commandWithEnv(name string, args ...string) *exec.Cmd {
-	return execenv.Command(name, args...)
-}
-
 func commandContextWithEnv(ctx context.Context, name string, args ...string) *exec.Cmd {
 	return execenv.CommandContext(ctx, name, args...)
 }
