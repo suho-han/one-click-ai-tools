@@ -26,6 +26,12 @@ func (w *Windows) Enable(task Task, interval string, hour int) error {
 	if modifier := windowsScheduleModifier(interval); modifier != "" {
 		args = append(args, "/MO", modifier)
 	}
+	if interval == WeeklyInterval {
+		// Match the other platforms' fixed weekly day (macOS Weekday=1,
+		// Linux cron's Monday): without /D, schtasks pins the task to the
+		// weekday it was created on.
+		args = append(args, "/D", "MON")
+	}
 	args = append(args, "/ST", windowsStartTime(interval, hour), "/F")
 	cmd := exec.Command("schtasks", args...)
 	if output, err := cmd.CombinedOutput(); err != nil {
@@ -36,6 +42,12 @@ func (w *Windows) Enable(task Task, interval string, hour int) error {
 }
 
 func (w *Windows) Disable(task Task) error {
+	// schtasks output is localized, so its "not found" text cannot be
+	// matched reliably; query first and treat an unregistered task as
+	// already disabled, matching the macOS/Linux schedulers' tolerance.
+	if enabled, _ := w.Status(task); enabled != "enabled" {
+		return nil
+	}
 	cmd := exec.Command("schtasks", "/Delete", "/TN", windowsTaskName(task), "/F")
 	if output, err := cmd.CombinedOutput(); err != nil {
 		return fmt.Errorf("schtasks failed: %v, output: %s", err, string(output))
