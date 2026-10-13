@@ -19,6 +19,7 @@ import (
 	"github.com/spf13/viper"
 	"github.com/suho-han/one-click-ai-tools/internal/update"
 	"github.com/suho-han/one-click-ai-tools/internal/usage"
+	"golang.org/x/term"
 )
 
 type toolItem struct {
@@ -164,14 +165,12 @@ func newConfigModel(enabledTools []string, agentOrder []string) configModel {
 	for i, t := range orderedTools {
 		enabled := len(enabledTools) == 0
 		if len(enabledTools) > 0 {
-			for _, et := range enabledTools {
-				// Split comma-joined entries to match how usage consumes
-				// enabled_tools, so the checkboxes agree with fetched rows.
-				for _, part := range strings.Split(et, ",") {
-					if update.NormalizeToolName(part) == update.NormalizeToolName(t.BinaryName) {
-						enabled = true
-						break
-					}
+			// Split comma-joined entries to match how usage consumes
+			// enabled_tools, so the checkboxes agree with fetched rows.
+			for _, part := range splitConfigEntries(enabledTools) {
+				if update.NormalizeToolName(part) == update.NormalizeToolName(t.BinaryName) {
+					enabled = true
+					break
 				}
 			}
 		}
@@ -598,6 +597,22 @@ func writeViperConfigAtomic(configPath string) error {
 	return os.Rename(tmpName, configPath)
 }
 
+// splitConfigEntries splits comma-joined config list values (enabled_tools,
+// agent_order, ...) into trimmed, non-empty parts. GetStringSlice keeps
+// comma-joined entries intact, so every consumer splits them the same way;
+// empty parts ("a,,b", trailing comma) are tolerated everywhere.
+func splitConfigEntries(values []string) []string {
+	parts := make([]string, 0, len(values))
+	for _, value := range values {
+		for _, part := range strings.Split(value, ",") {
+			if part = strings.TrimSpace(part); part != "" {
+				parts = append(parts, part)
+			}
+		}
+	}
+	return parts
+}
+
 func runInteractiveConfig() ([]string, []string, bool, *pendingAccountAction, error) {
 	enabledTools := viper.GetStringSlice("enabled_tools")
 	agentOrder := viper.GetStringSlice("agent_order")
@@ -655,6 +670,22 @@ func readPromptLine() (string, error) {
 
 func promptToken(prompt string) (string, error) {
 	fmt.Print(prompt)
+	return readPromptLine()
+}
+
+// promptSecret reads a token without echoing it on a terminal, keeping the
+// value out of shell scrollback and shared terminal logs. Piped or otherwise
+// non-terminal stdin cannot disable echo and falls back to a plain read.
+func promptSecret(prompt string) (string, error) {
+	fmt.Print(prompt)
+	if term.IsTerminal(int(os.Stdin.Fd())) {
+		value, err := term.ReadPassword(int(os.Stdin.Fd()))
+		fmt.Println()
+		if err != nil {
+			return "", err
+		}
+		return strings.TrimSpace(string(value)), nil
+	}
 	return readPromptLine()
 }
 
@@ -716,7 +747,7 @@ func setupTokens(tools []string) error {
 			if isUpdate {
 				promptStr = "Enter new GitHub API Token (leave empty to skip)\n> "
 			}
-			token, err := promptToken(promptStr)
+			token, err := promptSecret(promptStr)
 			if err != nil {
 				return err
 			}
@@ -787,12 +818,8 @@ func printSummaryBorder(innerWidth int) {
 // appendStandaloneEntries appends the standalone usage-provider names found in
 // raw (comma-separated entries allowed) to dst, skipping names already present.
 func appendStandaloneEntries(dst, raw []string) []string {
-	for _, entry := range raw {
-		for _, part := range strings.Split(entry, ",") {
-			part = strings.TrimSpace(part)
-			if part == "" {
-				continue
-			}
+	for _, part := range splitConfigEntries(raw) {
+		{
 			p, ok := usage.LookupStandalone(part)
 			if !ok {
 				continue
@@ -834,12 +861,8 @@ func mergeStandaloneIntoOrder(newOrder, oldOrder []string) []string {
 			merged = append(merged, name)
 		}
 	}
-	for _, entry := range oldOrder {
-		for _, part := range strings.Split(entry, ",") {
-			part = strings.TrimSpace(part)
-			if part == "" {
-				continue
-			}
+	for _, part := range splitConfigEntries(oldOrder) {
+		{
 			if p, ok := usage.LookupStandalone(part); ok {
 				appendName(p.Name)
 				continue
@@ -917,15 +940,11 @@ var configSetToolsCmd = &cobra.Command{
 	Short: "Set enabled tools",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		tools := strings.Split(args[0], ",")
+		// splitConfigEntries tolerates empty parts ("a,,b", trailing comma)
+		// like every other enabled_tools consumer.
+		tools := splitConfigEntries([]string{args[0]})
 		var validTools []string
 		for _, tool := range tools {
-			tool = strings.TrimSpace(tool)
-			if tool == "" {
-				// Tolerate empty parts ("a,,b", trailing comma) like every
-				// other enabled_tools consumer.
-				continue
-			}
 			found := false
 			for _, t := range update.Tools {
 				if t.MatchesName(tool) {
@@ -1097,11 +1116,19 @@ func runDisconnectCodexAccountFlow(cmd *cobra.Command, alias string) error {
 	}
 	entries := usage.AccountConfigEntries()
 	kept := make([]usage.AccountEntry, 0, len(entries))
+	removed := false
 	for _, entry := range entries {
 		if entry.Provider == "codex" && entry.Name == alias {
+			removed = true
 			continue
 		}
 		kept = append(kept, entry)
+	}
+	if !removed {
+		// Matching configAccountRemoveCmd: an unregistered target is a no-op
+		// to report, not a success — rewriting the config would only churn.
+		fmt.Fprintf(out, "No codex account named %s is registered — nothing to disconnect.\n", label)
+		return nil
 	}
 	viper.Set("accounts", accountEntriesForConfig(kept))
 	if err := writeConfig(); err != nil {
@@ -1412,14 +1439,12 @@ var configListCmd = &cobra.Command{
 			if len(enabledTools) == 0 {
 				enabled = true
 			} else {
-				for _, et := range enabledTools {
-					// Comma-joined entries are legal config values; split them
-					// like usage does so this report matches actual fetching.
-					for _, part := range strings.Split(et, ",") {
-						if strings.EqualFold(strings.TrimSpace(part), t.BinaryName) {
-							enabled = true
-							break
-						}
+				// Comma-joined entries are legal config values; split them
+				// like usage does so this report matches actual fetching.
+				for _, part := range splitConfigEntries(enabledTools) {
+					if strings.EqualFold(part, t.BinaryName) {
+						enabled = true
+						break
 					}
 				}
 			}
@@ -1437,12 +1462,8 @@ var configListCmd = &cobra.Command{
 		fmt.Fprintln(out, "\nStandalone usage providers (usage-only):")
 		shownStandalone := map[string]bool{}
 		foundStandalone := false
-		for _, et := range enabledTools {
-			for _, part := range strings.Split(et, ",") {
-				part = strings.TrimSpace(part)
-				if part == "" {
-					continue
-				}
+		for _, part := range splitConfigEntries(enabledTools) {
+			{
 				p, ok := usage.LookupStandalone(part)
 				if !ok || shownStandalone[p.Name] {
 					continue
