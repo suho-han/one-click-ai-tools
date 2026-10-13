@@ -117,10 +117,7 @@ func describeCursorCredential() CredentialStatus {
 	}
 	home, _ := os.UserHomeDir()
 	authPaths := cursorAuthPaths(home)
-	authPathLabels := make([]string, 0, len(authPaths))
-	for _, path := range authPaths {
-		authPathLabels = append(authPathLabels, path)
-	}
+	authPathLabels := append([]string(nil), authPaths...)
 	sources = append(sources, CredentialSource{
 		Kind:     CredentialKindFile,
 		Location: strings.Join(authPathLabels, " | "),
@@ -233,19 +230,23 @@ func parseCursorAPIResponse(body []byte) (UsageResult, error) {
 			continue
 		}
 		var m struct {
-			NumRequestsTotal int  `json:"numRequestsTotal"`
+			NumRequestsTotal *int `json:"numRequestsTotal"`
 			MaxRequestUsage  *int `json:"maxRequestUsage"`
 		}
-		if json.Unmarshal(val, &m) != nil {
+		if json.Unmarshal(val, &m) != nil || m.NumRequestsTotal == nil {
+			// Entries without a request total are not model usage entries;
+			// requiring the field keeps future metadata objects (which
+			// happen to be objects) out of the sums without hardcoding
+			// model names, which new models would break.
 			continue
 		}
-		totalUsed += m.NumRequestsTotal
+		totalUsed += *m.NumRequestsTotal
 		if m.MaxRequestUsage != nil {
 			totalLimit += *m.MaxRequestUsage
 			hasLimit = true
 		}
-		result.Buckets[key] = strconv.Itoa(m.NumRequestsTotal)
-		modelParts = append(modelParts, fmt.Sprintf("%s=%d", key, m.NumRequestsTotal))
+		result.Buckets[key] = strconv.Itoa(*m.NumRequestsTotal)
+		modelParts = append(modelParts, fmt.Sprintf("%s=%d", key, *m.NumRequestsTotal))
 	}
 
 	result.Used = strconv.Itoa(totalUsed)
