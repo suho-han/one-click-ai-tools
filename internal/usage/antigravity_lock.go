@@ -8,10 +8,15 @@ import (
 )
 
 // lockAntigravityUsage serializes the cache check, agy invocation, and cache
-// update across oct processes. The stable sidecar remains in place after a
-// process exits; the OS releases its advisory lock even on a crash.
+// update across oct processes.
 func lockAntigravityUsage(ctx context.Context) (func(), error) {
-	path := antigravityCachePath() + ".lock"
+	return lockFile(ctx, antigravityCachePath()+".lock")
+}
+
+// lockFile takes an exclusive advisory lock on a stable sidecar lock file.
+// The sidecar remains in place after a process exits; the OS releases its
+// advisory lock even on a crash.
+func lockFile(ctx context.Context, path string) (func(), error) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 		return nil, err
 	}
@@ -30,7 +35,7 @@ func lockAntigravityUsage(ctx context.Context) (func(), error) {
 			file.Close()
 			return nil, err
 		}
-		unlock, acquired, err := tryLockAntigravityFile(file)
+		unlock, acquired, err := tryLockFile(file)
 		if err != nil {
 			file.Close()
 			return nil, err

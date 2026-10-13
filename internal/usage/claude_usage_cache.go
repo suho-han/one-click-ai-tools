@@ -1,8 +1,11 @@
 package usage
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/suho-han/one-click-ai-tools/internal/fsutil"
+	"log"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -68,7 +71,10 @@ func writeClaudeUsageCache(entry claudeUsageCacheEntry) {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(path, data, 0o600)
+	// Atomic write: a crash mid-write must not lose the recorded
+	// state (for claude, the 429 backoff deadline) or leave a truncated
+	// cache that reads back as "no cache".
+	_ = fsutil.WriteFileAtomic(path, data, 0o600)
 }
 
 // saveClaudeLastGoodUsage records a successful fetch and clears any pending
@@ -85,14 +91,24 @@ func saveClaudeLastGoodUsage(buckets, resets map[string]string, now time.Time) {
 }
 
 // markClaudeRateLimited records the 429 and schedules a backoff window,
-// keeping the last-good buckets so later runs can still serve them.
-func markClaudeRateLimited(now time.Time, retryAfter time.Duration) {
+// keeping the last-good buckets so later runs can still serve them. The
+// read-modify-write runs under the cache lock so a concurrent menubar or
+// scheduled run cannot overwrite the backoff being recorded here.
+func markClaudeRateLimited(ctx context.Context, now time.Time, retryAfter time.Duration) {
 	backoff := retryAfter
 	if backoff <= 0 {
 		backoff = claudeRateLimitBackoffDefault
 	}
 	if backoff > claudeRateLimitBackoffMax {
 		backoff = claudeRateLimitBackoffMax
+	}
+	unlock, err := lockFile(ctx, claudeUsageCachePath()+".lock")
+	if err != nil {
+		// Proceed unlocked but say so: a concurrent run can now clobber
+		// this backoff record.
+		log.Printf("claude usage cache: lock unavailable (%v); continuing unlocked", err)
+	} else {
+		defer unlock()
 	}
 	entry := readClaudeUsageCache()
 	entry.BackoffUntilMs = now.Add(backoff).UnixMilli()

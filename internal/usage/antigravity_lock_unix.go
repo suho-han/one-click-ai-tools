@@ -8,7 +8,7 @@ import (
 	"syscall"
 )
 
-func tryLockAntigravityFile(file *os.File) (func(), bool, error) {
+func tryLockFile(file *os.File) (func(), bool, error) {
 	err := syscall.Flock(int(file.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
 	if errors.Is(err, syscall.EWOULDBLOCK) {
 		return nil, false, nil

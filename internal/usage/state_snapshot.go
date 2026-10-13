@@ -3,6 +3,7 @@ package usage
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/suho-han/one-click-ai-tools/internal/fsutil"
 	"os"
 	"path/filepath"
 	"time"
@@ -34,7 +35,7 @@ func SaveSnapshot(path string, results []UsageResult, now time.Time) error {
 		return err
 	}
 	// 0600: the snapshot reveals per-provider usage patterns to other local users.
-	return writeFileAtomic(path, b, 0600)
+	return fsutil.WriteFileAtomic(path, b, 0600)
 }
 
 // LoadSnapshot reads a snapshot previously written by SaveSnapshot (oct
@@ -54,29 +55,4 @@ func LoadSnapshot(path string) (UsageSnapshot, error) {
 		return UsageSnapshot{}, fmt.Errorf("parse snapshot %s: %w", path, err)
 	}
 	return snapshot, nil
-}
-
-// writeFileAtomic writes via a temp file + rename so readers (menubar,
-func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
-	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	defer os.Remove(tmpName)
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	if err := os.Chmod(tmpName, perm); err != nil {
-		return err
-	}
-	return os.Rename(tmpName, path)
 }

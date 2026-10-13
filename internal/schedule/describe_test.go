@@ -2,6 +2,7 @@ package schedule
 
 import (
 	"errors"
+	"github.com/suho-han/one-click-ai-tools/internal/fsutil"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -117,7 +118,7 @@ func TestMacOSDescribe_ReadsPlistFromHome(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(plistPath), 0o755); err != nil {
 		t.Fatalf("mkdir LaunchAgents: %v", err)
 	}
-	if err := writeFileAtomic(plistPath, renderTestPlist(t, DailyInterval, 8), 0o644); err != nil {
+	if err := fsutil.WriteFileAtomic(plistPath, renderTestPlist(t, DailyInterval, 8), 0o644); err != nil {
 		t.Fatalf("write plist: %v", err)
 	}
 	state, err = m.Describe(AgentUpdateTask)

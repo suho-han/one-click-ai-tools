@@ -3,6 +3,7 @@ package usage
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/suho-han/one-click-ai-tools/internal/fsutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -77,7 +78,10 @@ func writeAntigravityUsageCache(entry antigravityUsageCacheEntry) {
 	if err != nil {
 		return
 	}
-	_ = os.WriteFile(path, data, 0o600)
+	// Atomic write: a crash mid-write must not lose the recorded
+	// state (for claude, the 429 backoff deadline) or leave a truncated
+	// cache that reads back as "no cache".
+	_ = fsutil.WriteFileAtomic(path, data, 0o600)
 }
 
 func saveAntigravityLastGoodUsage(buckets, resets map[string]string, now time.Time) {

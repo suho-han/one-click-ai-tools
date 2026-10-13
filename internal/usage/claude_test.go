@@ -193,7 +193,7 @@ func TestFetchClaudeUsageRateLimitedBuckets(t *testing.T) {
 	t.Setenv("CLAUDE_API_TOKEN", "dummy-token")
 	t.Setenv("HOME", tmp)
 	t.Setenv("USERPROFILE", tmp)
-	cache := fmt.Sprintf(`{
+	cache := `{
 		"cachedUsageUtilization": {
 			"fetchedAtMs": 1784687082111,
 			"utilization": {
@@ -201,7 +201,7 @@ func TestFetchClaudeUsageRateLimitedBuckets(t *testing.T) {
 				"seven_day": {"utilization": 41, "resets_at": "2026-07-24T22:59:59Z"}
 			}
 		}
-	}`)
+	}`
 	if err := os.WriteFile(filepath.Join(tmp, ".claude.json"), []byte(cache), 0o600); err != nil {
 		t.Fatalf("write cache failed: %v", err)
 	}

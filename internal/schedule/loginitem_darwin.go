@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/suho-han/one-click-ai-tools/internal/fsutil"
 	"io"
 	"os"
 	"os/exec"
@@ -158,7 +159,7 @@ func installLaunchItem(item LaunchItem) (string, error) {
 	if err := renderLaunchItemPlist(&buf, item); err != nil {
 		return "", err
 	}
-	if err := writeFileAtomic(plistPath, buf.Bytes(), 0o644); err != nil {
+	if err := fsutil.WriteFileAtomic(plistPath, buf.Bytes(), 0o644); err != nil {
 		return "", err
 	}
 	return plistPath, nil

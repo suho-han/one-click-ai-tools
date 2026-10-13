@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/suho-han/one-click-ai-tools/internal/fsutil"
 	"github.com/suho-han/one-click-ai-tools/internal/usage"
 )
 
@@ -329,33 +330,7 @@ func saveState(path string, st alertState) error {
 		return err
 	}
 	// 0600: the state exposes per-provider usage patterns to other local users.
-	return writeFileAtomic(path, b, 0600)
-}
-
-// writeFileAtomic writes via a temp file + rename so a crash mid-write never
-// leaves a truncated state file behind for the next reader.
-func writeFileAtomic(path string, data []byte, perm os.FileMode) error {
-	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".tmp-*")
-	if err != nil {
-		return err
-	}
-	tmpName := tmp.Name()
-	defer os.Remove(tmpName)
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	if err := os.Chmod(tmpName, perm); err != nil {
-		return err
-	}
-	return os.Rename(tmpName, path)
+	return fsutil.WriteFileAtomic(path, b, 0600)
 }
 
 // notifyCommandTimeout bounds the OS notification subprocess (osascript can

@@ -116,7 +116,7 @@ func TestClaudeUsageCacheBackoffSkipsEndpoint(t *testing.T) {
 		map[string]string{"5h": "2026-09-25T00:00:00Z"},
 		now,
 	)
-	markClaudeRateLimited(now, 0)
+	markClaudeRateLimited(t.Context(), now, 0)
 
 	calls := 0
 	claudeCacheSilentClient(t, &calls)
@@ -135,7 +135,7 @@ func TestClaudeUsageCacheBackoffSkipsEndpoint(t *testing.T) {
 
 func TestClaudeUsageCacheBackoffWithoutCachedUsage(t *testing.T) {
 	claudeCacheTestSetup(t)
-	markClaudeRateLimited(time.Now(), 0)
+	markClaudeRateLimited(t.Context(), time.Now(), 0)
 
 	calls := 0
 	claudeCacheSilentClient(t, &calls)
@@ -179,7 +179,7 @@ func TestLastGoodClaudeUsageExpires(t *testing.T) {
 
 func TestClaudeUsageCacheSuccessClearsBackoff(t *testing.T) {
 	claudeCacheTestSetup(t)
-	markClaudeRateLimited(time.Now(), 0)
+	markClaudeRateLimited(t.Context(), time.Now(), 0)
 	if _, ok := claudeUsageBackoffRemaining(time.Now()); !ok {
 		t.Fatalf("expected backoff to be armed")
 	}

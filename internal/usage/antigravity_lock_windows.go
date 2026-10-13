@@ -14,7 +14,7 @@ var (
 	antigravityUnlockFile = antigravityKernel32.NewProc("UnlockFileEx")
 )
 
-func tryLockAntigravityFile(file *os.File) (func(), bool, error) {
+func tryLockFile(file *os.File) (func(), bool, error) {
 	const (
 		exclusive       = 0x2
 		failImmediately = 0x1

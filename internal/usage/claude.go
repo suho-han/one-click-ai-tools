@@ -211,7 +211,7 @@ func FetchClaudeUsage(ctx context.Context) UsageResult {
 
 	if resp.StatusCode != http.StatusOK {
 		if resp.StatusCode == http.StatusTooManyRequests {
-			markClaudeRateLimited(time.Now(), parseRetryAfter(resp.Header.Get("Retry-After")))
+			markClaudeRateLimited(ctx, time.Now(), parseRetryAfter(resp.Header.Get("Retry-After")))
 			if cached, ok := fetchClaudeCachedUsage(result, home, "API rate limited"); ok {
 				return cached
 			}
