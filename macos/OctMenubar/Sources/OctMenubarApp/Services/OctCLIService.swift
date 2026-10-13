@@ -126,6 +126,20 @@ struct OctCLIService {
         _ = try await runProcess(executableURL: executableURL, arguments: ["menubar", "daemon", enabled ? "enable" : "disable"])
     }
 
+    /// Self-update may download/verify an archive or run a Homebrew upgrade;
+    /// it needs a longer watchdog than periodic usage/config subprocesses.
+    /// --yes is safe here only after the app's explicit confirmation dialog.
+    func runSelfUpdate() async throws -> String {
+        var updater = self
+        updater.processTimeout = 12 * 60
+        updater.refreshDeadline = updater.processTimeout + Self.exitGrace * 2 + 6
+        let result = try await updater.runProcess(
+            executableURL: executableURL,
+            arguments: ["update", "--yes"]
+        )
+        return result.stdout
+    }
+
     /// Restarts the menubar helper by handing stop→start to a detached shell:
     /// `oct menubar stop` SIGTERMs every helper instance (this one included),
     /// then `oct menubar --daemon` starts a fresh one. The sequence must

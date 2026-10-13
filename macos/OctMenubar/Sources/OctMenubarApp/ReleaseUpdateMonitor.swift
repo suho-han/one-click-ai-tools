@@ -73,6 +73,7 @@ final class ReleaseUpdateMonitor: ObservableObject {
     static let pollInterval: TimeInterval = 5 * 60
 
     @Published private(set) var availableUpdate: ReleaseUpdate?
+    let installer: ReleaseUpdateInstaller
     @Published private(set) var automaticallyChecksForUpdates: Bool
 
     private var timer: Timer?
@@ -90,6 +91,7 @@ final class ReleaseUpdateMonitor: ObservableObject {
         self.currentVersion = currentVersion
         self.session = session
         self.defaults = defaults
+        self.installer = ReleaseUpdateInstaller()
         self.automaticallyChecksForUpdates =
             defaults.object(forKey: MenubarPreferences.automaticallyChecksForUpdatesKey) as? Bool ?? true
     }

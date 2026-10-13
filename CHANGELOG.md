@@ -36,6 +36,7 @@ All notable changes to this project will be documented in this file. See [standa
 * **installer:** choose the menubar helper track from the release version even with a custom command name.
 * **config:** fail settings snapshots when automatic-update schedule inspection fails instead of reporting it disabled.
 * **docs:** align usage-alert examples with the supported thresholds, quiet timer, and snooze behavior.
+* **menubar:** confirm before running `oct update` from either update button; show progress and the CLI result.
 
 ### [0.1.6](https://github.com/suho-han/one-click-ai-tools/compare/v0.1.5...v0.1.6) (2026-09-30)
 

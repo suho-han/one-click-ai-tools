@@ -1,13 +1,8 @@
 import AppKit
 import Combine
 
-/// Shows a compact "⬇️ update" status item only while a newer GitHub release
-/// is available; clicking it opens the release download page (a one-purpose
-/// button gets a direct action, not a menu — the monitor already re-checks
-/// every five minutes). The version text itself lives in the popover header:
-/// as a menu bar item it was invisible on crowded bars, hidden inside the «
-/// overflow. The monitor is owned by StatusBarController and shared with the
-/// popover header.
+/// Shows a compact update status item while a newer GitHub release exists.
+/// Confirmation and execution are shared with the popover's update button.
 @MainActor
 final class UpdateStatusItemController: NSObject {
     private var updateItem: NSStatusItem?
@@ -27,21 +22,28 @@ final class UpdateStatusItemController: NSObject {
                 self?.refresh(update: update)
             }
             .store(in: &cancellables)
+        monitor.installer.$isUpdating
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self else { return }
+                self.refresh(update: self.pendingUpdate)
+            }
+            .store(in: &cancellables)
     }
 
     private func refresh(update: ReleaseUpdate?) {
         pendingUpdate = update
         if update != nil {
             if updateItem == nil {
-                let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-                if let button = item.button {
-                    button.title = "⬇️ update"
-                    button.toolTip = "A newer oct release is available — click to open the download page"
-                    button.setAccessibilityLabel("Update available; open the release download page")
-                    button.target = self
-                    button.action = #selector(openUpdateButton(_:))
-                }
-                updateItem = item
+                updateItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+            }
+            if let button = updateItem?.button {
+                button.title = monitor.installer.isUpdating ? "⬇️ updating…" : "⬇️ update"
+                button.toolTip = monitor.installer.isUpdating ? "oct update is running" : "A newer oct release is available — click to confirm oct update"
+                button.setAccessibilityLabel(monitor.installer.isUpdating ? "oct update in progress" : "Update available; confirm oct update")
+                button.isEnabled = !monitor.installer.isUpdating
+                button.target = self
+                button.action = #selector(openUpdateButton(_:))
             }
         } else if let item = updateItem {
             NSStatusBar.system.removeStatusItem(item)
@@ -52,6 +54,6 @@ final class UpdateStatusItemController: NSObject {
     @objc
     private func openUpdateButton(_ sender: AnyObject?) {
         guard let update = pendingUpdate else { return }
-        NSWorkspace.shared.open(update.htmlURL)
+        monitor.installer.requestUpdate(to: update)
     }
 }

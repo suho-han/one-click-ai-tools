@@ -4,6 +4,14 @@ struct HeaderView: View {
     let snapshot: UsageSnapshot
     let isRefreshing: Bool
     @ObservedObject var releaseMonitor: ReleaseUpdateMonitor
+    @ObservedObject private var installer: ReleaseUpdateInstaller
+
+    init(snapshot: UsageSnapshot, isRefreshing: Bool, releaseMonitor: ReleaseUpdateMonitor) {
+        self.snapshot = snapshot
+        self.isRefreshing = isRefreshing
+        self.releaseMonitor = releaseMonitor
+        self.installer = releaseMonitor.installer
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -38,7 +46,7 @@ struct HeaderView: View {
 
     private func updateButton(_ update: ReleaseUpdate) -> some View {
         Button {
-            NSWorkspace.shared.open(update.htmlURL)
+            installer.requestUpdate(to: update)
         } label: {
             Text("⬇️ update")
                 .font(.system(size: 11, weight: .semibold))
@@ -47,8 +55,9 @@ struct HeaderView: View {
                 .background(Capsule().fill(Color.accentColor.opacity(0.18)))
         }
         .buttonStyle(.plain)
-        .help("A newer oct release (\(update.tag)) is available — open the download page")
-        .accessibilityLabel("Update available; open the release download page")
+        .disabled(installer.isUpdating)
+        .help(installer.isUpdating ? "oct update is running" : "A newer oct release (\(update.tag)) is available — confirm oct update")
+        .accessibilityLabel("Update available; confirm oct update")
     }
 
     private var statusPill: some View {

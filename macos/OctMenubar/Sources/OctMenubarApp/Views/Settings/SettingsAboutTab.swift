@@ -28,7 +28,7 @@ struct SettingsAboutTab: View {
                 get: { releaseMonitor.automaticallyChecksForUpdates },
                 set: { releaseMonitor.setAutomaticallyChecksForUpdates($0) }
             ))
-            Text("Checks GitHub Releases every five minutes and links to the download page. Updates are never installed automatically.")
+            Text("Checks GitHub Releases every five minutes. Choose Yes in the update prompt to run oct update; updates are never installed automatically.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
         }

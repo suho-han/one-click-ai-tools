@@ -94,6 +94,42 @@ final class ReleaseUpdateTests: XCTestCase {
     }
 }
 
+@MainActor
+final class ReleaseUpdateInstallerTests: XCTestCase {
+    func testSelfUpdateFailureReturnsCLIDiagnosticWithoutRetrying() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("oct-self-update-\(UUID())")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let executable = directory.appendingPathComponent("oct")
+        let attempts = directory.appendingPathComponent("attempts")
+        let script = """
+        #!/bin/sh
+        printf 'attempt\\n' >> '\(attempts.path)'
+        if [ "$1" != "update" ] || [ "$2" != "--yes" ] || [ "$#" -ne 2 ]; then
+            echo "incorrect update invocation" >&2
+            exit 9
+        fi
+        echo "archive checksum mismatch" >&2
+        exit 1
+        """
+        try script.write(to: executable, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: executable.path)
+        let service = OctCLIService(executableURL: executable)
+
+        do {
+            _ = try await service.runSelfUpdate()
+            XCTFail("a failed oct update must be shown as a failure")
+        } catch let error as OctCLIServiceError {
+            guard case .nonZeroExit(let status, let stderr) = error else {
+                return XCTFail("expected CLI failure, got \(error)")
+            }
+            XCTAssertEqual(status, 1)
+            XCTAssertTrue(stderr.contains("archive checksum mismatch"))
+        }
+        XCTAssertEqual(try String(contentsOf: attempts, encoding: .utf8), "attempt\n")
+    }
+}
+
 private final class ReleaseStubProtocol: URLProtocol {
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
