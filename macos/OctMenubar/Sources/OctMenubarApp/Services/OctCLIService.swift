@@ -144,7 +144,10 @@ struct OctCLIService {
     /// `oct menubar stop` SIGTERMs every helper instance (this one included),
     /// then `oct menubar --daemon` starts a fresh one. The sequence must
     /// outlive this terminating app, so it runs unmanaged — no pipes or
-    /// watchdog, unlike `runProcess`, which would die with the app.
+    /// watchdog, unlike `runProcess`, which would die with the app. The
+    /// termination handler only reaps the shell once it exits; callers are
+    /// expected to terminate the app immediately after, where launchd would
+    /// otherwise leave the exited zsh unreaped.
     func restartHelperDetached() throws {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/zsh")
@@ -152,6 +155,7 @@ struct OctCLIService {
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = FileHandle.nullDevice
         process.standardError = FileHandle.nullDevice
+        process.terminationHandler = { _ in }
         try process.run()
     }
 
