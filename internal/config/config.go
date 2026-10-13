@@ -69,11 +69,28 @@ func MigrateLegacyConfig() error {
 		return err
 	}
 
-	err = viper.WriteConfigAs(newPath)
+	// The migrated config can carry secrets (e.g. github_api_token), so it
+	// must never exist at the process umask's default permissions — not even
+	// transiently. Write through a 0600 temp file and rename into place;
+	// the temp is closed before the rename because Windows refuses to
+	// rename a file that is still open. The temp keeps the target's
+	// extension so viper can infer the config format from the name.
+	tmp, err := os.CreateTemp(filepath.Dir(newPath), "*"+filepath.Ext(newPath))
 	if err != nil {
 		return err
 	}
-	if err := os.Chmod(newPath, 0o600); err != nil {
+	tmpName := tmp.Name()
+	defer os.Remove(tmpName)
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := viper.WriteConfigAs(tmpName); err != nil {
+		return err
+	}
+	if err := os.Chmod(tmpName, 0o600); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpName, newPath); err != nil {
 		return err
 	}
 
