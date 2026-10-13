@@ -351,6 +351,35 @@ func TestApplyCompletedAlertSettingsModel_DoesNotPersist_whenProgramStopsBeforeC
 	}
 }
 
+func TestApplyCompletedAlertSettingsModel_SkipsQuietRow_whenOnlyOtherSettingsChanged(t *testing.T) {
+	// Given: a running quiet timer, and a confirmed model whose quiet row
+	// still shows the armed state it loaded with. Confirming another setting
+	// must not try to re-apply the display value ("on (… left)") as a quiet
+	// choice, which would fail the whole save.
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	configPath := filepath.Join(t.TempDir(), "config.yaml")
+	viper.SetConfigFile(configPath)
+	armed := time.Now().Add(2 * time.Hour).Format(time.RFC3339)
+	viper.Set("usage_alert_quiet_until", armed)
+	m := newAlertSettingsModel(alertSettingsDraftFromViper())
+	m.items[1].value = "82" // threshold_percent edited, quiet row untouched
+	m.done = true
+
+	// When
+	if err := applyCompletedAlertSettingsModel(m); err != nil {
+		t.Fatalf("apply completed model: %v", err)
+	}
+
+	// Then
+	if got := viper.GetString("usage_alert_quiet_until"); got != armed {
+		t.Fatalf("quiet_until = %q, want unchanged %q", got, armed)
+	}
+	if got := viper.GetFloat64("usage_alert_threshold_percent"); got != 82 {
+		t.Fatalf("threshold_percent = %v, want 82", got)
+	}
+}
+
 func TestRunInteractiveAlert_DoesNotPersist_whenInputCancels(t *testing.T) {
 	// Given
 	viper.Reset()

@@ -28,7 +28,11 @@ type alertSettingsItem struct {
 }
 
 type alertSettingsModel struct {
-	items           []alertSettingsItem
+	items []alertSettingsItem
+	// initialQuiet is the quiet row's value when the TUI opened, carried from
+	// the draft so the confirmed model can rebuild a draft whose quiet row is
+	// skipped when untouched.
+	initialQuiet    string
 	cancelled       bool
 	done            bool
 	editing         bool
@@ -137,7 +141,7 @@ func newAlertSettingsModel(draft alertSettingsDraft) alertSettingsModel {
 		items = append(items, alertSettingsItem{key: row.key, label: row.label, value: draft.values[row.key], cursor: i == 0})
 	}
 	items = append(items, alertSettingsItem{key: "confirm", label: "Confirm", cursor: false, confirm: true})
-	return alertSettingsModel{items: items}
+	return alertSettingsModel{items: items, initialQuiet: draft.initialQuiet}
 }
 
 func (m alertSettingsModel) Init() tea.Cmd { return nil }
@@ -360,7 +364,7 @@ func applyCompletedAlertSettingsModel(model alertSettingsModel) error {
 	if model.cancelled || !model.done {
 		return nil
 	}
-	draft := alertSettingsDraft{values: make(map[string]string, len(alertSettingsRows))}
+	draft := alertSettingsDraft{values: make(map[string]string, len(alertSettingsRows)), initialQuiet: model.initialQuiet}
 	for _, item := range model.items {
 		if !item.confirm {
 			draft.values[item.key] = item.value
