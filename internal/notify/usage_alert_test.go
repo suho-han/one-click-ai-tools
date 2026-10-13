@@ -226,11 +226,16 @@ func TestSnoozeSuppression(t *testing.T) {
 }
 
 func TestAlertPriority(t *testing.T) {
-	if p := computeAlertPriority(92, 90); p != alertPriorityHigh {
-		t.Fatalf("expected high, got %s", p)
+	// Hits only exist at or over their threshold, so the escalation is
+	// exhaustion: over-threshold values are normal, 100% is high.
+	if p := computeAlertPriority(92); p != alertPriorityNormal {
+		t.Fatalf("expected normal for over-threshold but not exhausted, got %s", p)
 	}
-	if p := computeAlertPriority(89, 90); p != alertPriorityNormal {
-		t.Fatalf("expected normal, got %s", p)
+	if p := computeAlertPriority(100); p != alertPriorityHigh {
+		t.Fatalf("expected high at 100%%, got %s", p)
+	}
+	if p := computeAlertPriority(105.5); p != alertPriorityHigh {
+		t.Fatalf("expected high past exhaustion, got %s", p)
 	}
 }
 
@@ -257,8 +262,19 @@ func TestMaybeSendUsageAlertsMessageIncludesPriorityLabel(t *testing.T) {
 	if err := MaybeSendUsageAlerts(results, cfg, time.Now()); err != nil {
 		t.Fatalf("MaybeSendUsageAlerts failed: %v", err)
 	}
+	if !strings.Contains(captured, "[NORMAL]") {
+		t.Fatalf("expected [NORMAL] label for a value over the threshold but below 100%%, got %q", captured)
+	}
+
+	// A window at 100% escalates the label to high (past the cooldown so the
+	// earlier 92% send does not suppress it).
+	captured = ""
+	results = []usage.UsageResult{{Provider: "codex", Unit: "percent", Used: "100", Buckets: map[string]string{"5h": "100"}}}
+	if err := MaybeSendUsageAlerts(results, cfg, time.Now().Add(3*time.Hour)); err != nil {
+		t.Fatalf("MaybeSendUsageAlerts failed: %v", err)
+	}
 	if !strings.Contains(captured, "[HIGH]") {
-		t.Fatalf("expected [HIGH] label in message, got %q", captured)
+		t.Fatalf("expected [HIGH] label at 100%%, got %q", captured)
 	}
 }
 
@@ -387,8 +403,10 @@ func TestCooldownAndSnooze_NoDuplicateSends(t *testing.T) {
 	if err := MaybeSendUsageAlerts(results, cfg, now); err != nil {
 		t.Fatalf("first send failed: %v", err)
 	}
-	if notifyCount != 2 {
-		t.Fatalf("expected 2 alerts for current+5h hit, got %d", notifyCount)
+	// Used mirrors the 5h bucket, so the mirrored "current" key is deduped
+	// away and one number produces one notification.
+	if notifyCount != 1 {
+		t.Fatalf("expected 1 alert for the mirrored 5h value, got %d", notifyCount)
 	}
 
 	if err := SetSnooze(statePath, "codex", "5h", now.Add(1*time.Hour)); err != nil {
@@ -397,8 +415,45 @@ func TestCooldownAndSnooze_NoDuplicateSends(t *testing.T) {
 	if err := MaybeSendUsageAlerts(results, cfg, now.Add(10*time.Minute)); err != nil {
 		t.Fatalf("second send failed: %v", err)
 	}
-	if notifyCount != 2 {
+	if notifyCount != 1 {
 		t.Fatalf("expected no duplicate sends within cooldown with snooze, got %d", notifyCount)
+	}
+}
+
+func TestOverThresholdKeys_SkipsCurrentMirroredFromBucket(t *testing.T) {
+	cfg := normalizeConfig(UsageAlertConfig{
+		Enabled:      true,
+		ThresholdPct: 80,
+	})
+
+	// Used mirrors the 5h bucket: one hit, not two.
+	mirrored := usage.UsageResult{
+		Provider: "claude-code",
+		Unit:     "percent",
+		Used:     "90",
+		Buckets:  map[string]string{"5h": "90", "7d": "60"},
+	}
+	if hits := overThresholdKeys(mirrored, cfg); len(hits) != 1 || hits[0].Window != "5h" {
+		t.Fatalf("hits = %+v, want only the 5h bucket", hits)
+	}
+
+	// A Used value of its own still alerts on "current".
+	distinct := usage.UsageResult{
+		Provider: "claude-code",
+		Unit:     "percent",
+		Used:     "82.5",
+		Buckets:  map[string]string{"5h": "90", "7d": "60"},
+	}
+	hits := overThresholdKeys(distinct, cfg)
+	if len(hits) != 2 {
+		t.Fatalf("hits = %+v, want current and 5h", hits)
+	}
+	windows := map[string]bool{}
+	for _, h := range hits {
+		windows[h.Window] = true
+	}
+	if !windows["current"] || !windows["5h"] {
+		t.Fatalf("windows = %v, want current and 5h", windows)
 	}
 }
 

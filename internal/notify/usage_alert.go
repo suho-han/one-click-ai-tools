@@ -101,7 +101,7 @@ func MaybeSendUsageAlerts(results []usage.UsageResult, cfg UsageAlertConfig, now
 				continue
 			}
 
-			priority := computeAlertPriority(h.Value, h.Threshold)
+			priority := computeAlertPriority(h.Value)
 			msg := fmt.Sprintf("[%s] %s %s usage %.1f%% (threshold %.1f%%)", strings.ToUpper(string(priority)), r.Provider, h.Window, h.Value, h.Threshold)
 			if err := notifyFn("oct usage alert", msg); err == nil {
 				st.LastSent[key] = now
@@ -145,25 +145,35 @@ func overThresholdKeys(r usage.UsageResult, cfg UsageAlertConfig) []alertHit {
 		return hits
 	}
 
-	collect := func(window, raw string) {
-		v, ok := parsePercent(raw)
-		if !ok {
-			return
-		}
+	collect := func(window string, v float64) {
 		thr := thresholdFor(cfg, r.Provider, window)
 		if v >= thr {
 			hits = append(hits, alertHit{Window: window, Value: v, Threshold: thr})
 		}
 	}
 
-	collect("current", r.Used)
+	// Most fetchers mirror a bucket (usually "5h") into Used for display.
+	// Alerting both keys would send two OS notifications per cycle for the
+	// same number, so "current" only alerts when it carries its own value.
+	current, hasCurrent := parsePercent(r.Used)
+	for _, raw := range r.Buckets {
+		if bucket, ok := parsePercent(raw); ok && hasCurrent && bucket == current {
+			hasCurrent = false
+			break
+		}
+	}
+	if hasCurrent {
+		collect("current", current)
+	}
 	keys := make([]string, 0, len(r.Buckets))
 	for k := range r.Buckets {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
 	for _, k := range keys {
-		collect(k, r.Buckets[k])
+		if v, ok := parsePercent(r.Buckets[k]); ok {
+			collect(k, v)
+		}
 	}
 	return hits
 }
@@ -278,8 +288,12 @@ func parsePercent(s string) (float64, bool) {
 	return v, true
 }
 
-func computeAlertPriority(value, threshold float64) alertPriority {
-	if value >= threshold {
+// computeAlertPriority grades a hit. Hits only exist at or over their
+// threshold (overThresholdKeys filters below-threshold windows), so the
+// meaningful escalation is exhaustion: crossing the threshold is a normal
+// heads-up, a window at 100% is high.
+func computeAlertPriority(value float64) alertPriority {
+	if value >= 100 {
 		return alertPriorityHigh
 	}
 	return alertPriorityNormal
