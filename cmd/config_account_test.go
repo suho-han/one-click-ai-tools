@@ -216,6 +216,47 @@ func TestRunAddCodexAccountFlow_LoginFailureCleansUp(t *testing.T) {
 	}
 }
 
+// failingPromptReader errors on every read, simulating a stdin pipe that
+// broke mid-prompt (a non-EOF failure).
+type failingPromptReader struct{ err error }
+
+func (r failingPromptReader) Read([]byte) (int, error) { return 0, r.err }
+
+func TestRunAddCodexAccountFlow_PromptErrorCleansUp(t *testing.T) {
+	// Given: a successful login whose token carries no email claim, so the
+	// flow asks for an account name — and a prompt reader that fails with a
+	// non-EOF error. The temporary home already holds the OAuth token and
+	// must not be left behind.
+	tmp := t.TempDir()
+	isolateTestHome(t, tmp)
+	viper.SetConfigFile(filepath.Join(tmp, ".oct", "config.yaml"))
+	t.Cleanup(func() {
+		viper.Set("accounts", nil)
+		viper.Set("codex_accounts", nil)
+		viper.SetConfigFile("")
+	})
+
+	stubLogin(t, "")
+	origReader := configPromptReader
+	configPromptReader = bufio.NewReader(failingPromptReader{err: errors.New("input pipe closed")})
+	t.Cleanup(func() { configPromptReader = origReader })
+
+	var out bytes.Buffer
+	flowCmd := &cobra.Command{}
+	flowCmd.SetOut(&out)
+
+	// When
+	err := runAddCodexAccountFlow(flowCmd)
+
+	// Then
+	if err == nil {
+		t.Fatal("expected the prompt error to propagate")
+	}
+	if leftovers, _ := filepath.Glob(filepath.Join(tmp, ".codex-tmp-login-*")); len(leftovers) != 0 {
+		t.Fatalf("temporary login homes left behind: %v", leftovers)
+	}
+}
+
 func TestRunAddCodexAccountFlow_DuplicateAliasCleansUp(t *testing.T) {
 	tmp := t.TempDir()
 	isolateTestHome(t, tmp)

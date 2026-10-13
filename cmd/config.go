@@ -1182,10 +1182,19 @@ func runAddCodexAccountFlow(cmd *cobra.Command) error {
 	if err != nil {
 		return fmt.Errorf("create temporary codex home: %w", err)
 	}
+	// tmpHome holds a live OAuth token once `codex login` completes, so every
+	// return before the final rename must remove it. The flag spares the
+	// directory once it has become the registered home — either renamed to
+	// its final path or kept at the temporary path when the rename failed.
+	removeTmpHome := true
+	defer func() {
+		if removeTmpHome {
+			os.RemoveAll(tmpHome)
+		}
+	}()
 
 	fmt.Fprintln(out, "Running 'codex login' — complete it in the browser...")
 	if err := runInteractiveLogin(tmpHome); err != nil {
-		os.RemoveAll(tmpHome)
 		fmt.Fprintf(out, "Login did not complete (%v).\nRetry from the picker, or run: oct config account add codex <name> <dir>\n", err)
 		return nil
 	}
@@ -1205,7 +1214,6 @@ func runAddCodexAccountFlow(cmd *cobra.Command) error {
 		}
 		alias = strings.ToLower(strings.TrimSpace(alias))
 		if alias == "" {
-			os.RemoveAll(tmpHome)
 			fmt.Fprintln(out, "No account name entered; cancelled.")
 			return nil
 		}
@@ -1215,7 +1223,6 @@ func runAddCodexAccountFlow(cmd *cobra.Command) error {
 	// Logging into an account that is already registered is a no-op.
 	for _, account := range accounts {
 		if account.Name == alias {
-			os.RemoveAll(tmpHome)
 			fmt.Fprintf(out, "%s is already registered — nothing to add.\n", usage.AccountProviderName("codex", alias))
 			return nil
 		}
@@ -1226,6 +1233,7 @@ func runAddCodexAccountFlow(cmd *cobra.Command) error {
 			home = tmpHome // keep the temporary path rather than failing
 		}
 	}
+	removeTmpHome = false
 	if _, err := upsertAccount("codex", alias, home); err != nil {
 		return err
 	}
