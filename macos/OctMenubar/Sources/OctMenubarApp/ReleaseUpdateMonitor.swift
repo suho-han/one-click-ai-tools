@@ -1,10 +1,15 @@
 import Combine
 import Foundation
+import os
 
 /// A newer GitHub release of oct, ready to surface in the menubar.
 struct ReleaseUpdate: Equatable {
     let tag: String
     let htmlURL: URL
+}
+
+extension ReleaseUpdateMonitor {
+    static let logger = Logger(subsystem: "app.oct.menubar", category: "release-update")
 }
 
 /// Pure release-comparison logic, kept free of networking so tests can
@@ -151,7 +156,11 @@ final class ReleaseUpdateMonitor: ObservableObject {
             )
         } catch {
             // Network errors, rate limits, and malformed responses all land
-            // here; the menubar keeps showing what it knew before.
+            // here; the menubar keeps showing what it knew before. The log
+            // line keeps "why is there no update badge" diagnosable — the
+            // unauthenticated GitHub check can legitimately hit rate limits
+            // on shared IPs.
+            Self.logger.notice("Release check failed: \(error.localizedDescription, privacy: .public)")
         }
     }
 }
