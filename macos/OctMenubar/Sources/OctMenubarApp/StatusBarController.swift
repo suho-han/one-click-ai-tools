@@ -6,7 +6,9 @@ import SwiftUI
 final class StatusBarController: NSObject, NSApplicationDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let popover = NSPopover()
-    private let configurationStore = ConfigurationStore()
+    // The app's single ConfigurationStore: the popover view model uses it
+    // here, and OctMenubarApp hands the same instance to the Settings scene.
+    let configurationStore = ConfigurationStore()
     private lazy var viewModel = UsageViewModel(service: OctCLIService(), configurationStore: configurationStore)
     private var cancellables: Set<AnyCancellable> = []
     private let releaseMonitor = ReleaseUpdateMonitor.shared

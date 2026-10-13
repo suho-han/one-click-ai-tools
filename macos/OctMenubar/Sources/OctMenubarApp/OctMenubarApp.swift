@@ -9,7 +9,6 @@ enum MenubarPreferences {
 @main
 struct OctMenubarApp: App {
     @NSApplicationDelegateAdaptor(StatusBarController.self) private var statusBarController
-    @StateObject private var configurationStore = ConfigurationStore()
 
     init() {
         // `--version` prints the stamped build version and exits before the
@@ -23,7 +22,10 @@ struct OctMenubarApp: App {
 
     var body: some Scene {
         Settings {
-            SettingsView(configurationStore: configurationStore)
+            // The status bar controller owns the app-wide ConfigurationStore;
+            // the Settings scene observes that same instance so a save from
+            // either side reaches the other.
+            SettingsView(configurationStore: statusBarController.configurationStore)
         }
     }
 }
