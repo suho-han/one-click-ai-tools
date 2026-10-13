@@ -3,7 +3,6 @@ package ui
 import (
 	"bytes"
 	"embed"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -50,13 +49,6 @@ const (
 	rendererNativeImage iconRenderer = "native_image"
 	rendererAnsiAsset   iconRenderer = "ansi_asset"
 	rendererText        iconRenderer = "text"
-
-	// ansiFG is the 16-bit grayscale foreground color (~214,214) used as a
-	// neutral mid-tone when the true pixel color is not rendered per-pixel.
-	ansiFG = uint32(0xD6D6)
-	// ansiBG is the 16-bit grayscale background color (~232) used as a
-	// slightly lighter neutral tone paired with ansiFG in fallback rendering.
-	ansiBG = uint32(0xE8E8)
 
 	// alphaTransparentThreshold is the 16-bit alpha value below which a pixel
 	// is treated as fully transparent and rendered as empty space.
@@ -112,58 +104,6 @@ func InlineIconLines(name string, width, lines int) []string {
 	return buildBrailleInlineIconLines(img, width, lines)
 }
 
-func printNativeImage(name string, size int) bool {
-	term := os.Getenv("TERM_PROGRAM")
-	isIterm := term == "iTerm.app"
-	isWezterm := term == "WezTerm"
-	isGhostty := term == "ghostty" || strings.Contains(strings.ToLower(os.Getenv("TERM")), "ghostty")
-	isKitty := os.Getenv("TERMINAL_EMULATOR") == "kitty" || strings.Contains(strings.ToLower(os.Getenv("TERM")), "kitty")
-
-	if !isIterm && !isWezterm && !isGhostty && !isKitty {
-		return false
-	}
-
-	img, err := renderIconPNG(name)
-	if err != nil {
-		return false
-	}
-
-	var buf bytes.Buffer
-	if err := png.Encode(&buf, img); err != nil {
-		return false
-	}
-	encoded := base64.StdEncoding.EncodeToString(buf.Bytes())
-
-	if isIterm || isWezterm {
-		fmt.Printf("\x1b]1337;File=inline=1;width=%dpx;height=%dpx;preserveAspectRatio=1;base64Inline=%s\a\n", size, size, encoded)
-		return true
-	}
-
-	if isKitty || isGhostty {
-		fmt.Printf("\x1b_Gf=100,t=d,s=%d,v=%d;%s\x1b\\\n", size, size, encoded)
-		return true
-	}
-
-	return false
-}
-
-func printANSIFromPNG(name string, size int) bool {
-	if size > 32 {
-		size = 32
-	}
-	img, err := renderIconPNG(name)
-	if err != nil {
-		return false
-	}
-
-	if getIconStyle() == "half-block" {
-		printANSIImage(img, size)
-	} else {
-		printBrailleImage(img, size)
-	}
-	return true
-}
-
 func renderIconPNG(name string) (image.Image, error) {
 	// Icons are embedded constants; decode each once and reuse. InlineIcon
 	// rendering runs per tool inside table loops, so re-reading and
@@ -192,12 +132,6 @@ func renderIconPNG(name string) (image.Image, error) {
 	iconCache[name] = img
 	iconCacheMu.Unlock()
 	return img, nil
-}
-
-func printTextFallback(name string) {
-	// Intentionally no-op for text fallback to avoid noisy placeholders
-	// like "[Codex]" in interactive TUI screens.
-	_ = name
 }
 
 func getRendererChoice() iconRenderer {
@@ -283,50 +217,6 @@ func getEmbeddedIconPath(name string) string {
 		return ""
 	}
 	return fmt.Sprintf("assets/icons/%s.png", slug)
-}
-
-func printANSIImage(img image.Image, targetWidth int) {
-	b := img.Bounds()
-	b = nonTransparentBounds(img, b)
-	w, h := b.Dx(), b.Dy()
-	if w <= 0 || h <= 0 {
-		return
-	}
-
-	if targetWidth <= 0 {
-		targetWidth = 20
-	}
-	stepX := maxInt(w/targetWidth, 1)
-	stepY := stepX
-
-	for y := b.Min.Y; y < b.Max.Y; y += stepY * 2 {
-		for x := b.Min.X; x < b.Max.X; x += stepX {
-			topR, topG, topB, topA := sampleRGBA(img, x, y)
-			botY := y + stepY
-			botR, botG, botB, botA := uint32(0), uint32(0), uint32(0), uint32(0)
-			if botY < b.Max.Y {
-				botR, botG, botB, botA = sampleRGBA(img, x, botY)
-			}
-			if topA >= alphaTransparentThreshold {
-				topR, topG, topB = ansiFG, ansiFG, ansiBG
-			}
-			if botA >= alphaTransparentThreshold {
-				botR, botG, botB = ansiFG, ansiFG, ansiBG
-			}
-
-			switch {
-			case topA < alphaTransparentThreshold && botA < alphaTransparentThreshold:
-				fmt.Print(" ")
-			case topA >= alphaTransparentThreshold && botA < alphaTransparentThreshold:
-				fmt.Printf("\x1b[38;2;%d;%d;%dm▀\x1b[0m", topR>>8, topG>>8, topB>>8)
-			case topA < alphaTransparentThreshold && botA >= alphaTransparentThreshold:
-				fmt.Printf("\x1b[38;2;%d;%d;%dm▄\x1b[0m", botR>>8, botG>>8, botB>>8)
-			default:
-				fmt.Printf("\x1b[38;2;%d;%d;%d;48;2;%d;%d;%dm▀\x1b[0m", topR>>8, topG>>8, topB>>8, botR>>8, botG>>8, botB>>8)
-			}
-		}
-		fmt.Println()
-	}
 }
 
 func buildHalfBlockInlineIcon(img image.Image, targetWidth int) string {
@@ -571,48 +461,4 @@ func iconSlug(name string) string {
 		}
 	}
 	return b.String()
-}
-
-func printBrailleImage(img image.Image, targetWidth int) {
-	b := img.Bounds()
-	b = nonTransparentBounds(img, b)
-	w, h := b.Dx(), b.Dy()
-	if w <= 0 || h <= 0 {
-		return
-	}
-
-	if targetWidth <= 0 {
-		targetWidth = 20
-	}
-
-	stepX := maxInt(w/(targetWidth*2), 1)
-	stepY := stepX
-
-	dotMap := [4][2]rune{{0x01, 0x08}, {0x02, 0x10}, {0x04, 0x20}, {0x40, 0x80}}
-
-	for y := b.Min.Y; y < b.Max.Y; y += stepY * 4 {
-		var line strings.Builder
-		for x := b.Min.X; x < b.Max.X; x += stepX * 2 {
-			var offset rune
-			for dy := 0; dy < 4; dy++ {
-				for dx := 0; dx < 2; dx++ {
-					px, py := x+dx*stepX, y+dy*stepY
-					if px < b.Max.X && py < b.Max.Y {
-						_, _, _, a := sampleRGBA(img, px, py)
-						if a >= alphaOpaqueThreshold {
-							offset |= dotMap[dy][dx]
-						}
-					}
-				}
-			}
-			if offset == 0 {
-				line.WriteByte(' ')
-			} else {
-				line.WriteString(fmt.Sprintf("%s%c\x1b[0m", ansiFGSeq, brailleBase+offset))
-			}
-		}
-		if line.Len() > 0 {
-			fmt.Println(line.String())
-		}
-	}
 }
