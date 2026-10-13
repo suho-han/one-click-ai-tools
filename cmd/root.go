@@ -11,6 +11,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/suho-han/one-click-ai-tools/internal/config"
+	"github.com/suho-han/one-click-ai-tools/internal/notify"
+	"github.com/suho-han/one-click-ai-tools/internal/schedule"
 	"github.com/suho-han/one-click-ai-tools/internal/telemetry"
 )
 
@@ -235,13 +237,13 @@ func initConfig() {
 	viper.SetDefault("icon_style", "braille")
 	viper.SetDefault("usage_alert_enabled", false)
 	viper.SetDefault("telemetry_enabled", true)
-	viper.SetDefault("usage_alert_threshold_percent", 80.0)
-	viper.SetDefault("usage_alert_cooldown_minutes", 360)
+	viper.SetDefault("usage_alert_threshold_percent", notify.DefaultUsageAlertThresholdPercent)
+	viper.SetDefault("usage_alert_cooldown_minutes", notify.DefaultUsageAlertCooldownMinutes)
 	viper.SetDefault("usage_alert_quiet_until", "")
-	viper.SetDefault("usage_alert_thresholds", map[string]float64{"default": 80})
+	viper.SetDefault("usage_alert_thresholds", map[string]float64{"default": notify.DefaultUsageAlertThresholdPercent})
 	viper.SetDefault("session_refresh_enabled", false)
 	viper.SetDefault("session_refresh_interval", "daily")
-	viper.SetDefault("session_refresh_hour", 9)
+	viper.SetDefault("session_refresh_hour", schedule.DefaultHour)
 	viper.SetDefault("menubar_refresh_interval", "1m")
 	viper.SetDefault("menubar_title_mode", "oct")
 	// Qwen Code has no public usage API; the provider counts today's local

@@ -48,6 +48,17 @@ const (
 	alertPriorityHigh   alertPriority = "high"
 )
 
+// Defaults shared with the CLI commands that render and edit alert config;
+// defining them here keeps the interactive TUI, the config API snapshots,
+// viper's defaults, and runtime evaluation agreeing.
+const (
+	// DefaultUsageAlertThresholdPercent is the fallback threshold when no
+	// window threshold and no default threshold are configured.
+	DefaultUsageAlertThresholdPercent = 80.0
+	// DefaultUsageAlertCooldownMinutes spaces repeat notifications apart.
+	DefaultUsageAlertCooldownMinutes = 360
+)
+
 var notifyFn = sendOSNotification
 
 func MaybeSendUsageAlerts(results []usage.UsageResult, cfg UsageAlertConfig, now time.Time) error {
@@ -119,10 +130,10 @@ func MaybeSendUsageAlerts(results []usage.UsageResult, cfg UsageAlertConfig, now
 
 func normalizeConfig(cfg UsageAlertConfig) UsageAlertConfig {
 	if cfg.ThresholdPct <= 0 {
-		cfg.ThresholdPct = 80
+		cfg.ThresholdPct = DefaultUsageAlertThresholdPercent
 	}
 	if cfg.CooldownMinutes <= 0 {
-		cfg.CooldownMinutes = 360
+		cfg.CooldownMinutes = DefaultUsageAlertCooldownMinutes
 	}
 	if cfg.StatePath == "" {
 		home, _ := os.UserHomeDir()

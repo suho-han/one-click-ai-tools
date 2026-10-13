@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+	"github.com/suho-han/one-click-ai-tools/internal/notify"
 	"github.com/suho-han/one-click-ai-tools/internal/schedule"
 	"github.com/suho-han/one-click-ai-tools/internal/update"
 	"github.com/suho-han/one-click-ai-tools/internal/usage"
@@ -174,12 +175,8 @@ func buildConfigSnapshot(configFile string) (configSnapshot, error) {
 
 	// Walk the requested order first so installable tools and standalone
 	// usage providers appear exactly where the user put them.
-	for _, entry := range rawOrder {
-		for _, part := range strings.Split(entry, ",") {
-			part = strings.TrimSpace(part)
-			if part == "" {
-				continue
-			}
+	for _, part := range splitConfigEntries(rawOrder) {
+		{
 			if p, ok := usage.LookupStandalone(part); ok {
 				appendStandalone(p)
 				continue
@@ -201,12 +198,8 @@ func buildConfigSnapshot(configFile string) (configSnapshot, error) {
 	// standalone) must still surface, or a settings save would silently drop
 	// them from enabled_tools. With a curated enabled_tools this keeps the
 	// snapshot equal to the file instead of padding it with catalog defaults.
-	for _, name := range enabledTools {
-		for _, part := range strings.Split(name, ",") {
-			part = strings.TrimSpace(part)
-			if part == "" {
-				continue
-			}
+	for _, part := range splitConfigEntries(enabledTools) {
+		{
 			if p, ok := usage.LookupStandalone(part); ok {
 				appendStandalone(p)
 				continue
@@ -255,7 +248,7 @@ func buildAgentUpdateScheduleSnapshot() (configScheduleSnapshot, error) {
 		// Report the effective default the next enable would use, so the
 		// settings UI's hour control starts somewhere sensible instead of at
 		// midnight just because the schedule is off.
-		hour = 9
+		hour = schedule.DefaultHour
 	}
 	return configScheduleSnapshot{Enabled: state.Enabled, Interval: state.Interval, Hour: hour}, nil
 }
@@ -379,7 +372,7 @@ func applyAgentUpdateScheduleUpdate(payload *configScheduleUpdatePayload) error 
 		return fmt.Errorf("failed to read the current agent-update schedule: %w", err)
 	}
 
-	hour := 9
+	hour := schedule.DefaultHour
 	if payload.Hour != nil {
 		if *payload.Hour < 0 || *payload.Hour > 23 {
 			return fmt.Errorf("invalid agent_update_schedule hour %d (must be 0-23)", *payload.Hour)
@@ -421,11 +414,11 @@ func buildConfigAlertSnapshot() configAlertSnapshot {
 	// raw snapshot would deadlock every menubar save until repaired by hand.
 	threshold := alert.ThresholdPct
 	if threshold <= 0 {
-		threshold = 80
+		threshold = notify.DefaultUsageAlertThresholdPercent
 	}
 	cooldown := alert.CooldownMinutes
 	if cooldown <= 0 {
-		cooldown = 360
+		cooldown = notify.DefaultUsageAlertCooldownMinutes
 	}
 	// Runtime evaluation inherits window thresholds from the global default
 	// (thresholdFor: window -> default -> legacy percent). The Swift settings
@@ -566,14 +559,12 @@ func configToolEnabled(enabledTools []string, tool update.Tool) bool {
 	if len(enabledTools) == 0 {
 		return true
 	}
-	for _, enabled := range enabledTools {
-		// Comma-joined entries are legal config values (GetStringSlice keeps
-		// them intact) and every other consumer splits them, so a snapshot
-		// flag must not disagree with what usage actually fetches.
-		for _, part := range strings.Split(enabled, ",") {
-			if tool.MatchesName(strings.TrimSpace(part)) {
-				return true
-			}
+	// Comma-joined entries are legal config values (GetStringSlice keeps
+	// them intact) and every other consumer splits them, so a snapshot
+	// flag must not disagree with what usage actually fetches.
+	for _, part := range splitConfigEntries(enabledTools) {
+		if tool.MatchesName(part) {
+			return true
 		}
 	}
 	return false
@@ -728,11 +719,9 @@ func standaloneProviderEnabled(enabledTools, agentOrder []string, p usage.Provid
 	if len(enabledTools) == 0 {
 		enabledTools = agentOrder
 	}
-	for _, enabled := range enabledTools {
-		for _, part := range strings.Split(enabled, ",") {
-			if resolved, ok := usage.LookupStandalone(part); ok && resolved.Name == p.Name {
-				return true
-			}
+	for _, part := range splitConfigEntries(enabledTools) {
+		if resolved, ok := usage.LookupStandalone(part); ok && resolved.Name == p.Name {
+			return true
 		}
 	}
 	return false

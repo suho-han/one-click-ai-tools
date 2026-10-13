@@ -15,6 +15,10 @@ import (
 // "12h", "6h", "1h") and is empty when the task is disabled or the interval
 // cannot be recovered from the platform (hand-edited schedules, Windows).
 // Hour (0-23) is only meaningful for weekly/daily.
+// DefaultHour is the default hour-of-day for daily/weekly schedules,
+// shared by the enable command, the config API, and viper's defaults.
+const DefaultHour = 9
+
 type CurrentSchedule struct {
 	Enabled  bool
 	Interval string

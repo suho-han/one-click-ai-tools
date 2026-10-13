@@ -120,16 +120,7 @@ func selectedRefreshProviders(flagProviders []string) []string {
 }
 
 func splitCommaProviders(values []string) []string {
-	providers := make([]string, 0, len(values))
-	for _, value := range values {
-		for _, part := range strings.Split(value, ",") {
-			part = strings.TrimSpace(part)
-			if part != "" {
-				providers = append(providers, part)
-			}
-		}
-	}
-	return providers
+	return splitConfigEntries(values)
 }
 
 func buildUsageDiffSummary(before, after []usage.UsageResult) usageDiffSummary {

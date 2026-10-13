@@ -99,9 +99,9 @@ func beginCommandTelemetry(cmd *cobra.Command, _ []string) {
 func selectedTelemetryProviders(configured []string) []string {
 	providers := make([]string, 0, len(configured))
 	seen := make(map[string]bool, len(configured))
-	for _, entry := range configured {
-		for _, part := range strings.Split(entry, ",") {
-			name, _, _ := strings.Cut(strings.TrimSpace(part), ":")
+	for _, part := range splitConfigEntries(configured) {
+		{
+			name, _, _ := strings.Cut(part, ":")
 			canonical, ok := usage.CanonicalProviderName(name)
 			if !ok || seen[canonical] {
 				continue

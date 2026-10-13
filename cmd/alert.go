@@ -68,7 +68,7 @@ var alertConfigSetCmd = &cobra.Command{
 		if err := setAlertConfigValue(key, val); err != nil {
 			return fmt.Errorf("invalid alert config: %w", err)
 		}
-		if err := persistViperConfig(); err != nil {
+		if err := writeConfig(); err != nil {
 			return fmt.Errorf("failed to write config: %w", err)
 		}
 		fmt.Fprintln(cmd.OutOrStdout(), "alert config updated.")
@@ -98,7 +98,7 @@ var alertConfigSetProviderThresholdCmd = &cobra.Command{
 		if err := setAlertConfigValue(fmt.Sprintf("provider.%s.%s", provider, strings.ToLower(window)), value); err != nil {
 			return fmt.Errorf("invalid alert config: %w", err)
 		}
-		if err := persistViperConfig(); err != nil {
+		if err := writeConfig(); err != nil {
 			return fmt.Errorf("failed to write config: %w", err)
 		}
 		fmt.Fprintf(cmd.OutOrStdout(), "alert provider threshold updated: provider=%s window=%s value=%s\n", provider, strings.ToLower(window), value)
@@ -410,18 +410,6 @@ func getAlertStatePath() string {
 		return ".oct/state/usage-alert-state.json"
 	}
 	return filepath.Join(home, ".oct", "state", "usage-alert-state.json")
-}
-
-func persistViperConfig() error {
-	cfg := viper.ConfigFileUsed()
-	if strings.TrimSpace(cfg) == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return err
-		}
-		cfg = filepath.Join(home, ".oct", "config.yaml")
-	}
-	return writeViperConfigAtomic(cfg)
 }
 
 func snoozeDisplayKey(provider, window string) string {
