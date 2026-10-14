@@ -1,11 +1,9 @@
 package usage
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -233,35 +231,16 @@ func percentOf(used, total flexNum) float64 {
 // fetchMinimaxRemains calls the plan remains endpoint and parses the response,
 // tolerating both a bare remains object and one wrapped in "data".
 func fetchMinimaxRemains(ctx context.Context, endpoint, token string) (*minimaxRemains, error) {
-	body := bytes.NewReader([]byte(`{}`))
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+	headers := map[string]string{
+		"Authorization": "Bearer " + token,
+		"Content-Type":  "application/json",
+		"Accept":        "application/json",
+		"User-Agent":    "one-click-tools/1.0",
 	}
-
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "one-click-tools/1.0")
-
-	resp, err := netclient.DefaultClient.DoWithRetry(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	raw, err := readAllCapped(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
-	}
-
 	var parsed minimaxRemains
-	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+	raw, err := netclient.DefaultClient.PostJSONRaw(ctx, endpoint, headers, []byte(`{}`), &parsed)
+	if err != nil {
+		return nil, err
 	}
 	if !parsed.nonEmpty() {
 		// Some surfaces wrap the remains object in a "data" envelope.

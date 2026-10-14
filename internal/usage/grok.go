@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -289,60 +288,28 @@ func (s grokSettingsResponse) tier() string {
 	return s.Settings.SubscriptionTierDisplay
 }
 
-func grokRequest(ctx context.Context, endpoint, token string) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
+// grokHeaders builds the auth headers both grok endpoints share.
+func grokHeaders(token string) map[string]string {
+	return map[string]string{
+		"Authorization":    "Bearer " + token,
+		"x-xai-token-auth": grokTokenAuthHdr,
+		"Accept":           "application/json",
+		"User-Agent":       "one-click-tools/1.0",
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("x-xai-token-auth", grokTokenAuthHdr)
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("User-Agent", "one-click-tools/1.0")
-
-	resp, err := netclient.DefaultClient.DoWithRetry(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		body, _ := readAllCapped(resp.Body)
-		resp.Body.Close()
-		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
-	}
-	return resp, nil
 }
 
 func fetchGrokBilling(ctx context.Context, endpoint, token string) (*grokBillingResponse, error) {
-	resp, err := grokRequest(ctx, endpoint, token)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := readAllCapped(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
 	var parsed grokBillingResponse
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+	if err := netclient.DefaultClient.GetJSON(ctx, endpoint, grokHeaders(token), &parsed); err != nil {
+		return nil, err
 	}
 	return &parsed, nil
 }
 
 func fetchGrokSettings(ctx context.Context, endpoint, token string) (*grokSettingsResponse, error) {
-	resp, err := grokRequest(ctx, endpoint, token)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := readAllCapped(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
 	var parsed grokSettingsResponse
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+	if err := netclient.DefaultClient.GetJSON(ctx, endpoint, grokHeaders(token), &parsed); err != nil {
+		return nil, err
 	}
 	return &parsed, nil
 }
