@@ -128,87 +128,81 @@ func parseConfigUpdatePayload(raw string) (configUpdatePayload, error) {
 	return payload, nil
 }
 
-func buildConfigSnapshot(configFile string) (configSnapshot, error) {
-	agentUpdateSchedule, err := buildAgentUpdateScheduleSnapshot()
-	if err != nil {
-		return configSnapshot{}, err
-	}
-	enabledTools := viper.GetStringSlice("enabled_tools")
-	rawOrder := viper.GetStringSlice("agent_order")
+// snapshotToolOrder resolves the agent_order and enabled_tools config values
+// into the snapshot's ordered entries. agent_order entries come first (raw
+// values may carry several comma-joined names), then the whole catalog when
+// enabled_tools is unset, then any enabled_tools entry agent_order missed.
+// A settings save round-trips this list, so a dropped entry would silently
+// shrink the effective enabled set — every source must surface.
+func snapshotToolOrder(rawOrder, enabledTools []string) (agentOrder []string, tools []configToolStatus) {
 	orderedTools := update.GetOrderedTools(rawOrder)
-
 	toolByBinary := make(map[string]update.Tool, len(orderedTools))
 	for _, tool := range orderedTools {
 		toolByBinary[tool.BinaryName] = tool
 	}
 
-	agentOrder := make([]string, 0, len(orderedTools))
-	tools := make([]configToolStatus, 0, len(orderedTools))
+	order := make([]string, 0, len(orderedTools))
+	statuses := make([]configToolStatus, 0, len(orderedTools))
 	seen := map[string]bool{}
-	var appendTool func(update.Tool)
-	var appendStandalone func(usage.Provider)
-	appendTool = func(tool update.Tool) {
+	appendTool := func(tool update.Tool) {
 		if seen[tool.BinaryName] {
 			return
 		}
 		seen[tool.BinaryName] = true
-		agentOrder = append(agentOrder, tool.BinaryName)
-		tools = append(tools, configToolStatus{
+		order = append(order, tool.BinaryName)
+		statuses = append(statuses, configToolStatus{
 			Name:       tool.Name,
 			BinaryName: tool.BinaryName,
 			Enabled:    configToolEnabled(enabledTools, tool),
 			CanUpdate:  true,
 		})
 	}
-	appendStandalone = func(p usage.Provider) {
+	appendStandalone := func(p usage.Provider) {
 		if seen[p.Name] {
 			return
 		}
 		seen[p.Name] = true
-		agentOrder = append(agentOrder, p.Name)
-		tools = append(tools, configToolStatus{
+		order = append(order, p.Name)
+		statuses = append(statuses, configToolStatus{
 			Name:       p.Name,
 			BinaryName: p.Name,
 			Enabled:    standaloneProviderEnabled(enabledTools, rawOrder, p),
 		})
 	}
+	lookup := func(part string) {
+		if p, ok := usage.LookupStandalone(part); ok {
+			appendStandalone(p)
+			return
+		}
+		if tool, ok := toolByBinary[update.NormalizeToolName(part)]; ok {
+			appendTool(tool)
+		}
+	}
 
 	// Walk the requested order first so installable tools and standalone
 	// usage providers appear exactly where the user put them.
 	for _, part := range splitConfigEntries(rawOrder) {
-		{
-			if p, ok := usage.LookupStandalone(part); ok {
-				appendStandalone(p)
-				continue
-			}
-			if tool, ok := toolByBinary[update.NormalizeToolName(part)]; ok {
-				appendTool(tool)
-			}
-		}
+		lookup(part)
 	}
 	// An unset enabled_tools means "every installable tool", so the whole
-	// catalog must surface: a settings save round-trips this list, and a
-	// shorter one would shrink the effective enabled set.
+	// catalog must surface.
 	if len(enabledTools) == 0 {
 		for _, tool := range orderedTools {
 			appendTool(tool)
 		}
 	}
-	// Entries enabled in config but absent from agent_order (installable or
-	// standalone) must still surface, or a settings save would silently drop
-	// them from enabled_tools. With a curated enabled_tools this keeps the
-	// snapshot equal to the file instead of padding it with catalog defaults.
 	for _, part := range splitConfigEntries(enabledTools) {
-		{
-			if p, ok := usage.LookupStandalone(part); ok {
-				appendStandalone(p)
-				continue
-			}
-			if tool, ok := toolByBinary[update.NormalizeToolName(part)]; ok {
-				appendTool(tool)
-			}
-		}
+		lookup(part)
 	}
+	return order, statuses
+}
+
+func buildConfigSnapshot(configFile string) (configSnapshot, error) {
+	agentUpdateSchedule, err := buildAgentUpdateScheduleSnapshot()
+	if err != nil {
+		return configSnapshot{}, err
+	}
+	agentOrder, tools := snapshotToolOrder(viper.GetStringSlice("agent_order"), viper.GetStringSlice("enabled_tools"))
 
 	return configSnapshot{
 		ConfigFile:             configFile,
