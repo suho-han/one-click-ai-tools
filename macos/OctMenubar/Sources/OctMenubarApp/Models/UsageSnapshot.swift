@@ -211,6 +211,30 @@ struct UsageResponse: Decodable, Equatable {
         let ok: Int
         let warn: Int
         let error: Int
+
+        init(total: Int, ok: Int, warn: Int, error: Int) {
+            self.total = total
+            self.ok = ok
+            self.warn = warn
+            self.error = error
+        }
+
+        init(from decoder: Decoder) throws {
+            // A newer CLI may restructure or drop individual counts; missing
+            // counts read as zero so the popover keeps rendering instead of
+            // failing the whole response decode.
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            self.init(
+                total: try container.decodeIfPresent(Int.self, forKey: .total) ?? 0,
+                ok: try container.decodeIfPresent(Int.self, forKey: .ok) ?? 0,
+                warn: try container.decodeIfPresent(Int.self, forKey: .warn) ?? 0,
+                error: try container.decodeIfPresent(Int.self, forKey: .error) ?? 0
+            )
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case total, ok, warn, error
+        }
     }
 
     struct Result: Decodable, Equatable {
@@ -225,6 +249,24 @@ struct UsageResponse: Decodable, Equatable {
         /// on wham/usage); nil when the provider does not report the concept.
         let resetCredits: Int?
         let message: String?
+
+        init(from decoder: Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            // provider is the card's identity and stays required; everything
+            // else degrades the way the CLI already renders a missing value
+            // ("n/a" used reads as warn, an empty unit hides bucket bars, an
+            // empty status classifies neutral) rather than failing the whole
+            // response decode in the "new CLI, old helper" window.
+            provider = try container.decode(String.self, forKey: .provider)
+            plan = try container.decodeIfPresent(String.self, forKey: .plan)
+            status = try container.decodeIfPresent(String.self, forKey: .status) ?? ""
+            used = try container.decodeIfPresent(String.self, forKey: .used) ?? "n/a"
+            unit = try container.decodeIfPresent(String.self, forKey: .unit) ?? ""
+            buckets = try container.decodeIfPresent([String: String].self, forKey: .buckets)
+            bucketResets = try container.decodeIfPresent([String: String].self, forKey: .bucketResets)
+            resetCredits = try container.decodeIfPresent(Int.self, forKey: .resetCredits)
+            message = try container.decodeIfPresent(String.self, forKey: .message)
+        }
 
         enum CodingKeys: String, CodingKey {
             case provider

@@ -1019,4 +1019,23 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertTrue(popoverSource.contains("snapshot.isPlaceholder"), "provider header should branch on the initial loading state")
         XCTAssertTrue(popoverSource.contains("ProgressView()"), "provider header should render a loading spinner while placeholder")
     }
+    func testUsageResponseToleratesMissingOptionalFields() throws {
+        // The "new CLI, old helper" window: a future CLI may drop counts or a
+        // result's display fields. The decode must survive with sane fallbacks
+        // instead of blanking the whole popover.
+        let json = """
+        {"summary": {}, "results": [{"provider": "codex"}]}
+        """
+        let response = try JSONDecoder().decode(UsageResponse.self, from: Data(json.utf8))
+
+        XCTAssertEqual(response.summary.total, 0)
+        XCTAssertEqual(response.summary.ok, 0)
+        XCTAssertEqual(response.results.count, 1)
+        XCTAssertEqual(response.results[0].provider, "codex")
+        XCTAssertEqual(response.results[0].used, "n/a")
+        XCTAssertEqual(response.results[0].status, "")
+        XCTAssertEqual(response.results[0].unit, "")
+        XCTAssertNil(response.results[0].buckets)
+    }
 }
+
