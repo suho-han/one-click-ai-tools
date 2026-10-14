@@ -1,9 +1,11 @@
 import AppKit
 import Combine
+import os
 import SwiftUI
 
 @MainActor
 final class StatusBarController: NSObject, NSApplicationDelegate {
+    private static let logger = Logger(subsystem: "app.oct.menubar", category: "lifecycle")
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let popover = NSPopover()
     // The app's single ConfigurationStore: the popover view model uses it
@@ -28,24 +30,34 @@ final class StatusBarController: NSObject, NSApplicationDelegate {
 
     /// SwiftUI auto-shows the Settings window at launch when the app has no
     /// regular window; close it so only the status item appears. SettingsLink
-    /// in the popover reopens it on demand.
+    /// in the popover reopens it on demand. The window can materialize only
+    /// after several run-loop ticks on slow launches, so the close attempts
+    /// run for up to five seconds and log if they never succeeded.
     private func suppressAutoShownSettingsWindow() {
-        let settingsWindowID = "com_apple_SwiftUI_settings_window"
+        // The window identifier's casing differs across macOS releases
+        // ("settings" vs "Settings"); match both.
+        let settingsWindowIDs: Set<String> = [
+            "com_apple_SwiftUI_settings_window",
+            "com_apple_SwiftUI_Settings_window",
+        ]
         func closeAttempt(remaining: Int) {
-            if closeSettingsWindow(identifier: settingsWindowID) || remaining <= 0 {
+            if closeSettingsWindow(identifiers: settingsWindowIDs) {
                 return
             }
-            // The window may not exist yet on the first launch tick.
+            if remaining <= 0 {
+                Self.logger.error("Settings window never appeared to be closable; an empty settings window may be on screen")
+                return
+            }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 closeAttempt(remaining: remaining - 1)
             }
         }
-        closeAttempt(remaining: 10)
+        closeAttempt(remaining: 50)
     }
 
-    private func closeSettingsWindow(identifier: String) -> Bool {
+    private func closeSettingsWindow(identifiers: Set<String>) -> Bool {
         var closed = false
-        for window in NSApp.windows where window.identifier?.rawValue == identifier {
+        for window in NSApp.windows where identifiers.contains(window.identifier?.rawValue ?? "") {
             window.close()
             closed = true
         }
