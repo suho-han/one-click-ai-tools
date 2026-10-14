@@ -1,6 +1,7 @@
 package netclient
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -158,11 +159,31 @@ func retryAfterDelay(resp *http.Response) (time.Duration, bool) {
 // GetJSON GETs url with the supplied headers and decodes the 200 body into
 // v. It applies the client's retry policy, honors ctx cancellation and the
 // per-attempt timeout, and returns a descriptive error for any non-200
-// response (body excerpt included).
+// response (truncated body excerpt included).
 func (c *Client) GetJSON(ctx context.Context, url string, headers map[string]string, v any) error {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	_, err := c.fetchJSON(ctx, http.MethodGet, url, nil, headers, v)
+	return err
+}
+
+// PostJSON POSTs body (usually a JSON document) with the supplied headers
+// and decodes the 200 response into v, with the same retry and error
+// discipline as GetJSON.
+func (c *Client) PostJSON(ctx context.Context, url string, headers map[string]string, body []byte, v any) error {
+	_, err := c.fetchJSON(ctx, http.MethodPost, url, body, headers, v)
+	return err
+}
+
+// PostJSONRaw behaves like PostJSON and additionally returns the raw 200
+// response body, for callers that need a second look at it (envelope
+// fallbacks).
+func (c *Client) PostJSONRaw(ctx context.Context, url string, headers map[string]string, body []byte, v any) ([]byte, error) {
+	return c.fetchJSON(ctx, http.MethodPost, url, body, headers, v)
+}
+
+func (c *Client) fetchJSON(ctx context.Context, method, url string, body []byte, headers map[string]string, v any) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, method, url, bytes.NewReader(body))
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	for key, value := range headers {
 		req.Header.Set(key, value)
@@ -170,21 +191,21 @@ func (c *Client) GetJSON(ctx context.Context, url string, headers map[string]str
 
 	resp, err := c.DoWithRetry(req)
 	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
+		return nil, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, maxJSONBody))
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxJSONBody))
 	if err != nil {
-		return fmt.Errorf("failed to read response: %w", err)
+		return nil, fmt.Errorf("failed to read response: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncateBody(string(body), 160))
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncateBody(string(raw), 160))
 	}
-	if err := json.Unmarshal(body, v); err != nil {
-		return fmt.Errorf("failed to parse response: %w", err)
+	if err := json.Unmarshal(raw, v); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
 	}
-	return nil
+	return raw, nil
 }
 
 // maxJSONBody caps how much of a GetJSON response body is read into memory;
