@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -238,8 +239,8 @@ func isolateXcodeSearch(t *testing.T, roots ...string) {
 
 // TestSwiftExecutableCandidatesPrefersXcodeOverPath pins the fix for hosts
 // whose PATH swift is the standalone CLT (no SwiftUI macro plugins): a full
-// Xcode toolchain — DEVELOPER_DIR, /Applications, ~/Downloads, ~/Applications
-// — must win over PATH.
+// Xcode toolchain — DEVELOPER_DIR, then discovered /Applications and
+// ~/Applications installs — must win over PATH.
 func TestSwiftExecutableCandidatesPrefersXcodeOverPath(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("Xcode toolchain discovery only runs on darwin")
@@ -247,9 +248,9 @@ func TestSwiftExecutableCandidatesPrefersXcodeOverPath(t *testing.T) {
 	temp := t.TempDir()
 	devDirSwift := filepath.Join(temp, "Developer", "usr", "bin", "swift")
 	makeFakeSwift(t, devDirSwift)
-	downloadsSwift := filepath.Join(temp, "Downloads", "Xcode-beta.app", "Contents", "Developer", "usr", "bin", "swift")
-	makeFakeSwift(t, downloadsSwift)
-	isolateXcodeSearch(t, filepath.Join(temp, "Downloads"), filepath.Join(temp, "Applications"))
+	applicationsSwift := filepath.Join(temp, "Applications", "Xcode-beta.app", "Contents", "Developer", "usr", "bin", "swift")
+	makeFakeSwift(t, applicationsSwift)
+	isolateXcodeSearch(t, filepath.Join(temp, "Applications"))
 
 	candidates := swiftExecutableCandidates(map[string]string{
 		"HOME":          temp,
@@ -260,8 +261,8 @@ func TestSwiftExecutableCandidatesPrefersXcodeOverPath(t *testing.T) {
 	if candidates[0] != devDirSwift {
 		t.Fatalf("candidates[0] = %q, want DEVELOPER_DIR swift %q", candidates[0], devDirSwift)
 	}
-	if candidates[1] != downloadsSwift {
-		t.Fatalf("candidates[1] = %q, want discovered Downloads Xcode swift %q", candidates[1], downloadsSwift)
+	if candidates[1] != applicationsSwift {
+		t.Fatalf("candidates[1] = %q, want discovered Applications Xcode swift %q", candidates[1], applicationsSwift)
 	}
 	for _, c := range candidates {
 		if c == "/usr/bin/swift" {
@@ -271,24 +272,37 @@ func TestSwiftExecutableCandidatesPrefersXcodeOverPath(t *testing.T) {
 	t.Fatalf("PATH swift missing from candidates: %v", candidates)
 }
 
-func TestSwiftExecutableCandidatesDiscoverDownloadsXcodeWithoutDeveloperDir(t *testing.T) {
+// TestSwiftExecutableCandidatesSkipDownloadsFolder pins the TCC tradeoff:
+// the Xcode scan never touches ~/Downloads, where probing would trip the
+// macOS Downloads-folder permission prompt on every helper launch. A
+// Downloads-resident Xcode must be pinned with OCT_MENUBAR_SWIFT_PATH
+// instead.
+func TestSwiftExecutableCandidatesSkipDownloadsFolder(t *testing.T) {
+	roots := xcodeAppSearchRoots(map[string]string{"HOME": t.TempDir()})
+	for _, root := range roots {
+		if filepath.Base(root) == "Downloads" {
+			t.Fatalf("xcodeAppSearchRoots includes %q; scanning Downloads trips the macOS TCC prompt", root)
+		}
+	}
+
 	if runtime.GOOS != "darwin" {
-		t.Skip("Xcode toolchain discovery only runs on darwin")
+		return
 	}
 	temp := t.TempDir()
 	downloadsSwift := filepath.Join(temp, "Downloads", "Xcode-beta.app", "Contents", "Developer", "usr", "bin", "swift")
 	makeFakeSwift(t, downloadsSwift)
-	isolateXcodeSearch(t, filepath.Join(temp, "Downloads"))
 
 	resolved, searched := resolveSwiftExecutablePath(map[string]string{
 		"HOME": temp,
 		"PATH": "/usr/bin:/bin",
 	})
-	if resolved != downloadsSwift {
-		t.Fatalf("resolved = %q, want Downloads Xcode swift %q", resolved, downloadsSwift)
+	if resolved == downloadsSwift {
+		t.Fatalf("resolved = %q, want the Downloads Xcode swift to stay undiscovered", resolved)
 	}
-	if len(searched) == 0 || searched[0] != downloadsSwift {
-		t.Fatalf("searched[0] = %v, want Xcode swift first", searched)
+	for _, path := range searched {
+		if strings.HasPrefix(path, filepath.Join(temp, "Downloads")+string(filepath.Separator)) {
+			t.Fatalf("searched includes Downloads path %q; probing it trips the macOS TCC prompt", path)
+		}
 	}
 }
 

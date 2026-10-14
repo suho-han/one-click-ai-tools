@@ -214,20 +214,22 @@ func swiftExecutableCandidates(env map[string]string) []string {
 
 // xcodeAppSearchRoots lists the directories scanned for Xcode.app bundles.
 // Package-level seam: tests override it so candidate order is isolated from
-// whatever Xcode installs the host happens to have.
+// whatever Xcode installs the host happens to have. ~/Downloads is
+// deliberately excluded — probing it trips the macOS Downloads-folder TCC
+// prompt on every helper launch. A Downloads-resident Xcode can still be
+// pinned with OCT_MENUBAR_SWIFT_PATH.
 var xcodeAppSearchRoots = func(env map[string]string) []string {
 	roots := []string{"/Applications"}
 	if home := strings.TrimSpace(env["HOME"]); home != "" {
-		roots = append(roots, filepath.Join(home, "Applications"), filepath.Join(home, "Downloads"))
+		roots = append(roots, filepath.Join(home, "Applications"))
 	}
 	return roots
 }
 
 // xcodeToolchainSwiftCandidates finds swift front-ends inside installed
-// Xcode.app bundles: standard Applications locations plus the user's
-// Downloads folder, where beta releases commonly sit. Two layouts are probed
-// (Xcode ≤15 puts swift directly under Developer/usr/bin; newer ones nest it
-// in Toolchains/XcodeDefault.xctoolchain).
+// Xcode.app bundles under the standard Applications locations. Two layouts
+// are probed (Xcode ≤15 puts swift directly under Developer/usr/bin; newer
+// ones nest it in Toolchains/XcodeDefault.xctoolchain).
 func xcodeToolchainSwiftCandidates(env map[string]string) []string {
 	if runtime.GOOS != "darwin" {
 		return nil
@@ -236,7 +238,6 @@ func xcodeToolchainSwiftCandidates(env map[string]string) []string {
 
 	var candidates []string
 	for _, root := range roots {
-		// Enumeration works where TCC allows directory reads.
 		for _, pattern := range []string{
 			filepath.Join(root, "Xcode*.app", "Contents", "Developer", "usr", "bin", "swift"),
 			filepath.Join(root, "Xcode*.app", "Contents", "Developer", "Toolchains", "*.xctoolchain", "usr", "bin", "swift"),
@@ -244,17 +245,6 @@ func xcodeToolchainSwiftCandidates(env map[string]string) []string {
 			if matches, _ := filepath.Glob(pattern); len(matches) > 0 {
 				candidates = append(candidates, matches...)
 			}
-		}
-	}
-	// ~/Downloads denies directory enumeration behind TCC, but a fully
-	// specified path can still be probed — try well-known bundle names.
-	for _, root := range roots {
-		for _, name := range []string{"Xcode.app", "Xcode-beta.app"} {
-			dev := filepath.Join(root, name, "Contents", "Developer")
-			candidates = append(candidates,
-				filepath.Join(dev, "usr", "bin", "swift"),
-				filepath.Join(dev, "Toolchains", "XcodeDefault.xctoolchain", "usr", "bin", "swift"),
-			)
 		}
 	}
 	return candidates
