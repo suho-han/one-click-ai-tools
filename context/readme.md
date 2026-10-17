@@ -33,10 +33,12 @@ design, `todo` is the unstructured backlog feeding all of them.
 - [macbook_air_smoke_test.md](macbook_air_smoke_test.md): quick post-change smoke test on the primary macOS host (100.73.225.85)
 - [platform_e2e_checklist.md](platform_e2e_checklist.md): Linux/macOS/Windows schedule & install E2E checklist (full manual matrix)
 - [menubar_helper_operations.md](menubar_helper_operations.md): Swift menubar helper build/install/remote validation
+- [analytics_server_operations.md](analytics_server_operations.md): production analytics collector on gcp-free-ops (oct.suhohan.kr tunnel, feedback queries, upgrades)
 
 Role boundary: `local_test` is the everyday build/test workflow, the smoke
 test is the fast host-specific sanity pass, and the E2E checklist is the full
-per-platform manual matrix.
+per-platform manual matrix. The analytics operations doc owns the deployed
+collector; local collector testing stays in the docs above.
 
 ## Audit Snapshots — dated, historical
 
