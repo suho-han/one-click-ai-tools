@@ -80,10 +80,14 @@ final class ReleaseUpdateMonitor: ObservableObject {
     @Published private(set) var availableUpdate: ReleaseUpdate?
     let installer: ReleaseUpdateInstaller
     @Published private(set) var automaticallyChecksForUpdates: Bool
+    @Published private(set) var automaticallyInstallUpdates: Bool
 
     private var timer: Timer?
     private var hasStarted = false
     private var checkGeneration = 0
+    /// One automatic install attempt per tag per session, so a failed
+    /// `oct update` does not retry on every poll interval.
+    private var autoAttemptedTags: Set<String> = []
     private let currentVersion: String
     private let session: URLSession
     private let defaults: UserDefaults
@@ -99,6 +103,8 @@ final class ReleaseUpdateMonitor: ObservableObject {
         self.installer = ReleaseUpdateInstaller()
         self.automaticallyChecksForUpdates =
             defaults.object(forKey: MenubarPreferences.automaticallyChecksForUpdatesKey) as? Bool ?? true
+        self.automaticallyInstallUpdates =
+            defaults.object(forKey: MenubarPreferences.automaticallyInstallUpdatesKey) as? Bool ?? true
     }
 
     func start() {
@@ -119,6 +125,32 @@ final class ReleaseUpdateMonitor: ObservableObject {
             checkGeneration += 1
             availableUpdate = nil
         }
+    }
+
+    func setAutomaticallyInstallUpdates(_ enabled: Bool) {
+        guard enabled != automaticallyInstallUpdates else { return }
+        defaults.set(enabled, forKey: MenubarPreferences.automaticallyInstallUpdatesKey)
+        automaticallyInstallUpdates = enabled
+        // A pending release updates right away instead of waiting for the
+        // next poll interval.
+        if enabled, let update = availableUpdate {
+            maybeAutoInstall(update)
+        }
+    }
+
+    /// Starts at most one automatic `oct update` per release tag per session
+    /// when the user opted in; otherwise the update waits for its prompt.
+    func maybeAutoInstall(_ update: ReleaseUpdate) {
+        guard shouldAttemptAutoInstall(for: update) else { return }
+        installer.requestAutomaticUpdate()
+    }
+
+    /// The decision half of maybeAutoInstall, separated so tests can exercise
+    /// the once-per-tag bookkeeping without reaching the updater.
+    func shouldAttemptAutoInstall(for update: ReleaseUpdate) -> Bool {
+        guard automaticallyInstallUpdates, !autoAttemptedTags.contains(update.tag) else { return false }
+        autoAttemptedTags.insert(update.tag)
+        return true
     }
 
     private func beginPollingIfEnabled() {
@@ -154,6 +186,9 @@ final class ReleaseUpdateMonitor: ObservableObject {
                 remoteTag: payload.tagName,
                 htmlURL: payload.htmlUrl
             )
+            if let update = availableUpdate {
+                maybeAutoInstall(update)
+            }
         } catch {
             // Network errors, rate limits, and malformed responses all land
             // here; the menubar keeps showing what it knew before. The log

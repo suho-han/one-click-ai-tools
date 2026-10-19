@@ -418,6 +418,24 @@ fi
 
 install_menubar_helper
 
+# First-install choice: run `oct update` automatically when the menubar
+# detects a newer release (default yes). Ask only when the helper supports
+# it (macOS), the terminal is interactive, and no choice is stored yet --
+# re-installs keep whatever the user picked before.
+prompt_automatic_updates() {
+    [ "$os_name" = "darwin" ] || return 0
+    [ -t 0 ] && [ -t 1 ] || return 0
+    if ! defaults read "$HELPER_NAME" oct.menubar.automaticallyInstallUpdates >/dev/null 2>&1; then
+        printf "Automatically install future updates when detected? [Y/n] "
+        IFS= read -r AUTOMATIC_UPDATES_REPLY || AUTOMATIC_UPDATES_REPLY=""
+        case $AUTOMATIC_UPDATES_REPLY in
+            n*|N*) defaults write "$HELPER_NAME" oct.menubar.automaticallyInstallUpdates -bool false ;;
+        esac
+    fi
+}
+
+prompt_automatic_updates
+
 ensure_path_configured
 
 print_install_summary

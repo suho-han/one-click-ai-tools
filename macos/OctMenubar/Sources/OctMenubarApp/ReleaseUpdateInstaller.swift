@@ -37,6 +37,17 @@ final class ReleaseUpdateInstaller: ObservableObject {
         }
     }
 
+    /// Runs the update without the consent alert for users who opted in
+    /// (first-install question or Settings toggle). The outcome dialog still
+    /// shows, so an automatic update is never silent.
+    func requestAutomaticUpdate() {
+        guard !isUpdating else { return }
+        isUpdating = true
+        Task {
+            await performUpdate()
+        }
+    }
+
     /// Runs `oct update` and presents the outcome. Split from requestUpdate
     /// so tests can drive the CLI flow without the confirmation dialog.
     func performUpdate() async {

@@ -22,13 +22,17 @@ struct SettingsAboutTab: View {
         SettingsSectionCard(
             title: "Updates",
             systemImage: "arrow.down.circle",
-            description: "Control release notifications for this app."
+            description: "Control how this app checks for and installs releases."
         ) {
             Toggle("Automatically check for updates", isOn: Binding(
                 get: { releaseMonitor.automaticallyChecksForUpdates },
                 set: { releaseMonitor.setAutomaticallyChecksForUpdates($0) }
             ))
-            Text("Checks GitHub Releases every five minutes. Choose Yes in the update prompt to run oct update; updates are never installed automatically.")
+            Toggle("Automatically install updates", isOn: Binding(
+                get: { releaseMonitor.automaticallyInstallUpdates },
+                set: { releaseMonitor.setAutomaticallyInstallUpdates($0) }
+            ))
+            Text("Checks GitHub Releases every five minutes. With automatic install, a newer release runs oct update on its own; otherwise the update prompt asks before anything runs.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
         }

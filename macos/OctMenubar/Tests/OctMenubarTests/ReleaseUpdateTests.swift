@@ -92,6 +92,48 @@ final class ReleaseUpdateTests: XCTestCase {
         await reopened.checkNow()
         XCTAssertEqual(reopened.availableUpdate?.tag, "v0.1.7")
     }
+
+    @MainActor
+    func testAutomaticInstallDefaultsOnAndPersists() {
+        let suite = "oct-auto-install-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let monitor = ReleaseUpdateMonitor(currentVersion: "0.1.8", defaults: defaults)
+        XCTAssertTrue(monitor.automaticallyInstallUpdates)
+
+        monitor.setAutomaticallyInstallUpdates(false)
+        XCTAssertFalse(monitor.automaticallyInstallUpdates)
+
+        let reopened = ReleaseUpdateMonitor(currentVersion: "0.1.8", defaults: defaults)
+        XCTAssertFalse(reopened.automaticallyInstallUpdates)
+    }
+
+    @MainActor
+    func testAutoInstallAttemptsOncePerTagAndHonorsToggle() {
+        let suite = "oct-auto-install-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let monitor = ReleaseUpdateMonitor(currentVersion: "0.1.8", defaults: defaults)
+        let update = ReleaseUpdate(
+            tag: "v0.1.9",
+            htmlURL: URL(string: "https://github.com/suho-han/one-click-ai-tools/releases/tag/v0.1.9")!
+        )
+
+        // Opt-in default (Y): the first sight of a tag auto-installs, and the
+        // same tag never retries within the session.
+        XCTAssertTrue(monitor.shouldAttemptAutoInstall(for: update))
+        XCTAssertFalse(monitor.shouldAttemptAutoInstall(for: update))
+
+        // Opted out: no attempt for a different tag either.
+        monitor.setAutomaticallyInstallUpdates(false)
+        let next = ReleaseUpdate(
+            tag: "v0.1.10",
+            htmlURL: URL(string: "https://github.com/suho-han/one-click-ai-tools/releases/tag/v0.1.10")!
+        )
+        XCTAssertFalse(monitor.shouldAttemptAutoInstall(for: next))
+    }
 }
 
 @MainActor

@@ -4,6 +4,7 @@ enum MenubarPreferences {
     static let useProviderAccentColorsKey = "oct.menubar.useProviderAccentColors"
     static let sharedAlertThresholdKey = "oct.menubar.sharedAlertThreshold"
     static let automaticallyChecksForUpdatesKey = "oct.menubar.automaticallyChecksForUpdates"
+    static let automaticallyInstallUpdatesKey = "oct.menubar.automaticallyInstallUpdates"
 }
 
 @main
