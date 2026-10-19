@@ -2,13 +2,17 @@ name: auto-release
 
 # Computes the next version from Conventional Commits since the last release
 # tag (scripts/next-version.sh) and, if there's anything release-worthy
-# (feat/fix/perf/breaking), runs scripts/release-package.sh end to end with
-# no human step: commit, tag, test, push, publish.
+# (feat/fix/perf/breaking), runs scripts/release-package.sh end to end:
+# commit, tag, test, push, publish.
 #
-# This repo pushes straight to main with no PR gate, so this workflow makes
-# every such push become a public GitHub Release automatically. See
-# AGENTS.md "CI: automatic release on every push to main" before changing
-# this file.
+# The release job is gated by the "release" GitHub environment (Settings ->
+# Environments -> release), which requires manual approval from suho-han
+# before it runs. A push to main therefore never publishes without a human
+# click. Non-release pushes (chore/docs/refactor/...) skip the release job
+# entirely and never request approval.
+#
+# This repo pushes straight to main with no PR gate. See AGENTS.md
+# "CI: automatic release on every push to main" before changing this file.
 
 on:
   push:
@@ -23,23 +27,21 @@ permissions:
   actions: write
 
 jobs:
-  auto-release:
+  compute:
     runs-on: ubuntu-latest
     # The release commit itself never has anything new to release (its own
     # diff is just cmd/root.go), and GitHub already suppresses further
     # `push` runs triggered by GITHUB_TOKEN -- this condition is just a fast
     # skip so we don't spend a job checking out + building for nothing.
     if: ${{ !startsWith(github.event.head_commit.message, 'chore(release):') }}
+    outputs:
+      should_release: ${{ steps.version.outputs.should_release }}
+      version: ${{ steps.version.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: 'stable'
 
       - name: Compute next version
         id: version
@@ -59,14 +61,30 @@ jobs:
         if: steps.version.outputs.should_release == 'false'
         run: echo "Nothing release-worthy since the last tag (only chore/docs/refactor/... commits, or no new commits). Skipping."
 
+  auto-release:
+    needs: compute
+    if: needs.compute.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    # The "release" environment requires manual approval (required reviewer:
+    # suho-han) before this job may run. Skipped compute never reaches this.
+    environment: release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: 'stable'
+
       - name: Configure release commit identity
-        if: steps.version.outputs.should_release == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Cut and publish release
-        if: steps.version.outputs.should_release == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: bash scripts/release-package.sh "${{ steps.version.outputs.version }}"
+        run: bash scripts/release-package.sh "${{ needs.compute.outputs.version }}"
