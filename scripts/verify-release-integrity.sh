@@ -90,7 +90,14 @@ verify_darwin_helper_assets() {
       echo "ERROR: OctMenubarApp in $asset is not a universal binary: $file_output"
       return 1
     }
-    echo "OK: $asset contains executable universal OctMenubarApp"
+    # The helper must still carry the version marker 'oct menubar doctor'
+    # scans for; a build that dead-stripped it makes doctor report the
+    # helper version as "unknown" (happened through 0.1.8-beta.1).
+    grep -aq "oct-menubar-helper-version=${RELEASE_TAG#v}" "$tmp_assets/OctMenubarApp" || {
+      echo "ERROR: OctMenubarApp in $asset lacks the oct-menubar-helper-version= marker"
+      return 1
+    }
+    echo "OK: $asset contains executable universal OctMenubarApp with version marker"
     rm -f "$tmp_assets/OctMenubarApp"
   done
 }

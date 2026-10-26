@@ -148,6 +148,16 @@ jobs:
             echo "ERROR: OctMenubarApp is not a universal binary"
             exit 1
           }
+          # doctor finds the helper version by scanning the binary for this
+          # marker; if dead-stripping removed it, doctor would report every
+          # official helper as version "unknown" (happened through
+          # 0.1.8-beta.1). The --version path prints the marker to keep the
+          # bytes alive; assert they really landed in the artifact.
+          version="${EFFECTIVE_RELEASE_TAG#v}"
+          grep -aq "oct-menubar-helper-version=${version}" dist/OctMenubarApp || {
+            echo "ERROR: oct-menubar-helper-version=${version} marker missing from dist/OctMenubarApp"
+            exit 1
+          }
 
       - name: Build darwin binaries
         run: |

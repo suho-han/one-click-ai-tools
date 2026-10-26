@@ -17,6 +17,11 @@ struct OctMenubarApp: App {
         // helper that lags behind the oct binary.
         if CommandLine.arguments.contains("--version") {
             print("OctMenubarApp \(MenubarBuildVersion.version)")
+            // This print is what keeps versionMarker's bytes alive in release
+            // builds: an unreferenced static let is dead-stripped by WMO, and
+            // doctor locates the helper version by scanning the binary for
+            // that exact string (release.yml asserts it survived the build).
+            print(MenubarBuildVersion.versionMarker)
             exit(0)
         }
     }

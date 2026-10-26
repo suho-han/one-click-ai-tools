@@ -10,5 +10,8 @@ enum MenubarBuildVersion {
     // version by scanning the file instead of executing it: running an older
     // helper with --version would launch its status item (pre-version
     // helpers do not parse arguments) and hang until a probe timeout.
+    // Must stay referenced from real code (the `--version` path prints it):
+    // a plain unreferenced static let is dead-stripped out of release builds,
+    // and doctor would report every official helper as version "unknown".
     static let versionMarker = "oct-menubar-helper-version=dev"
 }
