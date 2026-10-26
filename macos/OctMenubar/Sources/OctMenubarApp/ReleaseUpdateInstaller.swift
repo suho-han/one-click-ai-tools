@@ -10,12 +10,21 @@ final class ReleaseUpdateInstaller: ObservableObject {
     @Published private(set) var isUpdating = false
     private let service: OctCLIService
 
-    /// Presents the outcome dialog. Swappable in tests, where a modal would
-    /// block the run.
-    var presentResult: (NSAlert) -> Void = { $0.runModal() }
+    /// Presents the outcome dialog and returns the pressed button. Swappable
+    /// in tests, where a modal would block the run.
+    var presentResult: (NSAlert) -> NSApplication.ModalResponse = { $0.runModal() }
+
+    /// Hands this helper over to the freshly installed one: the replacement is
+    /// queued in a detached shell before the app quits, so the menubar never
+    /// stays down. Swappable in tests, where quitting would end the run.
+    var restartHelper: @MainActor () throws -> Void
 
     init(service: OctCLIService = OctCLIService()) {
         self.service = service
+        self.restartHelper = {
+            try service.restartHelperDetached()
+            NSApp.terminate(nil)
+        }
     }
 
     func requestUpdate(to update: ReleaseUpdate) {
@@ -48,22 +57,41 @@ final class ReleaseUpdateInstaller: ObservableObject {
         }
     }
 
-    /// Runs `oct update` and presents the outcome. Split from requestUpdate
-    /// so tests can drive the CLI flow without the confirmation dialog.
+    /// Runs `oct update` and presents the outcome. A successful update offers
+    /// to restart right away so the new helper takes over without a trip to
+    /// the menu; the failure dialog has no such button because there is
+    /// nothing new to restart into. Split from requestUpdate so tests can
+    /// drive the CLI flow without the confirmation dialog.
     func performUpdate() async {
         let result = NSAlert()
+        var offersRestart = false
         do {
             let output = try await service.runSelfUpdate()
             result.messageText = "oct update finished"
             let detail = output.trimmingCharacters(in: .whitespacesAndNewlines)
             result.informativeText = "\(detail.isEmpty ? "oct update completed." : detail)\nRestart the menu bar app to use the updated helper."
             result.alertStyle = .informational
+            result.addButton(withTitle: "Restart")
+            result.addButton(withTitle: "Later")
+            offersRestart = true
         } catch {
             result.messageText = "oct update failed"
             result.informativeText = error.localizedDescription
             result.alertStyle = .warning
         }
         isUpdating = false
-        presentResult(result)
+        let response = presentResult(result)
+        // The failure alert's lone OK button also reports first-button, so
+        // the response alone cannot authorize a restart.
+        guard offersRestart, response == .alertFirstButtonReturn else { return }
+        do {
+            try restartHelper()
+        } catch {
+            let failure = NSAlert()
+            failure.messageText = "Restart failed"
+            failure.informativeText = "\(error.localizedDescription)\nQuit and reopen the menu bar app to use the updated helper."
+            failure.alertStyle = .warning
+            _ = presentResult(failure)
+        }
     }
 }

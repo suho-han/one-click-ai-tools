@@ -191,12 +191,23 @@ final class ReleaseUpdateInstallerTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: executable.deletingLastPathComponent()) }
         let installer = ReleaseUpdateInstaller(service: OctCLIService(executableURL: executable))
         var titles: [String] = []
-        installer.presentResult = { titles.append($0.messageText) }
+        var buttonTitles: [String] = []
+        var restarts = 0
+        installer.presentResult = { alert in
+            titles.append(alert.messageText)
+            buttonTitles = alert.buttons.map(\.title)
+            // The lone OK button reports first-button too; a failure must
+            // never turn that into a restart.
+            return .alertFirstButtonReturn
+        }
+        installer.restartHelper = { restarts += 1 }
 
         await installer.performUpdate()
 
         XCTAssertFalse(installer.isUpdating, "a finished update must release the busy flag")
         XCTAssertEqual(titles, ["oct update failed"])
+        XCTAssertFalse(buttonTitles.contains("Restart"), "nothing new to restart into after a failed update")
+        XCTAssertEqual(restarts, 0)
     }
 
     func testPerformUpdatePresentsSuccessWithCLIOutput() async throws {
@@ -208,12 +219,71 @@ final class ReleaseUpdateInstallerTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: executable.deletingLastPathComponent()) }
         let installer = ReleaseUpdateInstaller(service: OctCLIService(executableURL: executable))
         var titles: [String] = []
-        installer.presentResult = { titles.append($0.messageText) }
+        var buttonTitles: [String] = []
+        var restarts = 0
+        installer.presentResult = { alert in
+            titles.append(alert.messageText)
+            buttonTitles = alert.buttons.map(\.title)
+            return .alertSecondButtonReturn
+        }
+        installer.restartHelper = { restarts += 1 }
 
         await installer.performUpdate()
 
         XCTAssertFalse(installer.isUpdating)
         XCTAssertEqual(titles, ["oct update finished"])
+        XCTAssertEqual(buttonTitles, ["Restart", "Later"])
+        XCTAssertEqual(restarts, 0, "Later keeps the current helper running")
+    }
+
+    func testPerformUpdateRestartsWhenChosen() async throws {
+        let executable = try makeUpdateScript("""
+        #!/bin/sh
+        echo "oct updated to v0.1.8"
+        exit 0
+        """)
+        defer { try? FileManager.default.removeItem(at: executable.deletingLastPathComponent()) }
+        let installer = ReleaseUpdateInstaller(service: OctCLIService(executableURL: executable))
+        var titles: [String] = []
+        var restarts = 0
+        installer.presentResult = { alert in
+            titles.append(alert.messageText)
+            return .alertFirstButtonReturn
+        }
+        installer.restartHelper = { restarts += 1 }
+
+        await installer.performUpdate()
+
+        XCTAssertEqual(titles, ["oct update finished"])
+        XCTAssertEqual(restarts, 1)
+    }
+
+    func testPerformUpdateReportsRestartSpawnFailure() async throws {
+        let executable = try makeUpdateScript("""
+        #!/bin/sh
+        exit 0
+        """)
+        defer { try? FileManager.default.removeItem(at: executable.deletingLastPathComponent()) }
+        let installer = ReleaseUpdateInstaller(service: OctCLIService(executableURL: executable))
+        var titles: [String] = []
+        var details: [String] = []
+        installer.presentResult = { alert in
+            titles.append(alert.messageText)
+            details.append(alert.informativeText)
+            return .alertFirstButtonReturn
+        }
+        installer.restartHelper = {
+            throw OctCLIServiceError.launchFailed(
+                path: "/bin/zsh",
+                underlying: NSError(domain: NSPOSIXErrorDomain, code: Int(ENOENT))
+            )
+        }
+
+        await installer.performUpdate()
+
+        XCTAssertEqual(titles, ["oct update finished", "Restart failed"])
+        XCTAssertTrue(details[1].contains("/bin/zsh"), "the spawn error must reach the user: \(details[1])")
+        XCTAssertFalse(installer.isUpdating)
     }
 }
 
