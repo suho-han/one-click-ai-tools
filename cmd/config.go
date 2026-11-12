@@ -708,6 +708,38 @@ func promptYesNo(prompt string, defaultYes bool) (bool, error) {
 	return text == "y" || text == "yes", nil
 }
 
+// configDeviceAuth forces `codex login --device-auth` and skips the login
+// method prompt in the codex account flows.
+var configDeviceAuth bool
+
+func codexLoginCommand(deviceAuth bool) string {
+	if deviceAuth {
+		return "codex login --device-auth"
+	}
+	return "codex login"
+}
+
+// codexLoginInstruction is the trailing user instruction for the chosen method.
+func codexLoginInstruction(deviceAuth bool) string {
+	if deviceAuth {
+		return "enter the code it prints on another device"
+	}
+	return "complete it in the browser"
+}
+
+// promptCodexLoginMethod asks how to log in; empty/EOF input means browser.
+func promptCodexLoginMethod(out io.Writer) (bool, error) {
+	fmt.Fprintln(out, "Codex login method:")
+	fmt.Fprintln(out, "  1) Browser login (default)")
+	fmt.Fprintln(out, "  2) Device auth (enter a code on another device)")
+	fmt.Fprint(out, "Choose [1/2]: ")
+	text, err := readPromptLine()
+	if err != nil {
+		return false, err
+	}
+	return text == "2", nil
+}
+
 func setupTokens(tools []string) error {
 	fmt.Println("\n--- Provider Setup ---")
 	var needsClaudeAuth, needsGeminiAuth bool
@@ -1067,12 +1099,16 @@ func upsertAccount(provider, name, home string) (bool, error) {
 // runInteractiveLogin launches `codex login` with CODEX_HOME pointed at the
 // account home, handing the terminal over so the browser OAuth flow works
 // normally. Package-level var so tests can stub the spawn.
-var runInteractiveLogin = func(home string) error {
+var runInteractiveLogin = func(home string, deviceAuth bool) error {
 	bin, err := exec.LookPath("codex")
 	if err != nil {
 		return err
 	}
-	login := exec.Command(bin, "login")
+	args := []string{"login"}
+	if deviceAuth {
+		args = append(args, "--device-auth")
+	}
+	login := exec.Command(bin, args...)
 	login.Env = append(os.Environ(), "CODEX_HOME="+home)
 	login.Stdin = os.Stdin
 	login.Stdout = os.Stdout
@@ -1088,9 +1124,10 @@ func runReconnectCodexAccountFlow(cmd *cobra.Command, alias, home string) error 
 	if err := os.MkdirAll(home, 0o700); err != nil {
 		return fmt.Errorf("create account home: %w", err)
 	}
-	fmt.Fprintf(out, "Running 'codex login' for %s — complete it in the browser...\n", label)
-	if err := runInteractiveLogin(home); err != nil {
-		fmt.Fprintf(out, "Login did not complete (%v).\nRetry later with: CODEX_HOME=%s codex login\n", err, home)
+	cmdLine := codexLoginCommand(configDeviceAuth)
+	fmt.Fprintf(out, "Running '%s' for %s — %s...\n", cmdLine, label, codexLoginInstruction(configDeviceAuth))
+	if err := runInteractiveLogin(home, configDeviceAuth); err != nil {
+		fmt.Fprintf(out, "Login did not complete (%v).\nRetry later with: CODEX_HOME=%s %s\n", err, home, cmdLine)
 		return nil
 	}
 	if _, err := os.Stat(filepath.Join(home, "auth.json")); err == nil {
@@ -1138,13 +1175,15 @@ func runDisconnectCodexAccountFlow(cmd *cobra.Command, alias string) error {
 	return nil
 }
 
+var nonAlnumPattern = regexp.MustCompile(`[^a-z0-9]`)
+
 // maskEmailPrefix turns an email prefix into a privacy-safe account alias:
 // "hansuho36" -> "han***o36" (7+ chars keep first/last 3, 4-6 keep
 // first/last 1, shorter is fully masked). Non-alphanumerics are stripped
 // before masking so dots and plus tags never leak into the result.
 func maskEmailPrefix(prefix string) string {
 	p := strings.ToLower(strings.TrimSpace(prefix))
-	p = regexp.MustCompile(`[^a-z0-9]`).ReplaceAllString(p, "")
+	p = nonAlnumPattern.ReplaceAllString(p, "")
 	r := []rune(p)
 	switch {
 	case len(r) >= 7:
@@ -1220,9 +1259,17 @@ func runAddCodexAccountFlow(cmd *cobra.Command) error {
 		}
 	}()
 
-	fmt.Fprintln(out, "Running 'codex login' — complete it in the browser...")
-	if err := runInteractiveLogin(tmpHome); err != nil {
-		fmt.Fprintf(out, "Login did not complete (%v).\nRetry from the picker, or run: oct config account add codex <name> <dir>\n", err)
+	deviceAuth := configDeviceAuth
+	if !deviceAuth {
+		deviceAuth, err = promptCodexLoginMethod(cmd.OutOrStdout())
+		if err != nil {
+			return err
+		}
+	}
+	cmdLine := codexLoginCommand(deviceAuth)
+	fmt.Fprintf(out, "Running '%s' — %s...\n", cmdLine, codexLoginInstruction(deviceAuth))
+	if err := runInteractiveLogin(tmpHome, deviceAuth); err != nil {
+		fmt.Fprintf(out, "Login did not complete (%v) while running '%s'.\nRetry from the picker, or run: oct config account add codex <name> <dir>\n", err, cmdLine)
 		return nil
 	}
 
@@ -1284,7 +1331,7 @@ func persistAccount(cmd *cobra.Command, provider, name, home string) error {
 	label := usage.AccountProviderName(provider, name)
 	resolved := usage.ResolveAccountHomePath(home)
 	if _, err := os.Stat(resolved); err != nil {
-		fmt.Fprintf(cmd.OutOrStdout(), "note: %s does not exist yet; log this account in there (e.g. CODEX_HOME=%s codex login)\n", resolved, resolved)
+		fmt.Fprintf(cmd.OutOrStdout(), "note: %s does not exist yet; log this account in there (e.g. CODEX_HOME=%s %s)\n", resolved, resolved, codexLoginCommand(configDeviceAuth))
 	}
 	if replaced {
 		fmt.Fprintf(cmd.OutOrStdout(), "Account %s updated (home: %s).\n", label, resolved)
@@ -1546,6 +1593,8 @@ func versionLike(token string) bool {
 
 func init() {
 	rootCmd.AddCommand(configCmd)
+	configCmd.Flags().BoolVar(&configDeviceAuth, "device-auth", false,
+		"use 'codex login --device-auth' when adding or reconnecting a codex account")
 	configCmd.AddCommand(configListCmd)
 	configListCmd.Flags().BoolVar(&configListProbeVersions, "probe-versions", false,
 		"with --json, also probe each tool's installed version (slower)")

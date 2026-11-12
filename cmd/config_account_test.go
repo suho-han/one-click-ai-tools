@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -112,14 +113,19 @@ func TestConfigAccountCommands(t *testing.T) {
 	}
 }
 
+// stubLoginDeviceAuth records the deviceAuth argument of the last stubbed login.
+var stubLoginDeviceAuth bool
+
 // stubLogin captures the login spawn instead of running codex and writes an
 // auth.json with the given id_token, simulating a successful browser login.
 func stubLogin(t *testing.T, idToken string) *string {
 	t.Helper()
 	orig := runInteractiveLogin
 	var loginHome string
-	runInteractiveLogin = func(home string) error {
+	stubLoginDeviceAuth = false
+	runInteractiveLogin = func(home string, deviceAuth bool) error {
 		loginHome = home
+		stubLoginDeviceAuth = deviceAuth
 		auth := fmt.Sprintf(`{"tokens":{"id_token":%q}}`, idToken)
 		return os.WriteFile(filepath.Join(home, "auth.json"), []byte(auth), 0o600)
 	}
@@ -147,7 +153,7 @@ func TestRunAddCodexAccountFlow_AutoRegistersFromEmail(t *testing.T) {
 		viper.SetConfigFile("")
 	})
 
-	// No stdin: the flow must not ask anything when the token has an email.
+	// No stdin: the login method defaults to browser and nothing else is asked when the token has an email.
 	loginHome := stubLogin(t, fakeJWT(map[string]string{"email": "hansuho36@gmail.com"}))
 
 	var out bytes.Buffer
@@ -195,7 +201,7 @@ func TestRunAddCodexAccountFlow_LoginFailureCleansUp(t *testing.T) {
 	})
 
 	orig := runInteractiveLogin
-	runInteractiveLogin = func(home string) error { return errors.New("browser closed") }
+	runInteractiveLogin = func(home string, deviceAuth bool) error { return errors.New("browser closed") }
 	t.Cleanup(func() { runInteractiveLogin = orig })
 
 	var out bytes.Buffer
@@ -238,7 +244,7 @@ func TestRunAddCodexAccountFlow_PromptErrorCleansUp(t *testing.T) {
 
 	stubLogin(t, "")
 	origReader := configPromptReader
-	configPromptReader = bufio.NewReader(failingPromptReader{err: errors.New("input pipe closed")})
+	configPromptReader = bufio.NewReader(io.MultiReader(strings.NewReader("1\n"), failingPromptReader{err: errors.New("input pipe closed")}))
 	t.Cleanup(func() { configPromptReader = origReader })
 
 	var out bytes.Buffer
@@ -305,7 +311,7 @@ func TestRunAddCodexAccountFlow_EmailFallbackPrompts(t *testing.T) {
 	stubLogin(t, fakeJWT(map[string]string{"sub": "no-email-here"}))
 	orig := configPromptReader
 	defer func() { configPromptReader = orig }()
-	configPromptReader = bufio.NewReader(strings.NewReader("myname\n"))
+	configPromptReader = bufio.NewReader(strings.NewReader("1\nmyname\n"))
 
 	var out bytes.Buffer
 	flowCmd := &cobra.Command{}
@@ -317,6 +323,59 @@ func TestRunAddCodexAccountFlow_EmailFallbackPrompts(t *testing.T) {
 	accounts := usage.AccountsForProvider("codex")
 	if len(accounts) != 1 || accounts[0].Name != "myname" || accounts[0].Home != filepath.Join(tmp, ".codex-myname") {
 		t.Fatalf("accounts after fallback = %+v, want myname -> %s", accounts, filepath.Join(tmp, ".codex-myname"))
+	}
+}
+
+func addFlowDeviceAuthSetup(t *testing.T, input string) (string, *bytes.Buffer) {
+	t.Helper()
+	tmp := t.TempDir()
+	isolateTestHome(t, tmp)
+	viper.SetConfigFile(filepath.Join(tmp, ".oct", "config.yaml"))
+	t.Cleanup(func() {
+		viper.Set("accounts", nil)
+		viper.Set("codex_accounts", nil)
+		viper.SetConfigFile("")
+	})
+	stubLogin(t, fakeJWT(map[string]string{"email": "someone@example.com"}))
+	orig := configPromptReader
+	t.Cleanup(func() { configPromptReader = orig })
+	configPromptReader = bufio.NewReader(strings.NewReader(input))
+	var out bytes.Buffer
+	flowCmd := &cobra.Command{}
+	flowCmd.SetOut(&out)
+	if err := runAddCodexAccountFlow(flowCmd); err != nil {
+		t.Fatalf("flow: %v", err)
+	}
+	return tmp, &out
+}
+
+func TestRunAddCodexAccountFlow_DeviceAuthChoice(t *testing.T) {
+	_, out := addFlowDeviceAuthSetup(t, "2\n")
+	if !stubLoginDeviceAuth {
+		t.Fatal("choice 2 must request device auth")
+	}
+	if !strings.Contains(out.String(), "codex login --device-auth") {
+		t.Fatalf("output missing device-auth notice: %q", out.String())
+	}
+}
+
+func TestRunAddCodexAccountFlow_DefaultBrowserLogin(t *testing.T) {
+	addFlowDeviceAuthSetup(t, "")
+	if stubLoginDeviceAuth {
+		t.Fatal("EOF/default input must use browser login")
+	}
+}
+
+func TestRunAddCodexAccountFlow_DeviceAuthFlagSkipsPrompt(t *testing.T) {
+	orig := configDeviceAuth
+	configDeviceAuth = true
+	t.Cleanup(func() { configDeviceAuth = orig })
+	_, out := addFlowDeviceAuthSetup(t, "")
+	if !stubLoginDeviceAuth {
+		t.Fatal("--device-auth must request device auth")
+	}
+	if strings.Contains(out.String(), "Codex login method") {
+		t.Fatalf("prompt must be skipped: %q", out.String())
 	}
 }
 
@@ -538,7 +597,7 @@ func TestRunReconnectCodexAccountFlow(t *testing.T) {
 
 	orig := runInteractiveLogin
 	var got string
-	runInteractiveLogin = func(home string) error {
+	runInteractiveLogin = func(home string, deviceAuth bool) error {
 		got = home
 		return os.WriteFile(filepath.Join(home, "auth.json"), []byte(`{"tokens":{}}`), 0o600)
 	}
@@ -597,5 +656,79 @@ func TestRunDisconnectCodexAccountFlow(t *testing.T) {
 	accounts := usage.AccountsForProvider("codex")
 	if len(accounts) != 1 || accounts[0].Name != "personal" {
 		t.Fatalf("accounts after disconnect = %+v, want only personal", accounts)
+	}
+}
+
+func TestRunReconnectCodexAccountFlow_HonorsDeviceAuth(t *testing.T) {
+	orig := configDeviceAuth
+	configDeviceAuth = true
+	t.Cleanup(func() { configDeviceAuth = orig })
+	home := filepath.Join(t.TempDir(), ".codex-work")
+	stubLogin(t, "")
+
+	var out bytes.Buffer
+	flowCmd := &cobra.Command{}
+	flowCmd.SetOut(&out)
+	if err := runReconnectCodexAccountFlow(flowCmd, "work", home); err != nil {
+		t.Fatalf("flow: %v", err)
+	}
+	if !stubLoginDeviceAuth {
+		t.Fatal("reconnect must pass deviceAuth=true to the login")
+	}
+	if !strings.Contains(out.String(), "--device-auth") {
+		t.Fatalf("output missing --device-auth: %q", out.String())
+	}
+}
+
+func TestRunAddCodexAccountFlow_UnknownChoiceFallsBackToBrowser(t *testing.T) {
+	_, out := addFlowDeviceAuthSetup(t, "x\n")
+	if stubLoginDeviceAuth {
+		t.Fatal("unknown menu input must use browser login")
+	}
+	if !strings.Contains(out.String(), "complete it in the browser") {
+		t.Fatalf("output missing browser notice: %q", out.String())
+	}
+}
+
+func TestPromptCodexLoginMethod_WritesMenuToWriter(t *testing.T) {
+	orig := configPromptReader
+	t.Cleanup(func() { configPromptReader = orig })
+	configPromptReader = bufio.NewReader(strings.NewReader("2\n"))
+	var buf bytes.Buffer
+	device, err := promptCodexLoginMethod(&buf)
+	if err != nil {
+		t.Fatalf("prompt: %v", err)
+	}
+	if !device {
+		t.Fatal("choice 2 must select device auth")
+	}
+	for _, want := range []string{"Codex login method:", "1) Browser login", "2) Device auth", "Choose [1/2]: "} {
+		if !strings.Contains(buf.String(), want) {
+			t.Fatalf("menu missing %q: %q", want, buf.String())
+		}
+	}
+}
+
+func TestPersistAccountHintMentionsDeviceAuth(t *testing.T) {
+	tmp := t.TempDir()
+	isolateTestHome(t, tmp)
+	viper.SetConfigFile(filepath.Join(tmp, ".oct", "config.yaml"))
+	t.Cleanup(func() {
+		viper.Set("accounts", nil)
+		viper.Set("codex_accounts", nil)
+		viper.SetConfigFile("")
+	})
+	orig := configDeviceAuth
+	configDeviceAuth = true
+	t.Cleanup(func() { configDeviceAuth = orig })
+
+	var out bytes.Buffer
+	c := &cobra.Command{}
+	c.SetOut(&out)
+	if err := persistAccount(c, "codex", "hint", filepath.Join(tmp, "missing-home")); err != nil {
+		t.Fatalf("persist: %v", err)
+	}
+	if !strings.Contains(out.String(), "codex login --device-auth)") {
+		t.Fatalf("hint missing --device-auth: %q", out.String())
 	}
 }
