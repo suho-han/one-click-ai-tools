@@ -65,6 +65,11 @@ one-shot text: no screen clearing and no control hints.`,
 				results = results[:top]
 			}
 			printMonitorScreen(results, now, compact, interactive)
+			if !usage.HistoryDisabledByEnv() {
+				if err := usage.AppendHistory("", results, now); err != nil {
+					fmt.Fprintf(cmd.ErrOrStderr(), "history write error: %v\n", err)
+				}
+			}
 			if err := usage.SaveSnapshot(statePath, results, now); err != nil {
 				fmt.Fprintf(cmd.ErrOrStderr(), "snapshot write error: %v\n", err)
 			}

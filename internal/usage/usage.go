@@ -402,6 +402,16 @@ func PrintTable(results []UsageResult) {
 }
 
 func RenderTable(w io.Writer, results []UsageResult) {
+	RenderTableWithTrends(w, results, nil, time.Time{})
+}
+
+// PrintTableWithTrends renders cards with an ETA row (trends[i] for results[i]).
+func PrintTableWithTrends(results []UsageResult, trends []*HistoryTrend, now time.Time) {
+	RenderTableWithTrends(os.Stdout, results, trends, now)
+}
+
+// RenderTableWithTrends adds an ETA row to each card when trends is non-nil.
+func RenderTableWithTrends(w io.Writer, results []UsageResult, trends []*HistoryTrend, now time.Time) {
 	width := terminalWidth()
 
 	cardWidth := tableCardWidth(width)
@@ -409,7 +419,15 @@ func RenderTable(w io.Writer, results []UsageResult) {
 		if i > 0 {
 			fmt.Fprintln(w)
 		}
-		renderProviderCard(w, r, cardWidth)
+		eta := ""
+		if trends != nil || !now.IsZero() {
+			var t *HistoryTrend
+			if i < len(trends) {
+				t = trends[i]
+			}
+			eta = formatETA(t, now)
+		}
+		renderProviderCard(w, r, cardWidth, eta)
 	}
 }
 
@@ -540,7 +558,7 @@ func tableCardWidth(width int) int {
 	}
 }
 
-func renderProviderCard(w io.Writer, r UsageResult, cardWidth int) {
+func renderProviderCard(w io.Writer, r UsageResult, cardWidth int, eta string) {
 	innerWidth := cardWidth - 2
 	providerLabel := providerDisplayLabel(r.Provider)
 	statusLabel := strings.ToUpper(strings.TrimSpace(r.Status))
@@ -553,6 +571,9 @@ func renderProviderCard(w io.Writer, r UsageResult, cardWidth int) {
 	fmt.Fprintf(w, "├%s┤\n", strings.Repeat("─", innerWidth))
 	fmt.Fprintln(w, cardKeyValueLine("Plan", tablePlanLabel(r.Plan), innerWidth, ""))
 	fmt.Fprintln(w, cardKeyValueLine("Quota", usageSummaryDisplay(r), innerWidth, ""))
+	if eta != "" {
+		fmt.Fprintln(w, cardKeyValueLine("ETA", eta, innerWidth, ""))
+	}
 	fmt.Fprintln(w, cardKeyValueLine("Source", tableSourceLabel(r.Source), innerWidth, ""))
 	if msg := strings.TrimSpace(r.Message); msg != "" {
 		fmt.Fprintln(w, cardKeyValueLine("Note", truncateText(msg, innerWidth-10), innerWidth, r.Status))
@@ -833,6 +854,12 @@ func FallbackMetricsSummary(r UsageResult) (string, bool) {
 }
 
 func PrintJSON(results []UsageResult) error {
+	return PrintJSONWithTrends(results, nil)
+}
+
+// PrintJSONWithTrends is PrintJSON plus an optional per-result "history"
+// object; trends[i] belongs to results[i] (nil entries/slice omit it).
+func PrintJSONWithTrends(results []UsageResult, trends []*HistoryTrend) error {
 	type UsageResultCompact struct {
 		Provider     string            `json:"provider"`
 		Plan         string            `json:"plan,omitempty"`
@@ -845,6 +872,7 @@ func PrintJSON(results []UsageResult) error {
 		ResetCredits *int              `json:"reset_credits,omitempty"`
 		SourceDetail string            `json:"source_detail,omitempty"`
 		Message      string            `json:"message,omitempty"`
+		History      *HistoryTrend     `json:"history,omitempty"`
 	}
 	type UsageSummary struct {
 		Total int `json:"total"`
@@ -860,8 +888,13 @@ func PrintJSON(results []UsageResult) error {
 		Results: make([]UsageResultCompact, 0, len(results)),
 	}
 
-	for _, r := range results {
+	for i, r := range results {
+		var hist *HistoryTrend
+		if i < len(trends) {
+			hist = trends[i]
+		}
 		payload.Results = append(payload.Results, UsageResultCompact{
+			History:      hist,
 			Provider:     r.Provider,
 			Plan:         r.Plan,
 			PlanSource:   r.PlanSource,
