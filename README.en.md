@@ -137,6 +137,7 @@ oct usage --format waybar        # JSON for a waybar custom/script module (text/
 oct usage --format polybar       # one line for a polybar custom script (%{F#...} colors, escaped %)
 oct usage --format swiftbar      # SwiftBar plugin protocol (title + dropdown menu)
 oct usage --format waybar --from-snapshot   # render the last oct monitor snapshot instead of fetching live
+oct statusline config            # no argument: opens a target picker (same for `install`)
 ```
 
 `--from-snapshot` reads `~/.oct/state/usage-latest.json` (written every

@@ -9,6 +9,7 @@ import (
 	"runtime"
 	"strings"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 )
 
@@ -48,14 +49,18 @@ var statuslineCmd = &cobra.Command{
 var statuslineConfigCmd = &cobra.Command{
 	Use:   "config <waybar|polybar|swiftbar|xbar>",
 	Short: "Print a paste-ready statusbar config snippet",
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		path, _ := cmd.Flags().GetString("path")
-		snippet, err := statuslineSnippet(args[0], path)
+		target, ok, err := statuslineResolveTarget(cmd, args, "config", statuslineConfigTargets)
+		if err != nil || !ok {
+			return err
+		}
+		snippet, err := statuslineSnippet(target, path)
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(cmd.ErrOrStderr(), "# %s snippet for oct (rendering is delegated to `oct usage --format`)\n", args[0])
+		fmt.Fprintf(cmd.ErrOrStderr(), "# %s snippet for oct (rendering is delegated to `oct usage --format`)\n", target)
 		fmt.Fprint(cmd.OutOrStdout(), snippet)
 		return nil
 	},
@@ -64,13 +69,106 @@ var statuslineConfigCmd = &cobra.Command{
 var statuslineInstallCmd = &cobra.Command{
 	Use:   "install <swiftbar|xbar>",
 	Short: "Install the oct.5m.sh plugin for SwiftBar or xbar",
-	Args:  cobra.ExactArgs(1),
+	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		target, ok, err := statuslineResolveTarget(cmd, args, "install", statuslineInstallTargets)
+		if err != nil || !ok {
+			return err
+		}
 		path, _ := cmd.Flags().GetString("path")
 		dir, _ := cmd.Flags().GetString("dir")
 		force, _ := cmd.Flags().GetBool("force")
-		return runStatuslineInstall(cmd.OutOrStdout(), args[0], path, dir, force, runtime.GOOS)
+		return runStatuslineInstall(cmd.OutOrStdout(), target, path, dir, force, runtime.GOOS)
 	},
+}
+
+// statuslinePickerModel is a minimal single-choice list for choosing a target.
+type statuslinePickerModel struct {
+	title     string
+	targets   []string
+	cursor    int
+	selected  string
+	cancelled bool
+}
+
+func (m statuslinePickerModel) Init() tea.Cmd { return nil }
+
+func (m statuslinePickerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	key, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return m, nil
+	}
+	switch key.String() {
+	case "up", "k":
+		if m.cursor > 0 {
+			m.cursor--
+		}
+	case "down", "j":
+		if m.cursor < len(m.targets)-1 {
+			m.cursor++
+		}
+	case "enter":
+		m.selected = m.targets[m.cursor]
+		return m, tea.Quit
+	case "esc", "q", "ctrl+c":
+		m.cancelled = true
+		return m, tea.Quit
+	}
+	return m, nil
+}
+
+func (m statuslinePickerModel) View() string {
+	var b strings.Builder
+	b.WriteString("? " + m.title + "\n\n")
+	for i, t := range m.targets {
+		prefix := "  "
+		if i == m.cursor {
+			prefix = "> "
+		}
+		b.WriteString(prefix + t + "\n")
+	}
+	b.WriteString("\n  up/down or j/k: move  enter: select  esc/q: cancel\n")
+	return b.String()
+}
+
+// statuslinePick runs the picker; swapped in tests. Returns the chosen target
+// and whether the user cancelled.
+var statuslinePick = func(title string, targets []string) (string, bool, error) {
+	finalModel, err := tea.NewProgram(statuslinePickerModel{title: title, targets: targets}, tea.WithAltScreen()).Run()
+	if err != nil {
+		return "", false, err
+	}
+	m, ok := finalModel.(statuslinePickerModel)
+	if !ok {
+		return "", false, fmt.Errorf("unexpected model type")
+	}
+	return m.selected, m.cancelled, nil
+}
+
+// statuslineResolveTarget returns the target from args or the picker. ok is
+// false when the user cancelled (already reported on stdout).
+func statuslineResolveTarget(cmd *cobra.Command, args []string, verb string, targets []string) (string, bool, error) {
+	if len(args) == 1 {
+		return args[0], true, nil
+	}
+	errw := cmd.ErrOrStderr()
+	fail := func() (string, bool, error) {
+		fmt.Fprintf(errw, "Supported targets: %s\n", strings.Join(targets, ", "))
+		fmt.Fprintf(errw, "Example: oct statusline %s %s\n", verb, targets[0])
+		return "", false, &usageError{fmt.Sprintf("pass a target explicitly: oct statusline %s <%s>", verb, strings.Join(targets, "|"))}
+	}
+	if !isTerminalPrompt(cmd.InOrStdin(), cmd.OutOrStdout()) {
+		return fail()
+	}
+	target, cancelled, err := statuslinePick("Select statusline target for "+verb+":", targets)
+	if err != nil {
+		return fail()
+	}
+	if cancelled {
+		fmt.Fprintln(cmd.OutOrStdout(), "Statusline cancelled.")
+		return "", false, nil
+	}
+	return target, true, nil
 }
 
 func statuslineSnippet(target, execPath string) (string, error) {

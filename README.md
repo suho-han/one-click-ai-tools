@@ -157,6 +157,7 @@ remaining 기준으로 표시합니다.
 설정 파일을 직접 쓰지 않고 스니펫/플러그인을 생성할 수도 있습니다:
 
 ```bash
+oct statusline config            # 인자 없이 실행하면 대상 선택 피커 (install도 동일)
 oct statusline config waybar     # custom/oct 모듈 JSON 스니펫 (stdout만 출력)
 oct statusline config polybar    # [module/oct] INI 스니펫
 oct statusline config xbar       # xbar/SwiftBar 플러그인 스크립트

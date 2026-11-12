@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -105,5 +106,44 @@ func TestStatuslineInstallRejectsUnsupported(t *testing.T) {
 	}
 	if err := runStatuslineInstall(&bytes.Buffer{}, "swiftbar", "oct", "", false, "linux"); err == nil {
 		t.Fatal("swiftbar default dir on linux should error")
+	}
+}
+
+func TestStatuslinePickerModel(t *testing.T) {
+	var m tea.Model = statuslinePickerModel{targets: []string{"a", "b"}}
+	key := func(s string) tea.KeyMsg {
+		if s == "esc" {
+			return tea.KeyMsg{Type: tea.KeyEsc}
+		}
+		if s == "enter" {
+			return tea.KeyMsg{Type: tea.KeyEnter}
+		}
+		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
+	}
+	m, _ = m.Update(key("j"))
+	m, _ = m.Update(key("j"))
+	m, _ = m.Update(key("enter"))
+	if got := m.(statuslinePickerModel).selected; got != "b" {
+		t.Fatalf("selected=%q", got)
+	}
+	m = statuslinePickerModel{targets: []string{"a", "b"}}
+	m, _ = m.Update(key("esc"))
+	if !m.(statuslinePickerModel).cancelled {
+		t.Fatal("esc should cancel")
+	}
+}
+
+func TestStatuslineNoArgNonTTY(t *testing.T) {
+	for _, verb := range []string{"config", "install"} {
+		out, errs, code := runStatusline(t, "statusline", verb)
+		if code != 2 || out != "" || !strings.Contains(errs, "Example: oct statusline "+verb) {
+			t.Fatalf("%s: code=%d out=%q err=%q", verb, code, out, errs)
+		}
+	}
+}
+
+func TestStatuslineTooManyArgs(t *testing.T) {
+	if _, _, code := runStatusline(t, "statusline", "config", "waybar", "xbar"); code == 0 {
+		t.Fatal("expected failure")
 	}
 }
