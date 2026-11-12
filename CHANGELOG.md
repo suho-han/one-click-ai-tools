@@ -8,36 +8,99 @@ All notable changes to this project will be documented in this file. See [standa
 
 ### Features
 
-* **analytics:** add pseudonymous command and installation statistics, provider and device-family counts, CLI/menubar opt-out, and usage-record clearing.
-* **menubar:** add an About tab with explicit feedback submission and update-check control, shared alert-threshold controls, and clearer settings loading feedback.
-
-### Changes
-
-* **menubar:** remove the server vendor name from the feedback privacy notice.
+* **menubar:** offer a restart after a successful oct update ([096be62](https://github.com/suho-han/one-click-ai-tools/commit/096be62))
 
 ### Bug Fixes
 
-* **ci:** keep Darwin-only menubar process tests out of Linux and Windows test builds.
-* **analytics:** reject running the private database server on Windows, where POSIX file-mode privacy cannot be enforced.
-* **ci:** exercise update subprocesses with native Windows executables and limit POSIX permission assertions to supported platforms.
-* **installer:** bind the auto-launched beta helper to its matching CLI binary and report failed standalone downloads.
-* **schedule:** keep a failed crontab read from silently disabling a scheduled task.
-* **menubar:** run updates for the unsaved provider selection and detect newer prerelease versions.
-* **update:** reject human-only explain and dry-run flags in JSON mode.
-* **config:** restore the previous automatic-update schedule if saving settings fails.
-* **update:** keep prerelease installations on the prerelease channel and compare beta versions correctly.
-* **menubar:** update every selected installable provider while excluding usage-only providers from update runs and install prompts.
-* **menubar:** wait for Foundation to publish fast subprocess exits before reading their status.
-* **menubar:** show skipped package-manager errors as update failures instead of reporting nothing to update.
-* **config:** retain usage-only providers enabled through agent_order when saving settings.
-* **update:** install and resolve the bundled menubar helper beside a custom-path oct executable.
-* **update:** keep npm-missing guidance instead of trying POSIX shell installers on Windows.
-* **usage:** serialize Antigravity CLI refreshes between processes to protect the cached refresh interval.
-* **installer:** choose the menubar helper track from the release version even with a custom command name.
-* **config:** fail settings snapshots when automatic-update schedule inspection fails instead of reporting it disabled.
-* **docs:** align usage-alert examples with the supported thresholds, quiet timer, and snooze behavior.
-* **menubar:** confirm before running `oct update` from either update button; show progress and the CLI result.
-* **release:** show `oct update` instructions in release notes.
+* **menubar:** keep the helper version marker alive in release builds ([d9f2423](https://github.com/suho-han/one-click-ai-tools/commit/d9f2423))
+
+### [0.1.8](https://github.com/suho-han/one-click-ai-tools/compare/v0.1.7...v0.1.8) (2026-10-17)
+
+### Features
+
+* **menubar:** run oct update from update buttons after confirmation ([91ef5f2](https://github.com/suho-han/one-click-ai-tools/commit/91ef5f2))
+* **menubar:** add telemetry controls and feedback settings ([ebff107](https://github.com/suho-han/one-click-ai-tools/commit/ebff107))
+* **analytics:** collect usage and serve private dashboard ([949583d](https://github.com/suho-han/one-click-ai-tools/commit/949583d))
+* **menubar:** split settings into focused tabs ([b3ed08a](https://github.com/suho-han/one-click-ai-tools/commit/b3ed08a))
+* **usage:** expose Codex reset credits and redemption ([d13cde3](https://github.com/suho-han/one-click-ai-tools/commit/d13cde3))
+* **menubar:** register launch-at-login by default, toggle it in settings ([b9b6ed7](https://github.com/suho-han/one-click-ai-tools/commit/b9b6ed7))
+* **menubar:** run agent updates in background with per-provider progress ([18b4d77](https://github.com/suho-han/one-click-ai-tools/commit/18b4d77))
+* **alerts:** replace critical threshold with per-window sliders, add 1m ([ff38c31](https://github.com/suho-han/one-click-ai-tools/commit/ff38c31))
+* **update:** stream NDJSON events and add --check, --only flags ([10dd8d8](https://github.com/suho-han/one-click-ai-tools/commit/10dd8d8))
+* **config:** report agent-update schedule and tool versions in config list ([6c07686](https://github.com/suho-han/one-click-ai-tools/commit/6c07686))
+* **menubar:** manage helper launch-at-login via launchd daemon ([abaa0a0](https://github.com/suho-han/one-click-ai-tools/commit/abaa0a0))
+* **menubar:** give the beta track its own OctMenubarApp-beta helper ([0b9af44](https://github.com/suho-han/one-click-ai-tools/commit/0b9af44))
+* **install:** install pre-release versions as oct-beta ([a5f928d](https://github.com/suho-han/one-click-ai-tools/commit/a5f928d))
+* **update:** fall back to official install scripts when npm is missing ([364ef07](https://github.com/suho-han/one-click-ai-tools/commit/364ef07))
+
+### Bug Fixes
+
+* **menubar:** keep suppressing the auto-shown settings window ([22795a1](https://github.com/suho-han/one-click-ai-tools/commit/22795a1))
+* **menubar:** survive a partial usage response decode ([dd6bc2f](https://github.com/suho-han/one-click-ai-tools/commit/dd6bc2f))
+* **menubar:** drop the Downloads Xcode scan that trips the TCC prompt ([feead2b](https://github.com/suho-han/one-click-ai-tools/commit/feead2b))
+* **menubar:** reap the detached helper-restart shell ([40e6e08](https://github.com/suho-han/one-click-ai-tools/commit/40e6e08))
+* **menubar:** separate save success from refresh failure in saveDraft ([d9f5d6c](https://github.com/suho-han/one-click-ai-tools/commit/d9f5d6c))
+* **menubar:** tolerate unknown title modes in snapshot decoding ([dd4ee88](https://github.com/suho-han/one-click-ai-tools/commit/dd4ee88))
+* **menubar:** log release-check failures ([cb15ada](https://github.com/suho-han/one-click-ai-tools/commit/cb15ada))
+* **menubar:** copy the helper through a unique temp file ([c5572f7](https://github.com/suho-han/one-click-ai-tools/commit/c5572f7))
+* **update:** ask before brew upgrades and cap extracted binary permissions ([79788dc](https://github.com/suho-han/one-click-ai-tools/commit/79788dc))
+* **schedule:** apply the session-refresh schedule before persisting config ([d22a207](https://github.com/suho-han/one-click-ai-tools/commit/d22a207))
+* **alert:** make TUI backspace rune-safe ([a3fd02a](https://github.com/suho-han/one-click-ai-tools/commit/a3fd02a))
+* **config:** mask token input; treat unknown disconnect targets as no-ops ([e4dd66a](https://github.com/suho-han/one-click-ai-tools/commit/e4dd66a))
+* **usage:** persist claude and antigravity caches atomically under a lock ([22ef851](https://github.com/suho-han/one-click-ai-tools/commit/22ef851))
+* **usage:** require request totals when summing cursor usage ([5e6d9d5](https://github.com/suho-han/one-click-ai-tools/commit/5e6d9d5))
+* **usage:** surface codex backend failures; order session logs by mtime ([11bbd40](https://github.com/suho-han/one-click-ai-tools/commit/11bbd40))
+* **usage:** drop claude reset times in unresolvable timezones ([68ece86](https://github.com/suho-han/one-click-ai-tools/commit/68ece86))
+* **usage:** warn on minimax weekly exhaustion and rate-limited windows ([7e0a9c7](https://github.com/suho-han/one-click-ai-tools/commit/7e0a9c7))
+* **schedule:** pin Windows weekly schedules to Monday; tolerate stray disables ([5d040f5](https://github.com/suho-han/one-click-ai-tools/commit/5d040f5))
+* **usage:** copy viper list values and cut antigravity details on rune bounds ([4058759](https://github.com/suho-han/one-click-ai-tools/commit/4058759))
+* **netclient:** cap GetJSON response reads at 2MB ([25aaa61](https://github.com/suho-han/one-click-ai-tools/commit/25aaa61))
+* **config:** write the migrated config atomically with owner-only permissions ([5fd805d](https://github.com/suho-han/one-click-ai-tools/commit/5fd805d))
+* **menubar:** observe one configuration store from settings and popover ([0ef0394](https://github.com/suho-han/one-click-ai-tools/commit/0ef0394))
+* **notify:** escalate usage alerts at exhaustion and dedupe mirrored windows ([4a593cb](https://github.com/suho-han/one-click-ai-tools/commit/4a593cb))
+* **netclient:** retry 429 only when Retry-After is usable ([5ee3423](https://github.com/suho-han/one-click-ai-tools/commit/5ee3423))
+* **config:** clean up the codex login temp home when the name prompt fails ([17be415](https://github.com/suho-han/one-click-ai-tools/commit/17be415))
+* **alert:** keep the quiet timer state when confirming alert settings ([3b560e4](https://github.com/suho-han/one-click-ai-tools/commit/3b560e4))
+* **config:** reject unknown schedule snapshots ([f06696a](https://github.com/suho-han/one-click-ai-tools/commit/f06696a))
+* serialize usage refresh and honor platform install tracks ([1ff8097](https://github.com/suho-han/one-click-ai-tools/commit/1ff8097))
+* preserve update failures and installed provider state ([d8244ab](https://github.com/suho-han/one-click-ai-tools/commit/d8244ab))
+* **menubar:** update all installable draft providers ([583b8b6](https://github.com/suho-han/one-click-ai-tools/commit/583b8b6))
+* restore schedules on failed save and update beta channel ([d7a7fe1](https://github.com/suho-han/one-click-ai-tools/commit/d7a7fe1))
+* address Codex review on beta and update paths ([480f21e](https://github.com/suho-han/one-click-ai-tools/commit/480f21e))
+* **ci:** copy Windows stub executables for cleanup ([3039289](https://github.com/suho-han/one-click-ai-tools/commit/3039289))
+* **ci:** validate Windows fixtures and private server platform ([32dedd7](https://github.com/suho-han/one-click-ai-tools/commit/32dedd7))
+* **ci:** limit menubar stop-target tests to Darwin ([7926f29](https://github.com/suho-han/one-click-ai-tools/commit/7926f29))
+* **menubar:** keep provider message bubble above sibling cards ([ecaac24](https://github.com/suho-han/one-click-ai-tools/commit/ecaac24))
+* **menubar:** pin stable helper name in archive install test ([0d172da](https://github.com/suho-han/one-click-ai-tools/commit/0d172da))
+* **menubar:** keep oct-beta menubar out of stable instance observation ([6191ede](https://github.com/suho-han/one-click-ai-tools/commit/6191ede))
+* **usage:** stop agy usage polling from opening browser logins ([dd70f4e](https://github.com/suho-han/one-click-ai-tools/commit/dd70f4e))
+
+### Changes
+
+* **context:** document the oct.suhohan.kr analytics deployment ([2f936cf](https://github.com/suho-han/one-click-ai-tools/commit/2f936cf))
+* **menubar:** extract the automation and providers settings sections ([46f5faf](https://github.com/suho-han/one-click-ai-tools/commit/46f5faf))
+* **config:** extract snapshotToolOrder from buildConfigSnapshot ([7d9ce9f](https://github.com/suho-han/one-click-ai-tools/commit/7d9ce9f))
+* **usage:** route grok and minimax through netclient ([8cf7e4a](https://github.com/suho-han/one-click-ai-tools/commit/8cf7e4a))
+* **netclient:** add POST helpers beside GetJSON ([995c2b6](https://github.com/suho-han/one-click-ai-tools/commit/995c2b6))
+* **usage:** drop the unused plan detectors ([df25d93](https://github.com/suho-han/one-click-ai-tools/commit/df25d93))
+* **usage:** route the GET providers through netclient.GetJSON ([70ba03d](https://github.com/suho-han/one-click-ai-tools/commit/70ba03d))
+* **menubar:** extract the alerts settings section ([ef2ac0e](https://github.com/suho-han/one-click-ai-tools/commit/ef2ac0e))
+* **menubar:** drop dead snapshot fields and parameters ([4f2a3ab](https://github.com/suho-han/one-click-ai-tools/commit/4f2a3ab))
+* **menubar:** split update execution from the confirm dialog ([e22cef0](https://github.com/suho-han/one-click-ai-tools/commit/e22cef0))
+* **ui:** remove the dead image renderers ([872a19e](https://github.com/suho-han/one-click-ai-tools/commit/872a19e))
+* **update:** drop the unused commandWithEnv wrapper ([8c114d2](https://github.com/suho-han/one-click-ai-tools/commit/8c114d2))
+* **update:** resolve managers through one pipeline ([d2e07c7](https://github.com/suho-han/one-click-ai-tools/commit/d2e07c7))
+* **cmd:** share one comma-entry splitter and default constants ([94214ff](https://github.com/suho-han/one-click-ai-tools/commit/94214ff))
+* **update:** check installer guidance by platform ([f005163](https://github.com/suho-han/one-click-ai-tools/commit/f005163))
+* document usage analytics and menubar settings ([3e232ea](https://github.com/suho-han/one-click-ai-tools/commit/3e232ea))
+* **release:** stamp analytics endpoint in beta assets ([b5f143e](https://github.com/suho-han/one-click-ai-tools/commit/b5f143e))
+* **context:** archive 2026-06 plans with status banners and fix stale paths ([a902e2c](https://github.com/suho-han/one-click-ai-tools/commit/a902e2c))
+
+### [0.1.7](https://github.com/suho-han/one-click-ai-tools/compare/v0.1.6...v0.1.7) (2026-10-12)
+
+### Features
+
+* add usage analytics and menubar improvements ([270f385](https://github.com/suho-han/one-click-ai-tools/commit/270f385))
 
 ### [0.1.6](https://github.com/suho-han/one-click-ai-tools/compare/v0.1.5...v0.1.6) (2026-09-30)
 
