@@ -41,7 +41,7 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 	if telemetry.Endpoint == "" {
 		if err := rootCmd.Execute(); err != nil {
 			fmt.Fprintf(stderr, "oct: %v\n", err)
-			return 1
+			return exitCodeFor(err)
 		}
 		return 0
 	}
@@ -59,7 +59,7 @@ func runCLI(args []string, stdout, stderr io.Writer) int {
 	}
 	if err != nil {
 		fmt.Fprintf(stderr, "oct: %v\n", err)
-		return 1
+		return exitCodeFor(err)
 	}
 	return 0
 }
