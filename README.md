@@ -241,11 +241,14 @@ oct session-refresh --dry-run                                       # 토큰 소
 
 ```bash
 oct config                                              # ➕ Add codex account… → 이름 입력 → 로그인
+oct config --device-auth                                # 같은 화면, codex 로그인만 device auth로 강제
 oct config account add codex work                       # CLI: 이름만 쓰면 ~/.codex-work로 자동 파생
 oct config account add kimi personal ~/.kimi-code-alt   # 경로를 직접 지정할 수도 있음
 oct config account list                                 # 등록 목록 확인
 oct config account remove codex work                    # 등록 해제
 ```
+
+codex 계정을 추가할 때 oct는 기본값인 브라우저 로그인(`codex login`)과 기기 코드 로그인(`codex login --device-auth`) 중 하나를 고르게 합니다. 브라우저 콜백이 이 머신에 닿지 않는 SSH/원격 환경에서는 `oct config --device-auth`로 실행하면 선택 프롬프트 없이 `codex login --device-auth`를 쓰고, 다른 기기에서 코드를 입력하면 됩니다. 같은 플래그가 재연결(Reconnect)에도 적용되며, `oct config account add`는 그대로이고 안내 문구가 선택한 방식에 맞는 명령을 알려줍니다.
 
 등록하면 `oct usage` 표에서 해당 프로바이더 행 바로 아래에 `codex:work`, `kimi:personal` 같은 행이 생기고, 컴팩트/스테이터스라인 표기는 `XW`, `KP`처럼 별칭 첫 글자가 붙습니다. 계정 행은 기본 행이 표시될 때 함께 표시되며, `oct alert config set-provider-threshold ... --provider codex:work`처럼 알림 대상으로도 쓸 수 있습니다.
 

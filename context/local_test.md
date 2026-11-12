@@ -47,6 +47,23 @@ OCT_GROK_USAGE_ENDPOINT="http://localhost:8080/v1/billing?format=credits" GROK_O
 Standalone providers (`zai`, `deepseek`, `openrouter`, `grok`) must also be
 listed in `agent_order`/`enabled_tools` (or pass the tools as shown for zai).
 
+## Codex account login method (browser vs device auth)
+
+`oct config` asks which login method to use when adding or reconnecting a Codex
+account: `1) Browser login` (default, `codex login`) or `2) Device auth`
+(`codex login --device-auth`, a code entered on another device).
+
+```bash
+go run main.go config --help          # --device-auth must be listed
+go run main.go config --device-auth   # skips the method prompt, forces device auth
+```
+
+Manual check without a reachable browser: pick `2` in the picker (or pass
+`--device-auth`) and confirm the message says the code must be entered on another
+device. With no `codex` binary installed, the login spawn fails — the expected
+observable is the "Login did not complete" line naming `codex login --device-auth`
+plus the retry hint with `CODEX_HOME=<dir>`.
+
 ## Windows validation essentials
 
 ```powershell
