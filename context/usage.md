@@ -1,6 +1,6 @@
 # Detailed Usage Guide (oct)
 
-This page covers core commands and operational configuration for `one-click-tools`.
+This page covers core commands and operational configuration for `one-click-ai-tools`.
 
 ## 1) `oct update`
 
@@ -126,6 +126,31 @@ with a count of the hidden providers. Pair with `--from-snapshot` to render
 fetch, so short statusbar poll intervals do not trigger a provider fan-out. Renderers live in
 `internal/usage/statusline.go`; `UsageSeverity` there is the shared
 classification also used by `oct monitor`.
+
+`oct statusline config <waybar|polybar|swiftbar|xbar> [--path oct]` prints a
+paste-ready snippet on stdout (notes go to stderr); `oct statusline install
+<swiftbar|xbar> [--dir DIR] [--force]` writes `oct.5m.sh` (0755) into the
+platform plugin directory (SwiftBar: `~/Library/Application Support/SwiftBar/Plugins`,
+xbar: `~/.config/xbar/plugins`) and refuses to overwrite without `--force`;
+Windows is rejected. Generated output only calls `oct usage --format ...`.
+
+### Local history and exhaustion ETA
+
+Every live `oct usage` / `oct monitor` run appends one percent reading per
+(provider, window) to `~/.oct/state/usage-history.jsonl`. Retention is 30 days
+or 20000 lines, whichever is hit first; unparseable lines are skipped instead of
+failing the read. `--from-snapshot` renders never append.
+
+From the samples of the last 6 hours the CLI derives a burn rate (`%/h`) and an
+exhaustion ETA. A decreasing reading means a reset or window switch, so only the
+samples after the last decrease are used; an ETA that lands after the provider's
+reported reset (`bucket_resets`) is suppressed because the window refills first.
+`oct usage` shows the result as an `ETA` row on each card (`-` when unknown) and
+`--json` adds an optional `history` object per result
+(`{"burn_rate_per_hour":1.8,"eta_at":"...","samples":7}`).
+
+Opt out per run with `--no-history` (no recording) or `--no-trend` (no ETA row,
+no `history` field), or globally with `OCT_USAGE_HISTORY=0`.
 
 ## 4) Related docs
 

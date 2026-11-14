@@ -188,6 +188,8 @@ Legacy aliases 'gemini' and 'gemini-cli' still map to 'agy' for compatibility.`,
 		format, _ := cmd.Flags().GetString("format")
 		fromSnapshot, _ := cmd.Flags().GetBool("from-snapshot")
 		snapshotPath, _ := cmd.Flags().GetString("snapshot-path")
+		noHistory, _ := cmd.Flags().GetBool("no-history")
+		noTrend, _ := cmd.Flags().GetBool("no-trend")
 
 		outputMode, err := resolveUsageOutputMode(jsonMode, compactMode, format)
 		if err != nil {
@@ -210,6 +212,7 @@ Legacy aliases 'gemini' and 'gemini-cli' still map to 'agy' for compatibility.`,
 
 		if outputMode != "" {
 			var results []usage.UsageResult
+			var trends []*usage.HistoryTrend
 			if fromSnapshot {
 				snapshot, err := usage.LoadSnapshot(snapshotPath)
 				if err != nil {
@@ -222,6 +225,13 @@ Legacy aliases 'gemini' and 'gemini-cli' still map to 'agy' for compatibility.`,
 					return fmt.Errorf("fetch usage: %w", err)
 				}
 				maybeSendUsageAlerts(cmd, results, notifyMode)
+				trends = recordAndLoadTrends(cmd, results, noHistory, noTrend)
+			}
+			if outputMode == "json" {
+				if err := usage.PrintJSONWithTrends(results, trends); err != nil {
+					return fmt.Errorf("print usage json: %w", err)
+				}
+				return nil
 			}
 			return printUsageOutputMode(cmd, outputMode, results)
 		}
@@ -255,11 +265,32 @@ Legacy aliases 'gemini' and 'gemini-cli' still map to 'agy' for compatibility.`,
 
 		if len(fm.results) > 0 {
 			maybeSendUsageAlerts(cmd, fm.results, notifyMode)
-			usage.PrintTable(fm.results)
+			trends := recordAndLoadTrends(cmd, fm.results, noHistory, noTrend)
+			if noTrend {
+				usage.PrintTable(fm.results)
+			} else {
+				usage.PrintTableWithTrends(fm.results, trends, time.Now())
+			}
 			fmt.Println("\nTip: Run 'oct usage --help' for authentication instructions.")
 		}
 		return nil
 	},
+}
+
+// recordAndLoadTrends appends live results to the local history (unless
+// disabled) and returns per-result trends (nil when --no-trend). History
+// failures only warn: they must never fail a usage report.
+func recordAndLoadTrends(cmd *cobra.Command, results []usage.UsageResult, noHistory, noTrend bool) []*usage.HistoryTrend {
+	now := time.Now()
+	if !noHistory && !usage.HistoryDisabledByEnv() {
+		if err := usage.AppendHistory("", results, now); err != nil {
+			fmt.Fprintf(cmd.ErrOrStderr(), "[oct] history write error: %v\n", err)
+		}
+	}
+	if noTrend {
+		return nil
+	}
+	return usage.LoadTrends("", results, now)
 }
 
 // printUsageOutputMode renders one structured output mode. All statusline
@@ -293,5 +324,7 @@ func init() {
 	usageCmd.Flags().Bool("notify", false, "Send usage alerts based on threshold/cooldown rules")
 	usageCmd.Flags().String("format", "", "Structured output mode: json, compact, waybar, polybar, or swiftbar (overrides --json/--compact; statusline formats show remaining usage and hide providers without data)")
 	usageCmd.Flags().Bool("from-snapshot", false, "Render from the last 'oct monitor' snapshot instead of fetching live (requires --format)")
+	usageCmd.Flags().Bool("no-history", false, "Do not record this run in ~/.oct/state/usage-history.jsonl (also OCT_USAGE_HISTORY=0)")
+	usageCmd.Flags().Bool("no-trend", false, "Omit the ETA column and the JSON 'history' field")
 	usageCmd.Flags().String("snapshot-path", "", "Snapshot file for --from-snapshot (default ~/.oct/state/usage-latest.json)")
 }

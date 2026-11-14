@@ -137,6 +137,7 @@ oct usage --format waybar        # JSON for a waybar custom/script module (text/
 oct usage --format polybar       # one line for a polybar custom script (%{F#...} colors, escaped %)
 oct usage --format swiftbar      # SwiftBar plugin protocol (title + dropdown menu)
 oct usage --format waybar --from-snapshot   # render the last oct monitor snapshot instead of fetching live
+oct statusline config            # no argument: opens a target picker (same for `install`)
 ```
 
 `--from-snapshot` reads `~/.oct/state/usage-latest.json` (written every
@@ -223,11 +224,14 @@ Once an account is registered, a **"Manage existing accounts (N)"** row appears 
 
 ```bash
 oct config                                              # ➕ Add codex account… → type a name → sign in
+oct config --device-auth                                # same screen, forces codex device-auth login
 oct config account add codex work                       # CLI: with just a name, ~/.codex-work is derived
 oct config account add kimi personal ~/.kimi-code-alt   # or specify the home dir explicitly
 oct config account list                                 # show registered accounts
 oct config account remove codex work                    # unregister an account
 ```
+
+When you add a Codex account, oct lets you pick browser login (the default, `codex login`) or device auth (`codex login --device-auth`). On SSH or remote hosts where a browser callback cannot reach the machine, run `oct config --device-auth` to skip that prompt and use `codex login --device-auth`: enter the printed code on another device. The same flag applies to Reconnect, and `oct config account add` is unchanged — its hint names the command matching the method you chose.
 
 Once registered, rows like `codex:work` or `kimi:personal` appear directly under the provider row in the `oct usage` table, and compact/statusline tokens get the alias's initial appended (`XW`, `KP`). Account rows show whenever their base row is shown, and they work as alert targets too — e.g. `oct alert config set-provider-threshold ... --provider codex:work`.
 

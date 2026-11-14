@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"github.com/spf13/cobra"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -264,5 +266,54 @@ func TestWriteExtractedBinaryDetectsCloseErrors(t *testing.T) {
 	}
 	if info.Size() != int64(len("binary-bytes")) {
 		t.Fatalf("expected full write, got %d bytes", info.Size())
+	}
+}
+
+func stubRestartHook(t *testing.T, restarted bool, hookErr error) *int {
+	t.Helper()
+	orig := restartMenubarAfterUpdateCmd
+	calls := 0
+	restartMenubarAfterUpdateCmd = func(io.Writer) (bool, error) { calls++; return restarted, hookErr }
+	t.Cleanup(func() { restartMenubarAfterUpdateCmd = orig })
+	return &calls
+}
+
+func TestMaybeRestartMenubarAfterUpdateRunsHook(t *testing.T) {
+	t.Setenv("OCT_UPDATE_NO_MENUBAR_RESTART", "")
+	calls := stubRestartHook(t, true, nil)
+	c := &cobra.Command{}
+	var out bytes.Buffer
+	c.SetOut(&out)
+	maybeRestartMenubarAfterUpdate(c, selfUpdateOptions{})
+	if *calls != 1 || !strings.Contains(out.String(), "menubar restarted to use the new build") {
+		t.Fatalf("calls=%d out=%q", *calls, out.String())
+	}
+}
+
+func TestMaybeRestartMenubarAfterUpdateSkips(t *testing.T) {
+	calls := stubRestartHook(t, true, nil)
+	t.Setenv("OCT_UPDATE_NO_MENUBAR_RESTART", "")
+	t.Setenv("OCT_TELEMETRY_SOURCE", "")
+	maybeRestartMenubarAfterUpdate(&cobra.Command{}, selfUpdateOptions{noRestart: true})
+	t.Setenv("OCT_UPDATE_NO_MENUBAR_RESTART", "1")
+	maybeRestartMenubarAfterUpdate(&cobra.Command{}, selfUpdateOptions{})
+	t.Setenv("OCT_UPDATE_NO_MENUBAR_RESTART", "")
+	t.Setenv("OCT_TELEMETRY_SOURCE", "menubar")
+	maybeRestartMenubarAfterUpdate(&cobra.Command{}, selfUpdateOptions{})
+	if *calls != 0 {
+		t.Fatalf("hook called %d times, want 0", *calls)
+	}
+}
+
+func TestMaybeRestartMenubarAfterUpdateWarnsOnError(t *testing.T) {
+	t.Setenv("OCT_UPDATE_NO_MENUBAR_RESTART", "")
+	stubRestartHook(t, false, errors.New("boom"))
+	c := &cobra.Command{}
+	var errBuf, out bytes.Buffer
+	c.SetErr(&errBuf)
+	c.SetOut(&out)
+	maybeRestartMenubarAfterUpdate(c, selfUpdateOptions{})
+	if !strings.Contains(errBuf.String(), "warning: menubar restart failed: boom") || out.Len() != 0 {
+		t.Fatalf("err=%q out=%q", errBuf.String(), out.String())
 	}
 }

@@ -179,3 +179,12 @@ func menubarDaemonLogPath() string {
 	}
 	return filepath.Join(home, ".oct", "logs", "menubar.log")
 }
+
+// menubarDaemonInstalled reports whether this track's LaunchAgent plist exists.
+func menubarDaemonInstalled() bool {
+	state, err := launchItemStatusCmd(menubarDaemonLabel(currentMenubarTrack()))
+	if err != nil {
+		return false
+	}
+	return state.Installed
+}

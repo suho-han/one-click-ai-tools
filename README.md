@@ -98,7 +98,8 @@ oct usage --json     # 스크립트/파이프용
 | --- | --- | --- |
 | ⚙️ 설정 | `oct config` | 도구·프로바이더 선택, 사용량 표시 모드 등 일반 설정 (인터랙티브; 알림 설정은 다루지 않음) |
 | 🔄 업데이트 | `oct agent-update` | 설치된 AI CLI 전부 업데이트 (`--dry-run --explain` 사전 점검) |
-| 📊 감시 | `oct usage` | 전 프로바이더 쿼터 1회 조회 (`--json`, `--compact`, `--format waybar/polybar/swiftbar`, `--notify`) |
+| 📊 감시 | `oct usage` | 전 프로바이더 쿼터 1회 조회 (`--json`, `--compact`, `--format waybar/polybar/swiftbar`, `--notify`, ETA 예측 `--no-trend`로 끔) |
+| 📊 감시 | `oct statusline` | waybar/polybar/SwiftBar/xbar 설정 스니펫 출력(`config`)·플러그인 설치(`install`) |
 | 📊 감시 | `oct monitor` | 상시 갱신 화면 (`--interval`, `--once`, 정렬·필터) |
 | 📊 감시 | `oct menubar` | macOS 메뉴바에 상시 표시 |
 | 🔔 알림 | `oct alert` | 서브커맨드 없이 실행하면 방향키/키 입력 기반 인터랙티브 알림 설정; `config`·프로바이더 임계값·`test`·`snooze` 지원 |
@@ -126,7 +127,12 @@ oct usage                        # 1회 조회
 oct usage --compact              # C-45% X-25% 형태 요약
 oct usage --json                 # JSON 출력
 oct usage --notify               # 임계값 규칙에 따라 알림 발송
+oct usage --no-trend             # 소진 예측(ETA) 없이 출력
 ```
+
+`oct usage`는 라이브 조회 결과를 `~/.oct/state/usage-history.jsonl`에 남기고
+최근 6시간 샘플로 소진 속도와 `ETA`를 계산합니다(30일/2만줄 보존,
+`--no-history` 또는 `OCT_USAGE_HISTORY=0`으로 기록 중지).
 
 스크립트 작성자용: `--json` 출력 구조는 안정적인 계약으로 문서화돼 있습니다 —
 [docs/usage-json-schema.md](docs/usage-json-schema.md) 참고.
@@ -147,6 +153,16 @@ oct usage --format waybar --from-snapshot   # 라이브 fetch 대신 마지막 o
 기록)을 읽으므로, 상태바가 짧은 폴링 간격으로 재실행해도 프로바이더 전체
 fan-out이 발생하지 않습니다. waybar/polybar/swiftbar와 `--compact`는 모두
 remaining 기준으로 표시합니다.
+
+설정 파일을 직접 쓰지 않고 스니펫/플러그인을 생성할 수도 있습니다:
+
+```bash
+oct statusline config            # 인자 없이 실행하면 대상 선택 피커 (install도 동일)
+oct statusline config waybar     # custom/oct 모듈 JSON 스니펫 (stdout만 출력)
+oct statusline config polybar    # [module/oct] INI 스니펫
+oct statusline config xbar       # xbar/SwiftBar 플러그인 스크립트
+oct statusline install xbar      # 플러그인 파일 설치 (0755, --dir/--force)
+```
 
 statusline 포맷은 값 없는 프로바이더(미구성·데이터 없음 — `?` 토큰)는 숨기고
 실패(401 등)는 유지합니다. 숨겨진 개수는 툴팁 마지막 줄에 표시됩니다.
@@ -226,11 +242,14 @@ oct session-refresh --dry-run                                       # 토큰 소
 
 ```bash
 oct config                                              # ➕ Add codex account… → 이름 입력 → 로그인
+oct config --device-auth                                # 같은 화면, codex 로그인만 device auth로 강제
 oct config account add codex work                       # CLI: 이름만 쓰면 ~/.codex-work로 자동 파생
 oct config account add kimi personal ~/.kimi-code-alt   # 경로를 직접 지정할 수도 있음
 oct config account list                                 # 등록 목록 확인
 oct config account remove codex work                    # 등록 해제
 ```
+
+codex 계정을 추가할 때 oct는 기본값인 브라우저 로그인(`codex login`)과 기기 코드 로그인(`codex login --device-auth`) 중 하나를 고르게 합니다. 브라우저 콜백이 이 머신에 닿지 않는 SSH/원격 환경에서는 `oct config --device-auth`로 실행하면 선택 프롬프트 없이 `codex login --device-auth`를 쓰고, 다른 기기에서 코드를 입력하면 됩니다. 같은 플래그가 재연결(Reconnect)에도 적용되며, `oct config account add`는 그대로이고 안내 문구가 선택한 방식에 맞는 명령을 알려줍니다.
 
 등록하면 `oct usage` 표에서 해당 프로바이더 행 바로 아래에 `codex:work`, `kimi:personal` 같은 행이 생기고, 컴팩트/스테이터스라인 표기는 `XW`, `KP`처럼 별칭 첫 글자가 붙습니다. 계정 행은 기본 행이 표시될 때 함께 표시되며, `oct alert config set-provider-threshold ... --provider codex:work`처럼 알림 대상으로도 쓸 수 있습니다.
 

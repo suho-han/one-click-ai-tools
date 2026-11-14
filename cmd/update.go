@@ -29,8 +29,9 @@ import (
 const selfUpdateRepo = "suho-han/one-click-ai-tools"
 
 type selfUpdateOptions struct {
-	yes   bool
-	check bool
+	yes       bool
+	check     bool
+	noRestart bool
 }
 
 type githubLatestRelease struct {
@@ -107,7 +108,11 @@ func runSelfUpdate(cmd *cobra.Command, opts selfUpdateOptions) error {
 		brew := selfUpdateCommandContext(brewCtx, "brew", "upgrade", "one-click-tools")
 		brew.Stdout = cmd.OutOrStdout()
 		brew.Stderr = cmd.ErrOrStderr()
-		return brew.Run()
+		if err := brew.Run(); err != nil {
+			return err
+		}
+		maybeRestartMenubarAfterUpdate(cmd, opts)
+		return nil
 	}
 
 	current := normalizeReleaseTag(rootCmd.Version)
@@ -152,7 +157,31 @@ func runSelfUpdate(cmd *cobra.Command, opts selfUpdateOptions) error {
 		return err
 	}
 	fmt.Fprintf(cmd.OutOrStdout(), "oct updated successfully to %s.\n", latest)
+	maybeRestartMenubarAfterUpdate(cmd, opts)
 	return nil
+}
+
+// maybeRestartMenubarAfterUpdate restarts the running menubar so it picks up
+// the new build. Failures only warn; they never fail the update.
+func maybeRestartMenubarAfterUpdate(cmd *cobra.Command, opts selfUpdateOptions) {
+	if opts.noRestart || os.Getenv("OCT_UPDATE_NO_MENUBAR_RESTART") == "1" {
+		return
+	}
+	// The menubar helper runs `oct update --yes` itself and then offers its
+	// own Restart/Later dialog; restarting under it would kill the app that
+	// is still waiting for this command's output. Its OCT_TELEMETRY_SOURCE
+	// marker is inherited by the child, which is how we tell the two apart.
+	if os.Getenv("OCT_TELEMETRY_SOURCE") == "menubar" {
+		return
+	}
+	restarted, err := restartMenubarAfterUpdateCmd(cmd.OutOrStdout())
+	if err != nil {
+		fmt.Fprintf(cmd.ErrOrStderr(), "warning: menubar restart failed: %v\n", err)
+		return
+	}
+	if restarted {
+		fmt.Fprintln(cmd.OutOrStdout(), "menubar restarted to use the new build")
+	}
 }
 
 // installedViaBrew reports whether Homebrew manages this install by checking
@@ -733,6 +762,7 @@ func compareReleaseVersions(a, b string) int {
 
 func init() {
 	updateCmd.Flags().BoolVarP(&selfUpdateOpts.yes, "yes", "y", false, "Install the latest release without prompting")
+	updateCmd.Flags().BoolVar(&selfUpdateOpts.noRestart, "no-restart", false, "Do not restart the running menubar after updating")
 	updateCmd.Flags().BoolVar(&selfUpdateOpts.check, "check", false, "Check for a newer release without installing")
 	rootCmd.AddCommand(updateCmd)
 }

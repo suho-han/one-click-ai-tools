@@ -188,6 +188,15 @@ var menubarStopCmd = &cobra.Command{
 	},
 }
 
+var menubarRestartCmd = &cobra.Command{
+	Use:   "restart",
+	Short: "Restart the menubar so it picks up the current build",
+	Args:  cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return restartMenubarCommand(cmd.OutOrStdout())
+	},
+}
+
 var menubarDaemonCmd = &cobra.Command{
 	Use:   "daemon",
 	Short: "Show the menubar daemon's launch-at-login status",
@@ -401,6 +410,7 @@ func init() {
 	menubarCmd.AddCommand(menubarBuildHelperCmd)
 	menubarCmd.AddCommand(menubarInstallHelperCmd)
 	menubarCmd.AddCommand(menubarStopCmd)
+	menubarCmd.AddCommand(menubarRestartCmd)
 	menubarCmd.AddCommand(menubarDaemonCmd)
 	menubarDaemonCmd.AddCommand(menubarDaemonEnableCmd)
 	menubarDaemonCmd.AddCommand(menubarDaemonDisableCmd)

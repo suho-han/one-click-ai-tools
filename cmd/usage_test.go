@@ -3,10 +3,13 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/viper"
 	"github.com/suho-han/one-click-ai-tools/internal/usage"
@@ -172,5 +175,86 @@ func TestUsageCommandReturnsErrorForJSONFetchFailure(t *testing.T) {
 	err := cmd.RunE(&cmd, nil)
 	if err == nil || !contains(err.Error(), "fetch usage") {
 		t.Fatalf("expected fetch usage error, got %v", err)
+	}
+}
+
+func TestUsageCommandHistoryAndTrend(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("OCT_USAGE_HISTORY", "")
+	histPath := filepath.Join(home, ".oct", "state", "usage-history.jsonl")
+
+	// Seed an earlier sample so the live run yields a trend.
+	past := time.Now().Add(-time.Hour)
+	if err := usage.AppendHistory(histPath, []usage.UsageResult{{Provider: "codex", Unit: "percent", Buckets: map[string]string{"5h": "10"}}}, past); err != nil {
+		t.Fatal(err)
+	}
+	orig := usageFetcher
+	usageFetcher = func(ctx context.Context) ([]usage.UsageResult, error) {
+		return []usage.UsageResult{{Provider: "codex", Status: "ok", Unit: "percent", Used: "20", Buckets: map[string]string{"5h": "20"}}}, nil
+	}
+	defer func() { usageFetcher = orig }()
+
+	lines := func() int {
+		b, _ := os.ReadFile(histPath)
+		return strings.Count(string(b), "\n")
+	}
+	run := func(args ...string) string {
+		return runUsageWithFormat(t, func(t *testing.T) {
+			for _, n := range []string{"no-history", "no-trend"} {
+				f := usageCmd.Flags().Lookup(n)
+				f.Value.Set("false")
+				f.Changed = false
+			}
+			usageFlagSetter(t, args...)(t)
+		})
+	}
+	hasHistory := func(out string) bool {
+		var p struct {
+			Results []struct {
+				History *struct {
+					Samples int `json:"samples"`
+				} `json:"history"`
+			} `json:"results"`
+		}
+		if err := json.Unmarshal([]byte(out), &p); err != nil {
+			t.Fatalf("bad json: %v\n%s", err, out)
+		}
+		return p.Results[0].History != nil && p.Results[0].History.Samples >= 2
+	}
+
+	before := lines()
+	out := run("--format", "json")
+	if !hasHistory(out) {
+		t.Fatalf("expected history field: %s", out)
+	}
+	if lines() <= before {
+		t.Fatal("live run did not append history")
+	}
+
+	before = lines()
+	if out = run("--format", "json", "--no-trend"); strings.Contains(out, `"history"`) {
+		t.Fatalf("--no-trend still emits history: %s", out)
+	}
+	if lines() <= before {
+		t.Fatal("--no-trend must still record")
+	}
+
+	before = lines()
+	if out = run("--format", "json", "--no-history"); lines() != before {
+		t.Fatal("--no-history appended")
+	}
+	if !hasHistory(out) {
+		t.Fatalf("--no-history should still show trend: %s", out)
+	}
+
+	snap := filepath.Join(home, "snap.json")
+	usage.SaveSnapshot(snap, []usage.UsageResult{{Provider: "codex", Status: "ok", Unit: "percent", Used: "20"}}, time.Now())
+	before = lines()
+	if out = run("--format", "json", "--from-snapshot", "--snapshot-path", snap); lines() != before {
+		t.Fatal("--from-snapshot appended history")
+	}
+	if strings.Contains(out, `"history"`) {
+		t.Fatalf("--from-snapshot emitted history: %s", out)
 	}
 }

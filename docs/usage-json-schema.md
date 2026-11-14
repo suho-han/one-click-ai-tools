@@ -5,7 +5,8 @@ It exists because scriptability is a stated differentiator: tools that parse
 this output (CI checks, status bars, cron jobs) should be able to upgrade `oct`
 without breakage.
 
-**Contract version:** as of v0.1.6-beta.3 (2026-09-18).
+**Contract version:** as of v0.1.6-beta.3 (2026-09-18). Additive only since:
+`history` was added 2026-11-12.
 
 ## Stability promise
 
@@ -63,6 +64,7 @@ directly and treat message heuristics as internal.
 | `reset_credits` | integer | optional | Unused Codex rate-limit reset credits. Present even when the reported count is `0`; absent for providers without this concept. |
 | `source_detail` | string | optional | Diagnostic detail about the credential/refresh state used for the fetch. Free-form; not a stable vocabulary. |
 | `message` | string | optional | Short human-readable note, **truncated to 48 characters** in JSON output. Not a stable vocabulary — parse at your own risk. |
+| `history` | object | optional | Local burn-rate forecast for this provider: `{"burn_rate_per_hour": 1.8, "eta_at": "2026-11-12T15:04:05Z", "samples": 7}`. `burn_rate_per_hour` is always present; `eta_at` is omitted when exhaustion is unknown or lands after the reported window reset. Omitted entirely when fewer than two local samples exist within the last 6 hours, or when the run used `--no-trend`. Derived only from local history (`~/.oct/state/usage-history.jsonl`), never from provider data. |
 
 Fields marked optional are omitted (Go `omitempty`) when empty; never rely on
 them being present with an empty value.
