@@ -43,3 +43,5 @@ func menubarDaemonStatusJSON() (string, error) {
 }
 
 func menubarDaemonSummary() string { return "" }
+
+func menubarDaemonInstalled() bool { return false }
