@@ -15,12 +15,26 @@ Use this guide when you need to:
 oct menubar doctor
 oct menubar build-helper
 oct menubar install-helper
+oct menubar stop
+oct menubar restart
 ```
 
 What each command does:
 - `doctor`: reports launch mode, resolved helper path, and helper project location
 - `build-helper`: builds the Swift helper under `macos/OctMenubar`
 - `install-helper`: installs the built helper into the user-local executable path
+- `stop`: SIGTERMs every helper instance of the current track
+- `restart`: stops this track's instances and starts a fresh one (through launchd
+  when the daemon plist exists, so the pinned oct path is rewritten; otherwise via
+  the detached helper launch). Never prompts.
+
+`oct update` runs that restart automatically after a successful install, so a
+terminal update no longer leaves the old helper running. It restarts only when a
+menubar is running or the daemon is installed, and it never fails the update:
+a restart error is a `warning:` on stderr. Skip it with `oct update --no-restart`
+or `OCT_UPDATE_NO_MENUBAR_RESTART=1`. When the menubar itself launched the update
+(`OCT_TELEMETRY_SOURCE=menubar`), the CLI stays out of the way and the helper's own
+Restart/Later dialog handles it.
 
 ## Expected behavior
 
