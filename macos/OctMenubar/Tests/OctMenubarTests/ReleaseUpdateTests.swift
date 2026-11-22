@@ -220,4 +220,3 @@ final class ReleaseUpdateInstallerTests: XCTestCase {
         XCTAssertFalse(installer.isUpdating)
     }
 }
-
