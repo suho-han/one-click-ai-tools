@@ -126,6 +126,20 @@ struct OctCLIService {
         _ = try await runProcess(executableURL: executableURL, arguments: ["menubar", "daemon", enabled ? "enable" : "disable"])
     }
 
+    /// Shares release discovery and channel selection with the installed CLI.
+    func checkSelfUpdate() async throws -> ReleaseUpdate? {
+        struct Check: Decodable {
+            let available: Bool
+            let latest: String
+        }
+        var checker = self
+        checker.processTimeout = 35
+        checker.refreshDeadline = checker.processTimeout + Self.exitGrace * 2 + 6
+        let output = try await checker.runAndCapture(arguments: ["update", "--check", "--json"])
+        let check = try JSONDecoder().decode(Check.self, from: Data(output.utf8))
+        return check.available ? ReleaseUpdate(tag: check.latest) : nil
+    }
+
     /// Self-update may download/verify an archive or run a Homebrew upgrade;
     /// it needs a longer watchdog than periodic usage/config subprocesses.
     /// --yes is safe here only after the app's explicit confirmation dialog.

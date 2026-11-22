@@ -273,7 +273,7 @@ oct menubar install-helper # ~/.local/bin/OctMenubarApp 로 설치
 
 Alerts 탭의 임계값 슬라이더는 5% 간격(5~95%)과 마지막 99%를 선택합니다. "Use the same threshold for 5h, 7d, and 1m"을 선택하면 세 기간에 동일한 Alert threshold가 적용되고, 해제하면 각 기간의 슬라이더만 표시됩니다. 체크 상태는 다음 실행에도 유지되지만, 외부 설정에서 세 값이 달라지면 자동으로 해제됩니다.
 
-About 탭에는 실행 중인 메뉴바 앱 버전, GitHub 저장소와 후원 링크가 표시됩니다. "Automatically check for updates"는 즉시 적용되는 앱 설정으로, 켜면 5분마다 새 GitHub Release를 확인해 다운로드 페이지 링크를 보여주고 끄면 확인과 알림을 중지합니다. 업데이트를 자동 설치하지는 않습니다.
+About 탭에는 실행 중인 메뉴바 앱 버전, GitHub 저장소와 후원 링크가 표시됩니다. "Automatically check for updates"를 켜면 5분마다 CLI와 같은 채널(안정판 또는 베타)의 새 버전을 확인합니다. "Automatically install updates"가 꺼져 있으면 업데이트 버튼으로 설치할 수 있습니다.
 
 `oct usage --json`의 전체 페치 deadline(기본 15초)은 `OCT_USAGE_FETCH_TIMEOUT` 환경변수로 조정할 수 있습니다 (예: `OCT_USAGE_FETCH_TIMEOUT=8s oct usage`). 5~18초 범위로 클램프되어 menubar helper의 20초 프로세스 타임아웃 안에 항상 부분 결과가 도착합니다.
 

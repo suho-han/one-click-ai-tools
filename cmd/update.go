@@ -31,6 +31,7 @@ const selfUpdateRepo = "suho-han/one-click-ai-tools"
 type selfUpdateOptions struct {
 	yes       bool
 	check     bool
+	json      bool
 	noRestart bool
 }
 
@@ -79,16 +80,15 @@ var updateCmd = &cobra.Command{
 }
 
 func runSelfUpdate(cmd *cobra.Command, opts selfUpdateOptions) error {
+	if opts.json && !opts.check {
+		return errors.New("--json requires --check")
+	}
 	executable, err := os.Executable()
 	if err != nil {
 		return err
 	}
 	betaTrack := selfUpdateBetaTrack(rootCmd.Version, executable)
-	if runtime.GOOS == "darwin" && !betaTrack && installedViaBrew() {
-		if opts.check {
-			fmt.Fprintln(cmd.OutOrStdout(), "oct is managed by Homebrew. Use: brew upgrade one-click-tools")
-			return nil
-		}
+	if runtime.GOOS == "darwin" && !betaTrack && !opts.check && installedViaBrew() {
 		// Match the tarball path's ask-before-installing behavior: a plain
 		// `oct update` must not launch a long brew upgrade unannounced.
 		// Non-interactive callers (menubar, scripts) pass --yes explicitly.
@@ -127,6 +127,12 @@ func runSelfUpdate(cmd *cobra.Command, opts selfUpdateOptions) error {
 	}
 
 	cmp := compareReleaseVersions(current, latest)
+	if opts.json {
+		return json.NewEncoder(cmd.OutOrStdout()).Encode(struct {
+			Available bool   `json:"available"`
+			Latest    string `json:"latest"`
+		}{cmp < 0, latest})
+	}
 	if cmp >= 0 {
 		fmt.Fprintf(cmd.OutOrStdout(), "oct is up to date (%s).\n", current)
 		return nil
@@ -764,5 +770,6 @@ func init() {
 	updateCmd.Flags().BoolVarP(&selfUpdateOpts.yes, "yes", "y", false, "Install the latest release without prompting")
 	updateCmd.Flags().BoolVar(&selfUpdateOpts.noRestart, "no-restart", false, "Do not restart the running menubar after updating")
 	updateCmd.Flags().BoolVar(&selfUpdateOpts.check, "check", false, "Check for a newer release without installing")
+	updateCmd.Flags().BoolVar(&selfUpdateOpts.json, "json", false, "Output the update check as JSON (requires --check)")
 	rootCmd.AddCommand(updateCmd)
 }
