@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -13,6 +12,7 @@ import (
 
 var usageResetCreditFlags struct {
 	provider string
+	target   string
 	yes      bool
 	json     bool
 }
@@ -35,6 +35,7 @@ render the (🎁 N) badge and passes --yes after its own confirmation dialog.`,
 func init() {
 	usageCmd.AddCommand(usageResetCreditCmd)
 	usageResetCreditCmd.Flags().StringVar(&usageResetCreditFlags.provider, "provider", "codex", "provider row to spend on: codex or codex:<account>")
+	usageResetCreditCmd.Flags().StringVar(&usageResetCreditFlags.target, "target", "", "only use the Codex account matching this usage snapshot target")
 	usageResetCreditCmd.Flags().BoolVar(&usageResetCreditFlags.yes, "yes", false, "spend a credit without prompting")
 	usageResetCreditCmd.Flags().BoolVar(&usageResetCreditFlags.json, "json", false, "output in JSON format")
 }
@@ -53,15 +54,19 @@ type resetCreditOutput struct {
 }
 
 func runUsageResetCredit(cmd *cobra.Command, args []string) error {
-	ctx := context.Background()
+	ctx := cmd.Context()
 	label := strings.TrimSpace(usageResetCreditFlags.provider)
+	target := usageResetCreditFlags.target
+	if target == "" && (cmd.Flags().Changed("target") || (usageResetCreditFlags.yes && os.Getenv("OCT_TELEMETRY_SOURCE") == "menubar")) {
+		return resetCreditFailure(label, fmt.Errorf("missing Codex confirmation target; restart the menubar and refresh usage"))
+	}
 
 	home, err := resolveCodexAccountHome(label)
 	if err != nil {
 		return err
 	}
 
-	credits, err := usage.FetchCodexResetCredits(ctx, home)
+	credits, err := usage.FetchCodexResetCredits(ctx, home, target)
 	if err != nil {
 		return resetCreditFailure(label, err)
 	}
@@ -91,7 +96,7 @@ func runUsageResetCredit(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	result, err := usage.ConsumeCodexResetCredit(ctx, home, "")
+	result, err := usage.ConsumeCodexResetCredit(ctx, home, credits.Target, "")
 	if err != nil {
 		return resetCreditFailure(label, err)
 	}
@@ -99,7 +104,7 @@ func runUsageResetCredit(cmd *cobra.Command, args []string) error {
 	// Report what the spend actually left behind: the remaining credit
 	// count and the account's fresh usage, so "did it go back to full?"
 	// is answerable from one command.
-	after, afterErr := usage.FetchCodexResetCredits(ctx, home)
+	after, afterErr := usage.FetchCodexResetCredits(ctx, home, credits.Target)
 	availableAfter := 0
 	if afterErr == nil {
 		availableAfter = after.AvailableCount
@@ -136,18 +141,21 @@ func runUsageResetCredit(cmd *cobra.Command, args []string) error {
 }
 
 // resolveCodexAccountHome maps a --provider row label to its credential
-// home: plain "codex" (and codex:<alias> rows) only — no other provider
-// reports reset credits today.
+// home: plain "codex" or "codex:<alias>".
 func resolveCodexAccountHome(label string) (string, error) {
 	provider, alias, hasAlias := usage.SplitAccountProviderLabel(label)
 	if !hasAlias {
 		if strings.EqualFold(label, "codex") {
+			// Usage labels a sole configured account simply "codex".
+			if accounts := usage.AccountsForProvider("codex"); len(accounts) == 1 {
+				return accounts[0].Home, nil
+			}
 			return "", nil
 		}
-		return "", fmt.Errorf("rate-limit reset credits are a Codex feature; pass codex or codex:<account>, got %q", label)
+		return "", fmt.Errorf("expected codex or codex:<account>, got %q", label)
 	}
 	if !strings.EqualFold(provider, "codex") {
-		return "", fmt.Errorf("rate-limit reset credits are a Codex feature; pass codex or codex:<account>, got %q", label)
+		return "", fmt.Errorf("expected codex or codex:<account>, got %q", label)
 	}
 	for _, account := range usage.AccountsForProvider("codex") {
 		if strings.EqualFold(account.Name, alias) {

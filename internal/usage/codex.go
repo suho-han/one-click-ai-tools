@@ -312,6 +312,9 @@ func fetchCodexBackendUsage(ctx context.Context, base UsageResult, home string) 
 
 	if credits := payload.RateLimitResetCredits; credits != nil && credits.AvailableCount != nil {
 		result.ResetCredits = credits.AvailableCount
+		if hasAuth {
+			result.ResetCreditTarget = auth.resetCreditTarget()
+		}
 	}
 
 	addCodexBackendWindow(result.Buckets, result.BucketResets, payload.RateLimit.PrimaryWindow)

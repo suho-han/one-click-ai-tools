@@ -149,7 +149,8 @@ struct PopoverView: View {
                     provider: provider,
                     columnWidths: columnWidths,
                     isRefreshing: viewModel.isRefreshing,
-                    onResetCreditTap: provider.resetCredits == nil ? nil : { viewModel.requestResetCredit(for: provider) }
+                    onResetCreditTap: provider.resetCreditTarget != nil && !viewModel.isSpendingResetCredit
+                        ? { viewModel.requestResetCredit(for: provider) } : nil
                 )
             }
         }

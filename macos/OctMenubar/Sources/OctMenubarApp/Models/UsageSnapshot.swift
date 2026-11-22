@@ -58,6 +58,7 @@ struct ProviderCard: Equatable, Identifiable {
     /// Unused rate-limit reset credits reported by the provider, nil when
     /// the provider has no such concept — drives the "( 🎁 N )" badge.
     let resetCredits: Int?
+    let resetCreditTarget: String?
     let message: String?
 
     init(
@@ -66,6 +67,7 @@ struct ProviderCard: Equatable, Identifiable {
         status: ProviderStatus,
         metrics: [UsageMetric],
         resetCredits: Int? = nil,
+        resetCreditTarget: String? = nil,
         message: String?
     ) {
         self.id = name
@@ -74,6 +76,7 @@ struct ProviderCard: Equatable, Identifiable {
         self.status = status
         self.metrics = metrics
         self.resetCredits = resetCredits
+        self.resetCreditTarget = resetCreditTarget
         self.message = message
     }
 
@@ -248,6 +251,7 @@ struct UsageResponse: Decodable, Equatable {
         /// Unused rate-limit reset credits (Codex "rate_limit_reset_credits"
         /// on wham/usage); nil when the provider does not report the concept.
         let resetCredits: Int?
+        let resetCreditTarget: String?
         let message: String?
 
         init(from decoder: Decoder) throws {
@@ -265,6 +269,7 @@ struct UsageResponse: Decodable, Equatable {
             buckets = try container.decodeIfPresent([String: String].self, forKey: .buckets)
             bucketResets = try container.decodeIfPresent([String: String].self, forKey: .bucketResets)
             resetCredits = try container.decodeIfPresent(Int.self, forKey: .resetCredits)
+            resetCreditTarget = try container.decodeIfPresent(String.self, forKey: .resetCreditTarget)
             message = try container.decodeIfPresent(String.self, forKey: .message)
         }
 
@@ -277,6 +282,7 @@ struct UsageResponse: Decodable, Equatable {
             case buckets
             case bucketResets = "bucket_resets"
             case resetCredits = "reset_credits"
+            case resetCreditTarget = "reset_credit_target"
             case message
         }
     }
@@ -306,6 +312,7 @@ extension UsageSnapshot {
                 status: effectiveStatus(for: result),
                 metrics: visibleMetrics(for: result.provider, unit: result.unit, buckets: result.buckets, resets: result.bucketResets, now: now),
                 resetCredits: result.resetCredits,
+                resetCreditTarget: result.resetCreditTarget,
                 message: composedMessage(for: result)
             )
         }
