@@ -255,7 +255,7 @@ While the initial configuration loads, a progress indicator appears in the cente
 
 Alert threshold sliders select 5% steps from 5% through 95%, then 99%. Select "Use the same threshold for 5h, 7d, and 1m" to apply one Alert threshold to all three windows; deselect it to edit only the three window-specific sliders. The checkbox choice persists across launches, but resets if an external configuration introduces divergent window values.
 
-About shows the running menubar app version and links to the GitHub repository and sponsorship page. "Automatically check for updates" takes effect immediately: when enabled, it checks GitHub Releases every five minutes and offers a download-page link; disabling it stops checks and notifications. It never installs updates automatically.
+About shows the running menubar app version and links to the GitHub repository and sponsorship page. "Automatically check for updates" checks the same release channel as the CLI (stable or beta) every five minutes. With "Automatically install updates" off, use the update button to install an available release.
 
 The overall fetch deadline of `oct usage --json` (15s by default) is tunable via the `OCT_USAGE_FETCH_TIMEOUT` environment variable (e.g. `OCT_USAGE_FETCH_TIMEOUT=8s oct usage`). It is clamped to the 5–18s range, so a partial result always arrives within the menubar helper's 20s process timeout.
 
