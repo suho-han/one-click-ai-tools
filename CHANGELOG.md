@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file. See [standa
 
 ### Bug Fixes
 
+* **menubar:** refuse to spend a Codex reset credit if the account or credentials no longer match the confirmed usage card.
 * **menubar:** keep the helper version marker alive in release builds ([d9f2423](https://github.com/suho-han/one-click-ai-tools/commit/d9f2423))
 
 ### [0.1.8](https://github.com/suho-han/one-click-ai-tools/compare/v0.1.7...v0.1.8) (2026-10-17)

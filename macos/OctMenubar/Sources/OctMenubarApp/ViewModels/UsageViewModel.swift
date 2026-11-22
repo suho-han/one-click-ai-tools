@@ -7,6 +7,7 @@ import SwiftUI
 final class UsageViewModel: ObservableObject {
     @Published private(set) var snapshot: UsageSnapshot
     @Published private(set) var isRefreshing = false
+    @Published private(set) var isSpendingResetCredit = false
     /// Card whose reset-credits badge was tapped — drives the confirmation
     /// alert. Nil when no confirmation is pending.
     @Published var pendingResetCreditCard: ProviderCard?
@@ -42,7 +43,7 @@ final class UsageViewModel: ObservableObject {
     }
 
     func refresh(now: Date = Date()) {
-        guard !isRefreshing else { return }
+        guard !isRefreshing, !isSpendingResetCredit, pendingResetCreditCard == nil else { return }
         isRefreshing = true
         generation += 1
         let refreshGeneration = generation
@@ -101,6 +102,9 @@ final class UsageViewModel: ObservableObject {
     /// Arms the reset-credit confirmation for one card. The spend only
     /// happens if the user confirms the alert.
     func requestResetCredit(for card: ProviderCard) {
+        guard !isRefreshing, !isSpendingResetCredit, pendingResetCreditCard == nil,
+              resetCreditError == nil, (card.resetCredits ?? 0) > 0,
+              let target = card.resetCreditTarget, !target.isEmpty else { return }
         pendingResetCreditCard = card
     }
 
@@ -108,19 +112,20 @@ final class UsageViewModel: ObservableObject {
         pendingResetCreditCard = nil
     }
 
-    /// Spends one reset credit on the confirmed card, then refreshes so the
-    /// quota bars (and the badge count) reflect the cleared windows. A
-    /// failure lands in resetCreditError instead of wiping the snapshot.
+    /// Keep the confirmed target even if the displayed card has refreshed.
+    /// Refresh after every attempt: a timed-out redemption may have landed.
     func confirmResetCredit() {
-        guard let card = pendingResetCreditCard else { return }
+        guard let card = pendingResetCreditCard, let target = card.resetCreditTarget,
+              !target.isEmpty, !isSpendingResetCredit else { return }
+        isSpendingResetCredit = true
         pendingResetCreditCard = nil
         Task {
             do {
-                _ = try await service.consumeResetCredit(provider: card.name)
+                _ = try await service.consumeResetCredit(provider: card.name, target: target)
             } catch {
                 resetCreditError = error.localizedDescription
-                return
             }
+            isSpendingResetCredit = false
             refresh()
         }
     }

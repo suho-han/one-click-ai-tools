@@ -34,7 +34,8 @@ type UsageResult struct {
 	// ResetCredits counts the provider's unused rate-limit reset credits
 	// (Codex "rate_limit_reset_credits.available_count"). Nil when the
 	// provider does not report the concept, so UIs can omit the badge.
-	ResetCredits *int `json:"reset_credits,omitempty"`
+	ResetCredits      *int   `json:"reset_credits,omitempty"`
+	ResetCreditTarget string `json:"reset_credit_target,omitempty"`
 }
 
 func SelectedTools() []update.Tool {
@@ -861,18 +862,19 @@ func PrintJSON(results []UsageResult) error {
 // object; trends[i] belongs to results[i] (nil entries/slice omit it).
 func PrintJSONWithTrends(results []UsageResult, trends []*HistoryTrend) error {
 	type UsageResultCompact struct {
-		Provider     string            `json:"provider"`
-		Plan         string            `json:"plan,omitempty"`
-		PlanSource   string            `json:"plan_source,omitempty"`
-		Status       string            `json:"status"`
-		Used         string            `json:"used"`
-		Unit         string            `json:"unit"`
-		Buckets      map[string]string `json:"buckets,omitempty"`
-		BucketResets map[string]string `json:"bucket_resets,omitempty"`
-		ResetCredits *int              `json:"reset_credits,omitempty"`
-		SourceDetail string            `json:"source_detail,omitempty"`
-		Message      string            `json:"message,omitempty"`
-		History      *HistoryTrend     `json:"history,omitempty"`
+		Provider          string            `json:"provider"`
+		Plan              string            `json:"plan,omitempty"`
+		PlanSource        string            `json:"plan_source,omitempty"`
+		Status            string            `json:"status"`
+		Used              string            `json:"used"`
+		Unit              string            `json:"unit"`
+		Buckets           map[string]string `json:"buckets,omitempty"`
+		BucketResets      map[string]string `json:"bucket_resets,omitempty"`
+		ResetCredits      *int              `json:"reset_credits,omitempty"`
+		ResetCreditTarget string            `json:"reset_credit_target,omitempty"`
+		SourceDetail      string            `json:"source_detail,omitempty"`
+		Message           string            `json:"message,omitempty"`
+		History           *HistoryTrend     `json:"history,omitempty"`
 	}
 	type UsageSummary struct {
 		Total int `json:"total"`
@@ -894,18 +896,19 @@ func PrintJSONWithTrends(results []UsageResult, trends []*HistoryTrend) error {
 			hist = trends[i]
 		}
 		payload.Results = append(payload.Results, UsageResultCompact{
-			History:      hist,
-			Provider:     r.Provider,
-			Plan:         r.Plan,
-			PlanSource:   r.PlanSource,
-			Status:       r.Status,
-			Used:         r.Used,
-			Unit:         r.Unit,
-			Buckets:      r.Buckets,
-			BucketResets: r.BucketResets,
-			ResetCredits: r.ResetCredits,
-			SourceDetail: r.SourceDetail,
-			Message:      truncateText(r.Message, 48),
+			History:           hist,
+			Provider:          r.Provider,
+			Plan:              r.Plan,
+			PlanSource:        r.PlanSource,
+			Status:            r.Status,
+			Used:              r.Used,
+			Unit:              r.Unit,
+			Buckets:           r.Buckets,
+			BucketResets:      r.BucketResets,
+			ResetCredits:      r.ResetCredits,
+			ResetCreditTarget: r.ResetCreditTarget,
+			SourceDetail:      r.SourceDetail,
+			Message:           truncateText(r.Message, 48),
 		})
 
 		switch classifySummaryStatus(r) {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -31,6 +32,7 @@ type CodexResetCredit struct {
 type CodexResetCredits struct {
 	Credits        []CodexResetCredit `json:"credits"`
 	AvailableCount int                `json:"available_count"`
+	Target         string             `json:"-"`
 }
 
 // CodexConsumeResult is the response to spending one reset credit. The
@@ -56,10 +58,15 @@ func codexWhamEndpoint(path string) string {
 
 // FetchCodexResetCredits lists the rate-limit reset credits banked on one
 // codex account. An empty home resolves the default codex home chain.
-func FetchCodexResetCredits(ctx context.Context, home string) (CodexResetCredits, error) {
+// A nonempty target requires the same credential that produced the snapshot.
+func FetchCodexResetCredits(ctx context.Context, home, target string) (CodexResetCredits, error) {
 	auth, ok := readCodexBackendAuthFromHome(home)
 	if !ok {
 		return CodexResetCredits{}, fmt.Errorf("codex auth unavailable; run 'codex login'")
+	}
+	actualTarget := auth.resetCreditTarget()
+	if target != "" && target != actualTarget {
+		return CodexResetCredits{}, fmt.Errorf("codex account or credentials changed; refresh and confirm again")
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, codexWhamEndpoint("/rate-limit-reset-credits"), nil)
@@ -85,7 +92,14 @@ func FetchCodexResetCredits(ctx context.Context, home string) (CodexResetCredits
 	if err := json.Unmarshal(body, &credits); err != nil {
 		return CodexResetCredits{}, fmt.Errorf("parse reset-credits response failed: %w", err)
 	}
+	credits.Target = actualTarget
 	return credits, nil
+}
+
+// Bind the confirmation to the exact credential and account used for the
+// listing. Rotation invalidates a pending confirmation rather than guessing.
+func (auth codexBackendAuth) resetCreditTarget() string {
+	return fmt.Sprintf("%x", sha256.Sum256([]byte(auth.AccessToken+"\x00"+auth.AccountID)))
 }
 
 // ConsumeCodexResetCredit spends one banked reset credit, clearing the
@@ -93,10 +107,13 @@ func FetchCodexResetCredits(ctx context.Context, home string) (CodexResetCredits
 // idempotent retries (UUID v4); empty generates one. The POST is sent once —
 // a timeout retry could double-spend a credit, so the caller retries only
 // with the same redeemRequestID, which the backend deduplicates.
-func ConsumeCodexResetCredit(ctx context.Context, home, redeemRequestID string) (CodexConsumeResult, error) {
+func ConsumeCodexResetCredit(ctx context.Context, home, target, redeemRequestID string) (CodexConsumeResult, error) {
 	auth, ok := readCodexBackendAuthFromHome(home)
 	if !ok {
 		return CodexConsumeResult{}, fmt.Errorf("codex auth unavailable; run 'codex login'")
+	}
+	if target != auth.resetCreditTarget() {
+		return CodexConsumeResult{}, fmt.Errorf("codex account or credentials changed; refresh and confirm again")
 	}
 	if strings.TrimSpace(redeemRequestID) == "" {
 		redeemRequestID = newRedeemRequestID()

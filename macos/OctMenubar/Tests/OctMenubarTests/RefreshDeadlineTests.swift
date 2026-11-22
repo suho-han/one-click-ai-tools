@@ -118,4 +118,34 @@ final class RefreshDeadlineTests: XCTestCase {
         XCTAssertEqual(viewModel.snapshot.providers.first?.name, "codex")
         XCTAssertEqual(viewModel.snapshot.providers.first?.status, .ok)
     }
+
+    func testResetConfirmationRejectsChangedAccountAndRefreshes() async throws {
+        let stub = try writeExecutableStub(#"""
+        case "$*" in
+            'usage --json')
+                target=$(cat "$0-target")
+                printf '{"summary":{"total":1},"results":[{"provider":"codex","status":"ok","used":"12","reset_credits":1,"reset_credit_target":"%s"}]}\n' "$target"
+                ;;
+            'usage reset-credit --provider codex --target original --json --yes')
+                [ "$(cat "$0-target")" = changed ] || exit 2
+                echo 'codex account or credentials changed; refresh and confirm again' >&2
+                exit 1
+                ;;
+            *) exit 2 ;;
+        esac
+        """#)
+        let target = URL(fileURLWithPath: stub.path + "-target")
+        defer { try? FileManager.default.removeItem(at: target) }
+        try Data("original".utf8).write(to: target)
+        let service = OctCLIService(executableURL: stub)
+        let viewModel = UsageViewModel(service: service, configurationStore: ConfigurationStore(service: service))
+        let loaded = await waitFor(3) { viewModel.snapshot.providers.first?.resetCreditTarget == "original" }
+        XCTAssertTrue(loaded)
+        viewModel.requestResetCredit(for: try XCTUnwrap(viewModel.snapshot.providers.first))
+        try Data("changed".utf8).write(to: target)
+        viewModel.confirmResetCredit()
+        let refreshed = await waitFor(3) { viewModel.snapshot.providers.first?.resetCreditTarget == "changed" }
+        XCTAssertTrue(refreshed)
+        XCTAssertTrue(viewModel.resetCreditError?.contains("account or credentials changed") == true)
+    }
 }

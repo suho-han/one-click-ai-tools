@@ -79,9 +79,9 @@ struct OctCLIService {
     /// Spends one of the provider's rate-limit reset credits. The app shows
     /// its own confirmation dialog first, so this passes --yes; the CLI call
     /// itself is the single, final authorization.
-    func consumeResetCredit(provider: String) async throws -> ResetCreditConsumeResult {
+    func consumeResetCredit(provider: String, target: String) async throws -> ResetCreditConsumeResult {
         let output = try await runAndCapture(
-            arguments: ["usage", "reset-credit", "--provider", provider, "--json", "--yes"]
+            arguments: ["usage", "reset-credit", "--provider", provider, "--target", target, "--json", "--yes"]
         )
         return try JSONDecoder().decode(ResetCreditConsumeResult.self, from: Data(output.utf8))
     }
