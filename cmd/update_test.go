@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/spf13/cobra"
@@ -77,10 +78,12 @@ func TestSelfUpdateCheckSelectsReleaseChannel(t *testing.T) {
 		selfUpdateAPIBaseURL, rootCmd.Version = oldAPI, oldVersion
 	})
 	for _, tc := range []struct {
-		version, want string
+		version, wantText, latest string
+		available                 bool
 	}{
-		{"0.1.6-beta.1", "v0.1.6-beta.1 -> v0.1.6-beta.10"},
-		{"0.1.5", "v0.1.5 -> v0.1.6"},
+		{"0.1.6-beta.1", "v0.1.6-beta.1 -> v0.1.6-beta.10", "v0.1.6-beta.10", true},
+		{"0.1.5", "v0.1.5 -> v0.1.6", "v0.1.6", true},
+		{"0.1.6-beta.10.local.20261122", "oct is up to date", "v0.1.6-beta.10.local.20261122", false},
 	} {
 		t.Run(tc.version, func(t *testing.T) {
 			rootCmd.Version = tc.version
@@ -91,8 +94,22 @@ func TestSelfUpdateCheckSelectsReleaseChannel(t *testing.T) {
 			if err := runSelfUpdate(cmd, selfUpdateOptions{check: true}); err != nil {
 				t.Fatalf("update check: %v", err)
 			}
-			if !strings.Contains(output.String(), tc.want) {
-				t.Fatalf("update check output = %q, want %q", output.String(), tc.want)
+			if !strings.Contains(output.String(), tc.wantText) {
+				t.Fatalf("update check output = %q, want %q", output.String(), tc.wantText)
+			}
+			output.Reset()
+			if err := runSelfUpdate(cmd, selfUpdateOptions{check: true, json: true}); err != nil {
+				t.Fatalf("JSON update check: %v", err)
+			}
+			var check struct {
+				Available *bool  `json:"available"`
+				Latest    string `json:"latest"`
+			}
+			if err := json.Unmarshal(output.Bytes(), &check); err != nil {
+				t.Fatal(err)
+			}
+			if check.Available == nil || *check.Available != tc.available || check.Latest != tc.latest {
+				t.Fatalf("unexpected check result: %s", output.String())
 			}
 		})
 	}

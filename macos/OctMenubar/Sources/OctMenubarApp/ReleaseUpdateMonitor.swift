@@ -5,72 +5,14 @@ import os
 /// A newer GitHub release of oct, ready to surface in the menubar.
 struct ReleaseUpdate: Equatable {
     let tag: String
-    let htmlURL: URL
 }
 
 extension ReleaseUpdateMonitor {
     static let logger = Logger(subsystem: "app.oct.menubar", category: "release-update")
 }
 
-/// Pure release-comparison logic, kept free of networking so tests can
-/// exercise it directly: parse a "vMAJOR.MINOR.PATCH[-prerelease]" tag into
-/// its numeric core and decide whether it is strictly newer than the
-/// running build's version.
-enum ReleaseUpdateLogic {
-    /// Numeric core of a release tag; nil for anything unparseable, which
-    /// includes local "dev" builds so they never trigger an update prompt.
-    static func parseTag(_ tag: String) -> [Int]? {
-        var core = Substring(tag.trimmingCharacters(in: .whitespaces))
-        if core.first == "v" || core.first == "V" {
-            core = core.dropFirst()
-        }
-        // Drop any prerelease suffix ("0.1.7-beta.1"): `releases/latest`
-        // never returns prereleases, and a local prerelease sharing the
-        // numeric core should not prompt.
-        if let dash = core.firstIndex(of: "-") {
-            core = core[..<dash]
-        }
-        var parts: [Int] = []
-        for piece in core.split(separator: ".") {
-            guard let number = Int(piece) else { return nil }
-            parts.append(number)
-        }
-        return parts.isEmpty ? nil : parts
-    }
-
-    /// Element-wise comparison; missing components count as zero, so 0.1 and
-    /// 0.1.0 compare equal.
-    static func isNewer(current: [Int], remote: [Int]) -> Bool {
-        let length = max(current.count, remote.count)
-        for index in 0..<length {
-            let lhs = index < current.count ? current[index] : 0
-            let rhs = index < remote.count ? remote[index] : 0
-            if lhs != rhs {
-                return lhs < rhs
-            }
-        }
-        return false
-    }
-
-    /// nil unless the remote tag is strictly newer than `current` and the
-    /// release page is an http(s) URL.
-    static func updateIfNewer(current: String, remoteTag: String, htmlURL: String) -> ReleaseUpdate? {
-        guard let lhs = parseTag(current),
-              let rhs = parseTag(remoteTag),
-              isNewer(current: lhs, remote: rhs),
-              let url = URL(string: htmlURL.trimmingCharacters(in: .whitespaces)),
-              let scheme = url.scheme?.lowercased(),
-              scheme == "https" || scheme == "http"
-        else {
-            return nil
-        }
-        return ReleaseUpdate(tag: remoteTag.trimmingCharacters(in: .whitespaces), htmlURL: url)
-    }
-}
-
-/// Polls the GitHub Releases API every five minutes and publishes the newer
-/// release, if any. Failures keep the last known state: one offline interval
-/// or a rate-limited response must not flicker the update button away.
+/// Checks for updates through the CLI every five minutes. Failures keep the
+/// last known state rather than hiding a previously available update.
 @MainActor
 final class ReleaseUpdateMonitor: ObservableObject {
     static let shared = ReleaseUpdateMonitor()
@@ -88,19 +30,19 @@ final class ReleaseUpdateMonitor: ObservableObject {
     /// One automatic install attempt per tag per session, so a failed
     /// `oct update` does not retry on every poll interval.
     private var autoAttemptedTags: Set<String> = []
-    private let currentVersion: String
-    private let session: URLSession
+    private let checksReleaseBuild: Bool
+    private let service: OctCLIService
     private let defaults: UserDefaults
 
     init(
         currentVersion: String = MenubarBuildVersion.version,
-        session: URLSession = .shared,
+        service: OctCLIService = OctCLIService(),
         defaults: UserDefaults = .standard
     ) {
-        self.currentVersion = currentVersion
-        self.session = session
+        self.checksReleaseBuild = currentVersion != "dev"
+        self.service = service
         self.defaults = defaults
-        self.installer = ReleaseUpdateInstaller()
+        self.installer = ReleaseUpdateInstaller(service: service)
         self.automaticallyChecksForUpdates =
             defaults.object(forKey: MenubarPreferences.automaticallyChecksForUpdatesKey) as? Bool ?? true
         self.automaticallyInstallUpdates =
@@ -162,39 +104,17 @@ final class ReleaseUpdateMonitor: ObservableObject {
     }
 
     func checkNow() async {
-        guard automaticallyChecksForUpdates else { return }
+        guard checksReleaseBuild, automaticallyChecksForUpdates else { return }
         let generation = checkGeneration
-        guard let url = URL(string: "https://api.github.com/repos/\(Self.repo)/releases/latest") else { return }
-        var request = URLRequest(url: url)
-        request.timeoutInterval = 15
-        request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
-        request.setValue("one-click-ai-tools-menubar", forHTTPHeaderField: "User-Agent")
         do {
-            let (data, _) = try await session.data(for: request)
-            struct Payload: Decodable {
-                let tagName: String
-                let htmlUrl: String
-                enum CodingKeys: String, CodingKey {
-                    case tagName = "tag_name"
-                    case htmlUrl = "html_url"
-                }
-            }
-            let payload = try JSONDecoder().decode(Payload.self, from: data)
+            let update = try await service.checkSelfUpdate()
             guard automaticallyChecksForUpdates, generation == checkGeneration else { return }
-            availableUpdate = ReleaseUpdateLogic.updateIfNewer(
-                current: currentVersion,
-                remoteTag: payload.tagName,
-                htmlURL: payload.htmlUrl
-            )
+            availableUpdate = update
             if let update = availableUpdate {
                 maybeAutoInstall(update)
             }
         } catch {
-            // Network errors, rate limits, and malformed responses all land
-            // here; the menubar keeps showing what it knew before. The log
-            // line keeps "why is there no update badge" diagnosable — the
-            // unauthenticated GitHub check can legitimately hit rate limits
-            // on shared IPs.
+            // Lookup and subprocess failures leave the previous result visible.
             Self.logger.notice("Release check failed: \(error.localizedDescription, privacy: .public)")
         }
     }
