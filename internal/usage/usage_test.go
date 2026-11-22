@@ -19,7 +19,7 @@ func TestPrintJSON_SummarySchemaAndCounts(t *testing.T) {
 		{Provider: "alpha", Plan: "plus", PlanSource: "codex auth.jwt id_token", Status: "ok", Used: "10"},
 		{Provider: "beta", Status: "ok", Used: "n/a"},                                          // warn: no numeric usage
 		{Provider: "cursor", Status: "ok", Used: "0", Message: "No data: No local logs found"}, // warn: zero with not-found signal
-		{Provider: "delta", Status: "warn", Used: "0", Message: "Partial: weekly bucket only"},
+		{Provider: "delta", Status: "warn", AuthRequired: true, Used: "0", Message: "Authentication required"},
 		{Provider: "gamma", Status: "error", Used: "n/a"},
 	}
 
@@ -60,6 +60,12 @@ func TestPrintJSON_SummarySchemaAndCounts(t *testing.T) {
 	}
 	if payload.Results[0]["plan_source"] != "codex auth.jwt id_token" {
 		t.Fatalf("expected compact JSON to include plan_source, got %+v", payload.Results[0])
+	}
+	if payload.Results[3]["auth_required"] != true {
+		t.Fatalf("authentication warning lost its reconnect signal: %+v", payload.Results[3])
+	}
+	if _, ok := payload.Results[4]["auth_required"]; ok {
+		t.Fatalf("unrelated error should not request a login: %+v", payload.Results[4])
 	}
 }
 

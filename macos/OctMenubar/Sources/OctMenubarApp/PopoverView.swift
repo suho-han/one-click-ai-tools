@@ -31,6 +31,14 @@ struct PopoverView: View {
             }
         }
         .frame(width: preferredSize.width, height: preferredSize.height, alignment: .topLeading)
+        .alert("Could Not Open Terminal", isPresented: Binding(
+            get: { viewModel.reconnectError != nil },
+            set: { if !$0 { viewModel.reconnectError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(viewModel.reconnectError ?? "")
+        }
     }
 
     // First-load state: no placeholder provider cards, just the header and
@@ -145,11 +153,16 @@ struct PopoverView: View {
     private func providerColumn(_ providers: [ProviderCard], columnWidths: UsageRowMetrics.ColumnWidths) -> some View {
         VStack(alignment: .leading, spacing: providerColumnSpacing) {
             ForEach(providers) { provider in
+                let isCodex = provider.name == "codex" || provider.name.hasPrefix("codex:")
                 ProviderCardView(
                     provider: provider,
                     columnWidths: columnWidths,
                     isRefreshing: viewModel.isRefreshing,
-                    onResetCreditTap: provider.resetCredits == nil ? nil : { viewModel.requestResetCredit(for: provider) }
+                    onResetCreditTap: isCodex && provider.resetCreditTarget != nil && (provider.resetCredits ?? 0) > 0 ? { viewModel.requestResetCredit(for: provider) } : nil,
+                    isSpendingResetCredit: viewModel.isSpendingResetCredit,
+                    loadResetCreditDetails: isCodex ? { try await viewModel.fetchResetCreditDetails(for: provider) } : nil,
+                    onReconnect: provider.authRequired ? { viewModel.reconnect(provider) } : nil,
+                    isOpeningReconnectTerminal: viewModel.isOpeningReconnectTerminal
                 )
             }
         }

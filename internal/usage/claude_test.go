@@ -84,17 +84,33 @@ func TestFetchClaudeUsageBuckets(t *testing.T) {
 	defer func() { claudeUsageCachePath = origCachePath }()
 
 	t.Setenv("CLAUDE_API_TOKEN", "dummy-token")
+	stubClaudeResetVersion(t)
 
 	netclient.DefaultClient.HTTPClient = &http.Client{
 		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
-			if req.URL.String() != "https://api.anthropic.com/api/oauth/usage" {
-				t.Fatalf("unexpected URL: %s", req.URL.String())
+			if req.Method != http.MethodGet || req.URL.Path != "/api/oauth/usage" || req.URL.Query().Get("cedar_ember") != "1" || req.URL.Query().Get("skip_spend") != "1" {
+				t.Fatalf("unexpected request: %s %s", req.Method, req.URL)
+			}
+			if got := req.UserAgent(); got != "claude-cli/2.1.322 (external, cli)" {
+				t.Fatalf("unexpected user agent: %s", got)
 			}
 			if got := req.Header.Get("Authorization"); got == "" || !strings.HasPrefix(got, "Bearer ") {
 				t.Fatalf("missing or invalid auth header: %s", got)
 			}
 
-			body := `{"five_hour":{"utilization":42.5},"seven_day":{"utilization":77.7}}`
+			body := `{
+				"five_hour":{"utilization":42.5},"seven_day":{"utilization":77.7},
+				"limits":[{"kind":"weekly_scoped","scope":{"model":{"display_name":"Fable"}}}],
+				"cedar_ember":{"eligible":true,"grants":[
+					{"label":"New model launch: one Fable reset for Max","resets_left":2,"ends_at":"2099-03-09T07:59:00Z","usable_now":false,"clears":["seven_day_overage_included"]},
+					{"label":"One full limit reset (November 2026)","resets_left":1,"clears":["seven_day","seven_day_overage_included"]},
+					{"label":"Launch week","resets_left":1,"clears":["five_hour","seven_day_overage_included"]},
+					{"label":"Future scope format","resets_left":1,"clears":{}},
+					{"label":"Expired","resets_left":1,"ends_at":"2000-01-01T00:00:00Z"},
+					{"label":"Paused","resets_left":1,"paused":true},
+					{"label":"Future","resets_left":1,"starts_at":"2099-03-09T07:59:00Z"}
+				]}
+			}`
 			return &http.Response{
 				StatusCode: http.StatusOK,
 				Body:       io.NopCloser(strings.NewReader(body)),
@@ -124,6 +140,49 @@ func TestFetchClaudeUsageBuckets(t *testing.T) {
 	}
 	if got := result.Buckets["7d"]; got != "77.7" {
 		t.Fatalf("expected 7d bucket 77.7, got %s", got)
+	}
+	if result.ResetCredits == nil || *result.ResetCredits != 5 {
+		t.Fatalf("expected five reset credits across four grants, got %+v", result.ResetCreditDetails)
+	}
+	if len(result.ResetCreditDetails) != 4 ||
+		result.ResetCreditDetails[0] != (ResetCreditDetail{Title: "New model launch: one Fable reset for Max", Scope: "Fable · Weekly", Count: 2, ExpiresAt: "2099-03-09T07:59:00Z"}) ||
+		result.ResetCreditDetails[1].Scope != "All models · Weekly" ||
+		result.ResetCreditDetails[2].Scope != "All models · 5h + Fable · Weekly" ||
+		result.ResetCreditDetails[3].Scope != "" {
+		t.Fatalf("unexpected detail list: %+v", result.ResetCreditDetails)
+	}
+}
+
+func stubClaudeResetVersion(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "claude"), []byte("#!/bin/sh\nprintf '2.1.322 (Claude Code)\\n'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+func TestClaudeResetInventoryRejectedKeepsUsage(t *testing.T) {
+	claudeCacheTestSetup(t)
+	stubClaudeResetVersion(t)
+	original := netclient.DefaultClient.HTTPClient
+	t.Cleanup(func() { netclient.DefaultClient.HTTPClient = original })
+	var queries []string
+	netclient.DefaultClient.HTTPClient = &http.Client{
+		Transport: roundTripFunc(func(req *http.Request) (*http.Response, error) {
+			queries = append(queries, req.URL.RawQuery)
+			if req.URL.RawQuery != "" {
+				return &http.Response{StatusCode: http.StatusForbidden, Body: http.NoBody}, nil
+			}
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{"seven_day":{"utilization":37.5}}`))}, nil
+		}),
+	}
+	result := FetchClaudeUsage(t.Context())
+	if result.Buckets["7d"] != "37.5" || result.ResetCredits != nil || len(result.ResetCreditDetails) != 0 {
+		t.Fatalf("expected regular quota with unknown reset inventory, got %+v", result)
+	}
+	if len(queries) != 2 || queries[0] == "" || queries[1] != "" {
+		t.Fatalf("expected one optional request then one plain request, got %v", queries)
 	}
 }
 
@@ -242,6 +301,7 @@ func TestFetchClaudeUsageRateLimitedBuckets(t *testing.T) {
 func TestFetchClaudeUsage_ExpiredTokenWithRefreshAvailable(t *testing.T) {
 	tmp := t.TempDir()
 	t.Setenv("HOME", tmp)
+	t.Setenv("CLAUDE_API_TOKEN", "")
 
 	// Mock Keychain with expired token but valid refresh token
 	expiredCreds := map[string]interface{}{
@@ -263,8 +323,8 @@ func TestFetchClaudeUsage_ExpiredTokenWithRefreshAvailable(t *testing.T) {
 
 	result := FetchClaudeUsage(t.Context())
 
-	if result.Status != "warn" {
-		t.Fatalf("expected status warn for expired token, got %s", result.Status)
+	if result.Status != "warn" || !result.AuthRequired {
+		t.Fatalf("expected an actionable warning for expired token, got %+v", result)
 	}
 	if result.Used != "0" {
 		t.Fatalf("expected used=0 for expired token, got %s", result.Used)
@@ -314,11 +374,12 @@ func TestFetchClaudeUsage_ExpiredTokenWithoutRefresh(t *testing.T) {
 	}
 }
 
-func TestFetchClaudeUsage_EmptyAccessToken(t *testing.T) {
-	tmp := t.TempDir()
-	t.Setenv("HOME", tmp)
-
-	// Mock Keychain with empty access token but valid refresh
+func TestFetchClaudeUsage_NoOAuthDoesNotRequireReconnect(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("CLAUDE_API_TOKEN", "")
+	t.Setenv("ANTHROPIC_API_KEY", "fixture")
+	// An existing Keychain item without a usable OAuth session is not
+	// proof that the user's Claude login has expired.
 	emptyTokenCreds := map[string]interface{}{
 		"claudeAiOauth": map[string]interface{}{
 			"accessToken":           "",
@@ -337,14 +398,11 @@ func TestFetchClaudeUsage_EmptyAccessToken(t *testing.T) {
 
 	result := FetchClaudeUsage(t.Context())
 
-	if result.Status != "warn" {
-		t.Fatalf("expected status warn for empty token, got %s", result.Status)
+	if result.AuthRequired || !strings.Contains(result.Message, "No Claude OAuth token") {
+		t.Fatalf("missing OAuth token must not offer reconnect: %+v", result)
 	}
 	if result.Plan != "max" {
 		t.Fatalf("expected plan=max from keychain, got %s", result.Plan)
-	}
-	if !strings.Contains(result.Message, "expired") {
-		t.Fatalf("expected message about expired credentials, got: %s", result.Message)
 	}
 }
 

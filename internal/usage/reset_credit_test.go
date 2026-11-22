@@ -45,7 +45,7 @@ func TestFetchCodexResetCreditsListsAvailable(t *testing.T) {
 	defer server.Close()
 	t.Setenv("OCT_CODEX_USAGE_ENDPOINT", server.URL+"/usage")
 
-	credits, err := FetchCodexResetCredits(t.Context(), "")
+	credits, err := FetchCodexResetCredits(t.Context(), "", "")
 	if err != nil {
 		t.Fatalf("FetchCodexResetCredits failed: %v", err)
 	}
@@ -80,7 +80,8 @@ func TestConsumeCodexResetCreditPostsRedeemRequestID(t *testing.T) {
 	defer server.Close()
 	t.Setenv("OCT_CODEX_USAGE_ENDPOINT", server.URL)
 
-	result, err := ConsumeCodexResetCredit(t.Context(), "", "req-1234")
+	auth, _ := readCodexBackendAuthFromHome("")
+	result, err := ConsumeCodexResetCredit(t.Context(), "", auth.resetCreditTarget(), "req-1234")
 	if err != nil {
 		t.Fatalf("ConsumeCodexResetCredit failed: %v", err)
 	}
@@ -108,7 +109,8 @@ func TestConsumeCodexResetCreditGeneratesUUIDv4(t *testing.T) {
 	defer server.Close()
 	t.Setenv("OCT_CODEX_USAGE_ENDPOINT", server.URL)
 
-	if _, err := ConsumeCodexResetCredit(t.Context(), "", ""); err != nil {
+	auth, _ := readCodexBackendAuthFromHome("")
+	if _, err := ConsumeCodexResetCredit(t.Context(), "", auth.resetCreditTarget(), ""); err != nil {
 		t.Fatalf("ConsumeCodexResetCredit failed: %v", err)
 	}
 	uuidV4 := regexp.MustCompile(`"redeem_request_id":"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"`)
@@ -127,7 +129,8 @@ func TestConsumeCodexResetCreditSurfacesConflict(t *testing.T) {
 	defer server.Close()
 	t.Setenv("OCT_CODEX_USAGE_ENDPOINT", server.URL)
 
-	_, err := ConsumeCodexResetCredit(t.Context(), "", "req-1234")
+	auth, _ := readCodexBackendAuthFromHome("")
+	_, err := ConsumeCodexResetCredit(t.Context(), "", auth.resetCreditTarget(), "req-1234")
 	if err == nil {
 		t.Fatalf("expected error on 409")
 	}
@@ -142,8 +145,32 @@ func TestFetchCodexResetCreditsRequiresAuth(t *testing.T) {
 	t.Setenv("USERPROFILE", tmp)
 	t.Setenv("CODEX_HOME", filepath.Join(tmp, ".codex"))
 
-	_, err := FetchCodexResetCredits(t.Context(), "")
+	_, err := FetchCodexResetCredits(t.Context(), "", "")
 	if err == nil || !strings.Contains(err.Error(), "codex auth unavailable") {
 		t.Fatalf("expected auth error, got %v", err)
+	}
+}
+
+func TestConsumeCodexResetCreditRejectsCredentialsChangedAfterListing(t *testing.T) {
+	writeCodexAuthForReset(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			t.Errorf("unexpected %s after credentials changed", r.Method)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		fmt.Fprint(w, `{"available_count":1}`)
+	}))
+	defer server.Close()
+	t.Setenv("OCT_CODEX_USAGE_ENDPOINT", server.URL+"/usage")
+	credits, err := FetchCodexResetCredits(t.Context(), "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(os.Getenv("CODEX_HOME"), "auth.json"), []byte(`{"tokens":{"access_token":"new-token","account_id":"acct-1"}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ConsumeCodexResetCredit(t.Context(), "", credits.Target, ""); err == nil || !strings.Contains(err.Error(), "credentials changed") {
+		t.Fatalf("expected stale confirmation error, got %v", err)
 	}
 }

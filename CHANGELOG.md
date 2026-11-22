@@ -8,10 +8,16 @@ All notable changes to this project will be documented in this file. See [standa
 
 ### Features
 
+* **menubar:** show the affected models and usage windows on Codex and Claude reset-credit hover, with expiry and time remaining on a separate line.
+* **menubar:** open Terminal for the affected Codex or Claude account when its authentication warning is clicked.
 * **menubar:** offer a restart after a successful oct update ([096be62](https://github.com/suho-han/one-click-ai-tools/commit/096be62))
 
 ### Bug Fixes
 
+* **menubar:** offer re-login only for confirmed OAuth failures and prevent a second Codex credit spend during the first spend and follow-up refresh.
+* **menubar:** refuse a Codex reset credit spend if the account or credentials no longer match the usage snapshot.
+* **menubar:** follow the CLI's stable or beta release channel, including newer prereleases of the same version.
+* **usage:** isolate Claude cache and backoff by OAuth credential, honor the server's retry deadline, and keep last-confirmed reset credits through failed or incomplete refreshes until confirmed otherwise or expired.
 * **menubar:** keep the helper version marker alive in release builds ([d9f2423](https://github.com/suho-han/one-click-ai-tools/commit/d9f2423))
 
 ### [0.1.8](https://github.com/suho-han/one-click-ai-tools/compare/v0.1.7...v0.1.8) (2026-10-17)

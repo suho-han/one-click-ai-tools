@@ -118,4 +118,62 @@ final class RefreshDeadlineTests: XCTestCase {
         XCTAssertEqual(viewModel.snapshot.providers.first?.name, "codex")
         XCTAssertEqual(viewModel.snapshot.providers.first?.status, .ok)
     }
+
+    func testResetCannotBeConfirmedAgainBeforePostSpendRefresh() async throws {
+        let stub = try writeExecutableStub(#"""
+        state="$0-state"
+        case "$1 $2" in
+            "usage reset-credit")
+                [ "$*" = "usage reset-credit --provider codex --target work-target --json --yes" ] || exit 2
+                echo spend >> "$state-spends"
+                while [ ! -f "$state-release-spend" ]; do sleep 0.05; done
+                echo '{"provider":"codex","available_count_before":2,"consumed":true}'
+                ;;
+            "usage --json")
+                if [ -f "$state-spends" ]; then
+                    touch "$state-refreshing"
+                    while [ ! -f "$state-release-refresh" ]; do sleep 0.05; done
+                    count=1
+                else
+                    count=2
+                fi
+                echo "{\"summary\":{\"total\":1},\"results\":[{\"provider\":\"codex\",\"status\":\"ok\",\"used\":\"12.5\",\"reset_credits\":$count,\"reset_credit_target\":\"work-target\"}]}"
+                ;;
+            *) exit 1 ;;
+        esac
+        """#)
+        let state = stub.path + "-state"
+        func marker(_ suffix: String) -> String { state + "-" + suffix }
+        defer {
+            for suffix in ["spends", "release-spend", "refreshing", "release-refresh"] {
+                try? FileManager.default.removeItem(atPath: marker(suffix))
+            }
+        }
+        let service = OctCLIService(executableURL: stub, processTimeout: 8)
+        let viewModel = UsageViewModel(service: service, configurationStore: ConfigurationStore())
+        let initiallyReady = await waitFor(3) { !viewModel.isRefreshing && viewModel.snapshot.providers.first?.resetCredits == 2 }
+        XCTAssertTrue(initiallyReady)
+        let card = try XCTUnwrap(viewModel.snapshot.providers.first)
+        viewModel.requestResetCredit(for: card)
+        viewModel.confirmResetCredit()
+        let started = await waitFor(3) { FileManager.default.fileExists(atPath: marker("spends")) }
+        XCTAssertTrue(started)
+        viewModel.requestResetCredit(for: card)
+        XCTAssertNil(viewModel.pendingResetCreditCard)
+        viewModel.confirmResetCredit()
+
+        try Data().write(to: URL(fileURLWithPath: marker("release-spend")))
+        let refreshing = await waitFor(3) { FileManager.default.fileExists(atPath: marker("refreshing")) }
+        XCTAssertTrue(refreshing)
+        viewModel.requestResetCredit(for: card)
+        XCTAssertNil(viewModel.pendingResetCreditCard)
+        try Data().write(to: URL(fileURLWithPath: marker("release-refresh")))
+        let finished = await waitFor(3) { !viewModel.isRefreshing && viewModel.snapshot.providers.first?.resetCredits == 1 }
+        XCTAssertTrue(finished)
+        XCTAssertEqual(try String(contentsOfFile: marker("spends"), encoding: .utf8), "spend\n")
+        if let freshCard = viewModel.snapshot.providers.first {
+            viewModel.requestResetCredit(for: freshCard)
+            XCTAssertEqual(viewModel.pendingResetCreditCard?.resetCredits, 1)
+        }
+    }
 }

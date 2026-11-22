@@ -27,14 +27,24 @@ type UsageResult struct {
 	Unit         string            `json:"unit"`
 	Source       string            `json:"source"`
 	Status       string            `json:"status"`
+	AuthRequired bool              `json:"auth_required,omitempty"`
 	Message      string            `json:"message"`
 	SourceDetail string            `json:"source_detail"`
 	Buckets      map[string]string `json:"buckets"`                 // e.g. {"5h": "10", "7d": "20"}
 	BucketResets map[string]string `json:"bucket_resets,omitempty"` // e.g. {"5h": "2026-07-22T06:09:59Z"}
-	// ResetCredits counts the provider's unused rate-limit reset credits
-	// (Codex "rate_limit_reset_credits.available_count"). Nil when the
-	// provider does not report the concept, so UIs can omit the badge.
-	ResetCredits *int `json:"reset_credits,omitempty"`
+	// ResetCredits counts unused rate-limit reset credits; nil means unavailable.
+	ResetCredits         *int                `json:"reset_credits,omitempty"`
+	ResetCreditTarget    string              `json:"reset_credit_target,omitempty"`
+	ResetCreditDetails   []ResetCreditDetail `json:"reset_credit_details,omitempty"`
+	ResetCreditsCachedAt string              `json:"reset_credits_cached_at,omitempty"`
+}
+
+// ResetCreditDetail describes one grant, which can contain multiple credits.
+type ResetCreditDetail struct {
+	Title     string `json:"title"`
+	Scope     string `json:"scope,omitempty"`
+	ExpiresAt string `json:"expires_at,omitempty"`
+	Count     int    `json:"count"`
 }
 
 func SelectedTools() []update.Tool {
@@ -861,18 +871,22 @@ func PrintJSON(results []UsageResult) error {
 // object; trends[i] belongs to results[i] (nil entries/slice omit it).
 func PrintJSONWithTrends(results []UsageResult, trends []*HistoryTrend) error {
 	type UsageResultCompact struct {
-		Provider     string            `json:"provider"`
-		Plan         string            `json:"plan,omitempty"`
-		PlanSource   string            `json:"plan_source,omitempty"`
-		Status       string            `json:"status"`
-		Used         string            `json:"used"`
-		Unit         string            `json:"unit"`
-		Buckets      map[string]string `json:"buckets,omitempty"`
-		BucketResets map[string]string `json:"bucket_resets,omitempty"`
-		ResetCredits *int              `json:"reset_credits,omitempty"`
-		SourceDetail string            `json:"source_detail,omitempty"`
-		Message      string            `json:"message,omitempty"`
-		History      *HistoryTrend     `json:"history,omitempty"`
+		Provider             string              `json:"provider"`
+		Plan                 string              `json:"plan,omitempty"`
+		PlanSource           string              `json:"plan_source,omitempty"`
+		Status               string              `json:"status"`
+		AuthRequired         bool                `json:"auth_required,omitempty"`
+		Used                 string              `json:"used"`
+		Unit                 string              `json:"unit"`
+		Buckets              map[string]string   `json:"buckets,omitempty"`
+		BucketResets         map[string]string   `json:"bucket_resets,omitempty"`
+		ResetCredits         *int                `json:"reset_credits,omitempty"`
+		ResetCreditTarget    string              `json:"reset_credit_target,omitempty"`
+		ResetCreditDetails   []ResetCreditDetail `json:"reset_credit_details,omitempty"`
+		ResetCreditsCachedAt string              `json:"reset_credits_cached_at,omitempty"`
+		SourceDetail         string              `json:"source_detail,omitempty"`
+		Message              string              `json:"message,omitempty"`
+		History              *HistoryTrend       `json:"history,omitempty"`
 	}
 	type UsageSummary struct {
 		Total int `json:"total"`
@@ -894,18 +908,22 @@ func PrintJSONWithTrends(results []UsageResult, trends []*HistoryTrend) error {
 			hist = trends[i]
 		}
 		payload.Results = append(payload.Results, UsageResultCompact{
-			History:      hist,
-			Provider:     r.Provider,
-			Plan:         r.Plan,
-			PlanSource:   r.PlanSource,
-			Status:       r.Status,
-			Used:         r.Used,
-			Unit:         r.Unit,
-			Buckets:      r.Buckets,
-			BucketResets: r.BucketResets,
-			ResetCredits: r.ResetCredits,
-			SourceDetail: r.SourceDetail,
-			Message:      truncateText(r.Message, 48),
+			History:              hist,
+			Provider:             r.Provider,
+			Plan:                 r.Plan,
+			PlanSource:           r.PlanSource,
+			Status:               r.Status,
+			AuthRequired:         r.AuthRequired,
+			Used:                 r.Used,
+			Unit:                 r.Unit,
+			Buckets:              r.Buckets,
+			BucketResets:         r.BucketResets,
+			ResetCredits:         r.ResetCredits,
+			ResetCreditTarget:    r.ResetCreditTarget,
+			ResetCreditDetails:   r.ResetCreditDetails,
+			ResetCreditsCachedAt: r.ResetCreditsCachedAt,
+			SourceDetail:         r.SourceDetail,
+			Message:              truncateText(r.Message, 48),
 		})
 
 		switch classifySummaryStatus(r) {

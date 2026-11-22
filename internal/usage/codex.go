@@ -77,9 +77,12 @@ func FetchCodexUsageForHome(ctx context.Context, home string, provider string) U
 		return detectCodexPlanForHome(ctx, home)
 	})
 
-	if backendResult, backendFailure, ok := fetchCodexBackendUsage(ctx, result, home); ok {
+	backendResult, backendFailure, ok := fetchCodexBackendUsage(ctx, result, home)
+	if ok {
 		return backendResult
-	} else if backendFailure != "" {
+	}
+	result = backendResult
+	if backendFailure != "" {
 		// The backend was attempted and failed; the local-log fallback below
 		// only estimates. Carry the reason in SourceDetail so the menubar
 		// Detail line says why the numbers are not backend numbers instead
@@ -285,6 +288,7 @@ func fetchCodexBackendUsage(ctx context.Context, base UsageResult, home string) 
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
+		base.AuthRequired = hasAuth && resp.StatusCode == http.StatusUnauthorized
 		return base, fmt.Sprintf("http %d", resp.StatusCode), false
 	}
 
@@ -312,6 +316,9 @@ func fetchCodexBackendUsage(ctx context.Context, base UsageResult, home string) 
 
 	if credits := payload.RateLimitResetCredits; credits != nil && credits.AvailableCount != nil {
 		result.ResetCredits = credits.AvailableCount
+		if hasAuth {
+			result.ResetCreditTarget = auth.resetCreditTarget()
+		}
 	}
 
 	addCodexBackendWindow(result.Buckets, result.BucketResets, payload.RateLimit.PrimaryWindow)

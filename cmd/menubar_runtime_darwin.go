@@ -4,7 +4,6 @@ package cmd
 
 import (
 	"context"
-	"os/exec"
 	"time"
 
 	"github.com/getlantern/systray"
@@ -143,17 +142,7 @@ func (ui *menubarUI) syncProviderDetails(group *menubarProviderGroup, details []
 // stderr, so a failed launch (denied automation permission, timeout) is
 // surfaced through the tooltip instead of being swallowed.
 func (ui *menubarUI) openInTerminal(command string) {
-	if err := runInTerminal(command); err != nil {
+	if err := runInTerminal(context.Background(), command); err != nil {
 		systray.SetTooltip(truncateMenubarText("oct: "+err.Error(), 64))
 	}
-}
-
-// runInTerminalTimeout bounds osascript: it can otherwise block indefinitely
-// on an unanswered automation-permission dialog.
-var runInTerminalTimeout = 30 * time.Second
-
-func runInTerminal(command string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), runInTerminalTimeout)
-	defer cancel()
-	return exec.CommandContext(ctx, "osascript", "-e", buildTerminalAppleScript(command)).Run()
 }

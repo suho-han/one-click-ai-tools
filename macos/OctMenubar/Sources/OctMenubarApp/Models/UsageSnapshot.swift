@@ -58,6 +58,10 @@ struct ProviderCard: Equatable, Identifiable {
     /// Unused rate-limit reset credits reported by the provider, nil when
     /// the provider has no such concept — drives the "( 🎁 N )" badge.
     let resetCredits: Int?
+    let resetCreditTarget: String?
+    let resetCreditDetails: [ResetCreditDetail]
+    let resetCreditsCachedAt: Date?
+    let authRequired: Bool
     let message: String?
 
     init(
@@ -66,6 +70,10 @@ struct ProviderCard: Equatable, Identifiable {
         status: ProviderStatus,
         metrics: [UsageMetric],
         resetCredits: Int? = nil,
+        resetCreditTarget: String? = nil,
+        resetCreditDetails: [ResetCreditDetail] = [],
+        resetCreditsCachedAt: Date? = nil,
+        authRequired: Bool = false,
         message: String?
     ) {
         self.id = name
@@ -74,7 +82,22 @@ struct ProviderCard: Equatable, Identifiable {
         self.status = status
         self.metrics = metrics
         self.resetCredits = resetCredits
+        self.resetCreditTarget = resetCreditTarget
+        self.resetCreditDetails = resetCreditDetails
+        self.resetCreditsCachedAt = resetCreditsCachedAt
+        self.authRequired = authRequired
         self.message = message
+    }
+
+    var resetCreditBadgeLabel: String? {
+        if let resetCredits {
+            return resetCreditsCachedAt == nil ? "\(resetCredits)" : "~\(resetCredits)"
+        }
+        return name == "claude-code" && !authRequired && status != .loading ? "?" : nil
+    }
+
+    var resetCreditCacheNotice: String? {
+        resetCreditsCachedAt.map { "Last checked: \($0.formatted(date: .abbreviated, time: .shortened))" }
     }
 
     var compactLabel: String {
@@ -242,12 +265,15 @@ struct UsageResponse: Decodable, Equatable {
         let plan: String?
         let status: String
         let used: String
+        let authRequired: Bool
         let unit: String
         let buckets: [String: String]?
         let bucketResets: [String: String]?
-        /// Unused rate-limit reset credits (Codex "rate_limit_reset_credits"
-        /// on wham/usage); nil when the provider does not report the concept.
+        /// Unused rate-limit reset credits; nil when unavailable.
         let resetCredits: Int?
+        let resetCreditTarget: String?
+        let resetCreditDetails: [ResetCreditDetail]
+        let resetCreditsCachedAt: String?
         let message: String?
 
         init(from decoder: Decoder) throws {
@@ -260,11 +286,15 @@ struct UsageResponse: Decodable, Equatable {
             provider = try container.decode(String.self, forKey: .provider)
             plan = try container.decodeIfPresent(String.self, forKey: .plan)
             status = try container.decodeIfPresent(String.self, forKey: .status) ?? ""
+            authRequired = try container.decodeIfPresent(Bool.self, forKey: .authRequired) ?? false
             used = try container.decodeIfPresent(String.self, forKey: .used) ?? "n/a"
             unit = try container.decodeIfPresent(String.self, forKey: .unit) ?? ""
             buckets = try container.decodeIfPresent([String: String].self, forKey: .buckets)
             bucketResets = try container.decodeIfPresent([String: String].self, forKey: .bucketResets)
             resetCredits = try container.decodeIfPresent(Int.self, forKey: .resetCredits)
+            resetCreditTarget = try container.decodeIfPresent(String.self, forKey: .resetCreditTarget)
+            resetCreditDetails = try container.decodeIfPresent([ResetCreditDetail].self, forKey: .resetCreditDetails) ?? []
+            resetCreditsCachedAt = try container.decodeIfPresent(String.self, forKey: .resetCreditsCachedAt)
             message = try container.decodeIfPresent(String.self, forKey: .message)
         }
 
@@ -272,11 +302,15 @@ struct UsageResponse: Decodable, Equatable {
             case provider
             case plan
             case status
+            case authRequired = "auth_required"
             case used
             case unit
             case buckets
             case bucketResets = "bucket_resets"
             case resetCredits = "reset_credits"
+            case resetCreditTarget = "reset_credit_target"
+            case resetCreditDetails = "reset_credit_details"
+            case resetCreditsCachedAt = "reset_credits_cached_at"
             case message
         }
     }
@@ -306,6 +340,10 @@ extension UsageSnapshot {
                 status: effectiveStatus(for: result),
                 metrics: visibleMetrics(for: result.provider, unit: result.unit, buckets: result.buckets, resets: result.bucketResets, now: now),
                 resetCredits: result.resetCredits,
+                resetCreditTarget: result.resetCreditTarget,
+                resetCreditDetails: result.resetCreditDetails,
+                resetCreditsCachedAt: ResetCountdown.parseResetTime(result.resetCreditsCachedAt),
+                authRequired: result.authRequired,
                 message: composedMessage(for: result)
             )
         }
@@ -374,6 +412,9 @@ extension UsageSnapshot {
     }
 
     private static func effectiveStatus(for result: UsageResponse.Result) -> ProviderStatus {
+        if result.authRequired {
+            return .warn
+        }
         let normalized = classifyStatus(result.status)
         guard normalized == "ok" else {
             return ProviderStatus(rawValue: normalized) ?? .error

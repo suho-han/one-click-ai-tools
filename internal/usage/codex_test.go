@@ -17,6 +17,12 @@ func TestFetchCodexUsageMapsWeeklyBucketOnly(t *testing.T) {
 	t.Setenv("USERPROFILE", tmp)
 	t.Setenv("CODEX_HOME", filepath.Join(tmp, ".codex"))
 	t.Setenv("OCT_CODEX_USAGE_ENDPOINT", "")
+	if err := os.MkdirAll(filepath.Join(tmp, ".codex"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmp, ".codex", "auth.json"), []byte(`{"auth_mode":"apikey","OPENAI_API_KEY":"fixture"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	logDir := filepath.Join(tmp, ".codex", "sessions", "2026", "05", "03")
 	if err := os.MkdirAll(logDir, 0o755); err != nil {
@@ -31,6 +37,9 @@ func TestFetchCodexUsageMapsWeeklyBucketOnly(t *testing.T) {
 	result := FetchCodexUsage(t.Context())
 	if result.Status != "ok" {
 		t.Fatalf("expected ok, got %s", result.Status)
+	}
+	if result.AuthRequired {
+		t.Fatal("API-key login with usable local usage must not offer ChatGPT re-login")
 	}
 	if result.Used != "72.0" {
 		t.Fatalf("expected used 72.0, got %s", result.Used)
@@ -312,6 +321,29 @@ func TestAddCodexBackendWindowKeepsFirstWindowPerBucket(t *testing.T) {
 	}
 	if resets["5h"] != "1785289572" {
 		t.Fatalf("expected primary reset to win, got %q", resets["5h"])
+	}
+}
+
+func TestFetchCodexUsageRequiresAuthForUnauthorizedButNotRateLimited(t *testing.T) {
+	writeCodexAuthForReset(t)
+	for _, tc := range []struct {
+		status int
+		want   bool
+	}{
+		{http.StatusUnauthorized, true},
+		{http.StatusTooManyRequests, false},
+	} {
+		t.Run(http.StatusText(tc.status), func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(tc.status)
+			}))
+			defer server.Close()
+			t.Setenv("OCT_CODEX_USAGE_ENDPOINT", server.URL)
+			result := FetchCodexUsage(t.Context())
+			if result.AuthRequired != tc.want {
+				t.Fatalf("HTTP %d: auth_required = %t, want %t", tc.status, result.AuthRequired, tc.want)
+			}
+		})
 	}
 }
 

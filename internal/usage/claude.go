@@ -2,6 +2,7 @@ package usage
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -86,8 +87,8 @@ func FetchClaudeUsage(ctx context.Context) UsageResult {
 	}
 
 	var token string
-	var keychainExpired bool
-	var keychainCanRefresh bool
+	var oauthExpired bool
+	var oauthCanRefresh bool
 	var keychainSubscription string
 
 	// Try macOS Keychain first for Claude Code-credentials
@@ -95,31 +96,17 @@ func FetchClaudeUsage(ctx context.Context) UsageResult {
 	out, err := cmd.Output()
 	if err == nil && len(out) > 0 {
 		var keychainCreds struct {
-			ClaudeAiOauth claudeOAuthToken `json:"claudeAiOauth"`
+			ClaudeAiOauth *claudeOAuthToken `json:"claudeAiOauth"`
 		}
-		if json.Unmarshal(out, &keychainCreds) == nil {
+		if json.Unmarshal(out, &keychainCreds) == nil && keychainCreds.ClaudeAiOauth != nil {
 			oauth := keychainCreds.ClaudeAiOauth
 			keychainSubscription = oauth.SubscriptionType
-
-			if oauth.AccessToken != "" {
-				// Check if token is expired
-				if oauth.ExpiresAt > 0 && time.Now().UnixMilli() > oauth.ExpiresAt {
-					keychainExpired = true
-					if oauth.RefreshTokenExpiresAt > 0 && time.Now().UnixMilli() < oauth.RefreshTokenExpiresAt {
-						keychainCanRefresh = true
-					}
-				} else if oauth.ExpiresAt == 0 {
-					// expiresAt=0 means token is invalid/expired
-					keychainExpired = true
-				} else {
-					token = oauth.AccessToken
-				}
-			} else {
-				// accessToken is empty but entry exists
-				keychainExpired = true
-				if oauth.RefreshTokenExpiresAt > 0 && time.Now().UnixMilli() < oauth.RefreshTokenExpiresAt {
-					keychainCanRefresh = true
-				}
+			now := time.Now().UnixMilli()
+			if oauth.ExpiresAt > now {
+				token = oauth.AccessToken
+			} else if oauth.ExpiresAt > 0 && (oauth.AccessToken != "" || oauth.RefreshToken != "") {
+				oauthExpired = true
+				oauthCanRefresh = oauth.RefreshTokenExpiresAt > now
 			}
 		}
 	}
@@ -129,10 +116,21 @@ func FetchClaudeUsage(ctx context.Context) UsageResult {
 		if _, err := os.Stat(credsFile); err == nil {
 			data, _ := os.ReadFile(credsFile)
 			var creds struct {
-				AccessToken string `json:"access_token"`
+				ClaudeAiOauth claudeOAuthToken `json:"claudeAiOauth"`
+				AccessToken   string           `json:"access_token"`
 			}
-			if err := json.Unmarshal(data, &creds); err == nil && creds.AccessToken != "" {
+			if json.Unmarshal(data, &creds) == nil {
 				token = creds.AccessToken
+				oauth := creds.ClaudeAiOauth
+				if token == "" && oauth.AccessToken != "" {
+					now := time.Now().UnixMilli()
+					if oauth.ExpiresAt > now {
+						token = oauth.AccessToken
+					} else if oauth.ExpiresAt > 0 {
+						oauthExpired = true
+						oauthCanRefresh = oauthCanRefresh || oauth.RefreshTokenExpiresAt > now
+					}
+				}
 			}
 		}
 	}
@@ -150,8 +148,8 @@ func FetchClaudeUsage(ctx context.Context) UsageResult {
 
 	// Handle expired/missing token cases
 	if token == "" {
-		if keychainExpired {
-			if keychainCanRefresh {
+		if oauthExpired {
+			if oauthCanRefresh {
 				result.Status = "warn"
 				result.Used = "0"
 				result.Message = "Claude OAuth token expired. Run 'claude auth login' to refresh"
@@ -171,51 +169,61 @@ func FetchClaudeUsage(ctx context.Context) UsageResult {
 		if cliResult, ok := fetchClaudeCLIUsage(ctx, result, "oauth token unavailable"); ok {
 			return cliResult
 		}
+		result.AuthRequired = oauthExpired
 		return result
 	}
 
 	plan, source := detectClaudePlan(ctx, token)
 	result = withPlan(result, plan, source)
 
-	// Inside a rate-limit backoff window, don't touch the endpoint again —
-	// serve the recorded last-good usage or hold the warn state until it
-	// expires.
-	if remaining, ok := claudeUsageBackoffRemaining(time.Now()); ok {
+	// Hold the lock across the cache check and live request so another oct
+	// process sees the latest snapshot or retry deadline before polling.
+	credential := sha256.Sum256([]byte(token))
+	unlock, lockErr := lockFile(ctx, claudeCredentialCachePath(credential)+".lock")
+	if lockErr == nil {
+		defer unlock()
+	}
+	cache := readClaudeUsageCache(credential)
+	now := time.Now()
+	if remaining := time.UnixMilli(cache.BackoffUntilMs).Sub(now); remaining > 0 {
 		reason := fmt.Sprintf("API rate limited; retrying in %s", remaining.Round(time.Second))
-		if cached, ok := lastGoodClaudeUsage(result, time.Now(), reason); ok {
+		if cached, ok := cache.usage(result, now, reason); ok {
 			return cached
+		}
+		if cached, ok := fetchClaudeCachedUsage(result, home, reason); ok {
+			return cache.withCachedResets(cached, now)
 		}
 		result.Status = "warn"
 		result.Used = "n/a"
 		result.Message = "Claude usage API rate limited; backing off, no cached usage found"
 		result.SourceDetail = "backoff_remaining=" + remaining.Round(time.Second).String()
-		return result
+		return cache.withCachedResets(result, now)
+	}
+	if now.Sub(time.UnixMilli(cache.FetchedAtMs)) < claudeUsageFreshFor {
+		if cached, ok := cache.usage(result, now, "recent fetch"); ok {
+			return cached
+		}
+	}
+	if ctx.Err() != nil {
+		result.Message = ctx.Err().Error()
+		return cache.withCachedResets(result, now)
 	}
 
-	endpoint := "https://api.anthropic.com/api/oauth/usage"
-	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
-	if err != nil {
-		result.Message = fmt.Sprintf("build usage request failed: %v", err)
-		return result
-	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("anthropic-beta", "oauth-2025-04-20")
-
-	resp, err := netclient.DefaultClient.DoWithRetry(req)
+	resp, err := fetchClaudeOAuthUsage(ctx, token)
 	if err != nil {
 		result.Message = netclient.FormatError(resp, err)
-		return result
+		return cache.withCachedResets(result, time.Now())
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		if resp.StatusCode == http.StatusTooManyRequests {
-			markClaudeRateLimited(ctx, time.Now(), parseRetryAfter(resp.Header.Get("Retry-After")))
+			now := time.Now()
+			cache.rateLimited(now, resp.Header.Get("Retry-After"))
 			if cached, ok := fetchClaudeCachedUsage(result, home, "API rate limited"); ok {
-				return cached
+				return cache.withCachedResets(cached, now)
 			}
-			if cached, ok := lastGoodClaudeUsage(result, time.Now(), "API rate limited"); ok {
+			if cached, ok := cache.usage(result, now, "API rate limited"); ok {
 				return cached
 			}
 			result.Status = "warn"
@@ -224,25 +232,26 @@ func FetchClaudeUsage(ctx context.Context) UsageResult {
 			if osDebugEnabled() {
 				result.SourceDetail = "http_status=429;cache=missing"
 			}
-			return result
+			return cache.withCachedResets(result, now)
 		}
 		if resp.StatusCode == http.StatusUnauthorized {
 			if cliResult, ok := fetchClaudeCLIUsage(ctx, result, "OAuth API unauthorized"); ok {
 				return cliResult
 			}
+			result.AuthRequired = true
 			result.Status = "error"
 			result.Message = "Claude OAuth token unauthorized. Run 'claude auth login'"
 			result.SourceDetail = fmt.Sprintf("http_status=%d", resp.StatusCode)
 			return result
 		}
 		result.Message = netclient.FormatError(resp, nil)
-		return result
+		return cache.withCachedResets(result, time.Now())
 	}
 
 	body, err := readAllCapped(resp.Body)
 	if err != nil {
 		result.Message = fmt.Sprintf("Failed to read API response: %v", err)
-		return result
+		return cache.withCachedResets(result, time.Now())
 	}
 	var data struct {
 		FiveHour struct {
@@ -253,12 +262,16 @@ func FetchClaudeUsage(ctx context.Context) UsageResult {
 			Utilization float64 `json:"utilization"`
 			ResetsAt    string  `json:"resets_at"`
 		} `json:"seven_day"`
+		ResetInventory json.RawMessage `json:"cedar_ember"`
+		Limits         json.RawMessage `json:"limits"`
 	}
 
 	if err := json.Unmarshal(body, &data); err != nil {
 		result.Message = "Failed to parse API response"
-		return result
+		return cache.withCachedResets(result, time.Now())
 	}
+	now = time.Now()
+	result.ResetCredits, result.ResetCreditDetails = parseClaudeResetCredits(data.ResetInventory, data.Limits, now)
 
 	result.Buckets = make(map[string]string)
 	result.BucketResets = make(map[string]string)
@@ -285,8 +298,11 @@ func FetchClaudeUsage(ctx context.Context) UsageResult {
 		result.Used = fmt.Sprintf("%.1f", data.SevenDay.Utilization)
 		result.Message = "Usage fetched from Anthropic OAuth API (7d bucket)"
 	} else {
-		if cliResult, ok := fetchClaudeCLIUsage(ctx, result, "API reported no utilization"); ok {
-			return cliResult
+		if result.ResetCredits == nil {
+			if cliResult, ok := fetchClaudeCLIUsage(ctx, result, "API reported no utilization"); ok {
+				cache.save(cliResult, now)
+				return cache.withCachedResets(cliResult, now)
+			}
 		}
 		result.Used = "0"
 		result.Message = "No utilization reported by API"
@@ -294,7 +310,10 @@ func FetchClaudeUsage(ctx context.Context) UsageResult {
 
 	result.Status = "ok"
 	result.Source = "oauth"
-	saveClaudeLastGoodUsage(result.Buckets, result.BucketResets, time.Now())
+	cache.save(result, now)
+	if result.ResetCredits == nil {
+		return cache.withCachedResets(result, now)
+	}
 	return result
 }
 

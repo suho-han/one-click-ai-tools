@@ -13,8 +13,14 @@ struct ProviderCardView: View {
     /// card) leaves the badge inert. The confirmation dialog lives in the
     /// popover, not here.
     var onResetCreditTap: (() -> Void)? = nil
+    var isSpendingResetCredit = false
+    var loadResetCreditDetails: (() async throws -> [ResetCreditDetail])? = nil
+    var onReconnect: (() -> Void)? = nil
+    var isOpeningReconnectTerminal = false
     @AppStorage(MenubarPreferences.useProviderAccentColorsKey) private var useProviderAccentColors = true
     @State private var showsMessage = false
+    @State private var showsResetCreditDetails = false
+    @State private var fetchedResetCreditDetails: [ResetCreditDetail]? = nil
     @State private var isBarPulsing = false
     /// Measured card width — caps the hover bubble so it never extends past
     /// the card (and therefore the popover) edges.
@@ -49,11 +55,21 @@ struct ProviderCardView: View {
 
                 statusBadge
             }
+            .overlay(alignment: .bottomLeading) {
+                if showsResetCreditDetails, showsResetCredits {
+                    TimelineView(.periodic(from: .now, by: 60)) { context in
+                        messageBubble(resetCreditHoverText(now: context.date))
+                    }
+                    .fixedSize()
+                    .alignmentGuide(.bottom) { $0[.top] - 4 }
+                    .allowsHitTesting(false)
+                }
+            }
             // Lift the whole title row (and the hover bubble anchored to the
             // badge) above the metric strip below: later siblings paint over
             // earlier ones, and without this zIndex the bubble's lower half
             // would be hidden behind the metric rows.
-            .zIndex(showsMessage ? 1 : 0)
+            .zIndex(showsMessage || showsResetCreditDetails ? 1 : 0)
 
             if !provider.metrics.isEmpty {
                 metricStrip
@@ -88,7 +104,7 @@ struct ProviderCardView: View {
         // so without this card-level zIndex its lower half is swallowed by
         // the card underneath. (The title row's zIndex only settles
         // bubble-vs-metric-strip order inside this card.)
-        .zIndex(showsMessage ? 1 : 0)
+        .zIndex(showsMessage || showsResetCreditDetails ? 1 : 0)
     }
 
     /// Provider service logo where the status dot used to sit — 14pt so the
@@ -133,28 +149,48 @@ struct ProviderCardView: View {
     }
 
     private var statusBadge: some View {
+        Group {
+            if let onReconnect {
+                Button(action: onReconnect) { statusBadgeLabel }
+                    .buttonStyle(.plain)
+                    .disabled(isOpeningReconnectTerminal)
+            } else {
+                statusBadgeLabel
+            }
+        }
+        .overlay(alignment: .bottomTrailing) {
+            if showsMessage, let message = statusBadgeMessage {
+                messageBubble(message)
+                    .offset(y: 28)
+                    .transition(.opacity)
+                    .allowsHitTesting(false)
+            }
+        }
+        .onHover { hovering in
+            showsMessage = hovering && statusBadgeMessage != nil
+        }
+        .animation(.easeOut(duration: 0.12), value: showsMessage)
+        .accessibilityHint(statusBadgeMessage ?? "")
+    }
+
+    private var statusBadgeLabel: some View {
         Text(provider.status.badgeLabel)
             .font(.system(size: 10, weight: .bold, design: .rounded))
             .foregroundStyle(provider.status.tint)
             .padding(.horizontal, 7)
             .padding(.vertical, 4)
-            .background(
-                Capsule().fill(provider.status.softBackground)
-            )
-            .overlay(alignment: .bottomTrailing) {
-                if showsMessage, let message = provider.message, !message.isEmpty {
-                    messageBubble(message)
-                        .offset(y: 28)
-                        .transition(.opacity)
-                        .allowsHitTesting(false)
-                }
+            .background(Capsule().fill(provider.status.softBackground))
+    }
+
+    private var statusBadgeMessage: String? {
+        if onReconnect != nil {
+            let instruction = "Click WARN to reconnect in Terminal."
+            if let message = provider.message, !message.isEmpty {
+                return "\(instruction)\n\(message)"
             }
-            .onHover { hovering in
-                guard hasMessage else { return }
-                showsMessage = hovering
-            }
-            .animation(.easeOut(duration: 0.12), value: showsMessage)
-            .accessibilityHint(provider.message ?? "")
+            return instruction
+        }
+        return hasMessage ? provider.message : nil
     }
 
     /// Fully opaque tooltip anchored to the badge's trailing edge so it extends
@@ -288,7 +324,7 @@ struct ProviderCardView: View {
     }
 
     private var showsResetCredits: Bool {
-        provider.resetCredits != nil
+        provider.resetCreditBadgeLabel != nil
     }
 
     /// "( 🎁 N )" — the provider's unused rate-limit reset credits, drawn
@@ -296,35 +332,66 @@ struct ProviderCardView: View {
     /// purpose (no spin); color glyphs ignore foreground style, so the
     /// emoji keeps its native colors while the parens and count carry the
     /// accent. Tapping spends a credit (after the popover's confirmation);
-    /// when no handler is set the badge stays display-only so legacy call
-    /// sites are unaffected.
-    @ViewBuilder
+    /// without a tap handler the badge only shows its hover details.
     private var resetCreditsBadge: some View {
-        if let credits = provider.resetCredits {
-            if let onResetCreditTap {
-                Button(action: onResetCreditTap) {
-                    badgeContent(credits, hint: "Resets usage windows by spending one credit")
+        Group {
+            if let label = provider.resetCreditBadgeLabel {
+                if let onResetCreditTap {
+                    Button(action: onResetCreditTap) {
+                        badgeContent(label, hint: "Resets usage windows by spending one credit")
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(isRefreshing || isSpendingResetCredit)
+                } else {
+                    badgeContent(label, hint: provider.resetCreditCacheNotice ?? "")
                 }
-                .buttonStyle(.plain)
-                .disabled(isRefreshing)
-            } else {
-                badgeContent(credits, hint: "")
             }
+        }
+        .contentShape(Rectangle())
+        .onHover { hovering in
+            showsResetCreditDetails = hovering
+            if !hovering {
+                fetchedResetCreditDetails = nil
+            }
+        }
+        .task(id: showsResetCreditDetails ? provider.resetCredits : nil) {
+            guard showsResetCreditDetails, (provider.resetCredits ?? 0) > 0,
+                  let loadResetCreditDetails else { return }
+            fetchedResetCreditDetails = nil
+            let details = (try? await loadResetCreditDetails()) ?? []
+            guard !Task.isCancelled else { return }
+            fetchedResetCreditDetails = details
         }
     }
 
-    private func badgeContent(_ credits: Int, hint: String) -> some View {
+    private func resetCreditHoverText(now: Date) -> String {
+        guard let credits = provider.resetCredits else { return "Reset credits unavailable" }
+        let text: String
+        if credits <= 0 {
+            text = "No reset credits remaining"
+        } else if loadResetCreditDetails != nil && fetchedResetCreditDetails == nil {
+            text = "Loading reset credits…"
+        } else {
+            let details = fetchedResetCreditDetails ?? provider.resetCreditDetails
+            text = ResetCreditDetail.hoverText(for: details, now: now) ?? "No current reset credit details"
+        }
+        if let notice = provider.resetCreditCacheNotice {
+            return "\(notice)\n\(text)"
+        }
+        return text
+    }
+
+    private func badgeContent(_ label: String, hint: String) -> some View {
         HStack(spacing: 2) {
             Text("(")
             Text("🎁")
-            Text("\(credits)")
-                .monospacedDigit()
+            Text(label)
             Text(")")
         }
         .font(.system(size: 10, weight: .semibold, design: .rounded))
         .foregroundStyle(providerAccent)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(credits) rate limit reset credits")
+        .accessibilityLabel(label == "?" ? "Reset credits unavailable" : "\(label) rate limit reset credits")
         .accessibilityHint(hint)
     }
 

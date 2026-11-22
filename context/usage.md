@@ -9,7 +9,10 @@ Updates `oct` itself.
 ```bash
 oct update           # update to the latest GitHub Release
 oct update --check   # check for a newer release without installing
+oct update --check --json # read the check result without installing
 ```
+
+The menubar uses the same check as the CLI: stable installs check stable releases, and `oct-beta` or a prerelease build checks prereleases. The JSON output contains `available` and the compared `latest` tag.
 
 ## 2) `oct agent-update`
 
@@ -54,6 +57,9 @@ Notes:
 - Selected providers are filtered by `enabled_tools`, and output order follows `agent_order`.
 - Claude Code falls back to parsing `claude --print /usage` for 5h/weekly quota when the OAuth API reports no utilization.
 - Codex usage may include `reset_credits` (unused rate-limit reset credits). In the menubar, the credit badge opens a confirmation before spending one. `oct usage reset-credit --provider codex[:account] --json` lists credits without spending; omit `--json` for an interactive confirmation, or pass `--yes` to spend non-interactively. Spending clears Codex rate-limit windows and cannot be undone.
+- The menubar pins a Codex credit confirmation to the credential that produced the usage card. If it no longer matches, refresh usage and confirm again; no credit is spent on the new account.
+- Hover over the 🎁 badge to see each unused credit’s model scope, usage window, expiry and time remaining. OCT processes using the same Claude OAuth credential share recent results and a 429 backoff without shortening the server's `Retry-After`. The Claude badge shows `~N` and **Last checked** for cached inventory, `?` when unavailable, and `0` for a live confirmed empty inventory. Last-confirmed credits are retained for that credential until a complete inventory supersedes them or their known expiry passes. Hovering never spends a credit; use [Claude Settings → Usage](https://claude.ai/settings/usage) for that.
+- An expired or rejected Codex or Claude OAuth credential can show a clickable **WARN** badge that opens Terminal for re-login. Missing OAuth credentials alone (for example, with an API-key login) and non-authentication warnings do not offer re-login. The menubar blocks another Codex reset-credit spend until the previous attempt and its usage refresh finish.
 - Antigravity parses quota from `agy --print /usage` without reading tokens or keychain data directly. The agy run is detached from the controlling terminal (new session, no TTY) so an expired token fails with an auth error instead of opening a browser login window, live runs are rate-limited to one per 5 minutes with the last good numbers served from the OS user cache (`~/Library/Caches/one-click-tools/antigravity-usage.json` on macOS) in between, and an auth-problem run pauses live checks for 30 minutes (message says to re-authenticate with `agy` in a terminal; a later successful run clears the pause).
 - Command Code reads 5h/7d/monthly buckets from the billing API using `COMMAND_CODE_API_KEY` or `~/.commandcode/auth.json`.
 - Kimi Code reads weekly + 5-hour request windows from `api.kimi.com/coding/v1/usages` (`KIMI_CODE_API_KEY`, `~/.kimi-code/credentials/kimi-code.json`, or the rotated `kimi-code-env-*.json` files the current CLI writes; access tokens expire after ~15 minutes and are only refreshed by the kimi CLI itself).

@@ -7,12 +7,14 @@ import SwiftUI
 final class UsageViewModel: ObservableObject {
     @Published private(set) var snapshot: UsageSnapshot
     @Published private(set) var isRefreshing = false
+    @Published private(set) var isSpendingResetCredit = false
     /// Card whose reset-credits badge was tapped — drives the confirmation
     /// alert. Nil when no confirmation is pending.
     @Published var pendingResetCreditCard: ProviderCard?
-    /// Failure from a reset-credit spend (or its follow-up refresh), shown
-    /// as an alert so the popover's usage data stays untouched.
+    /// Failure reported by the reset-credit command.
     @Published var resetCreditError: String?
+    @Published var reconnectError: String?
+    @Published private(set) var isOpeningReconnectTerminal = false
 
     private let service: OctCLIService
     private let configurationStore: ConfigurationStore
@@ -42,7 +44,7 @@ final class UsageViewModel: ObservableObject {
     }
 
     func refresh(now: Date = Date()) {
-        guard !isRefreshing else { return }
+        guard !isRefreshing, !isSpendingResetCredit else { return }
         isRefreshing = true
         generation += 1
         let refreshGeneration = generation
@@ -89,18 +91,38 @@ final class UsageViewModel: ObservableObject {
         generation += 1
         watchdogTask?.cancel()
         watchdogTask = nil
-        isRefreshing = false
         switch outcome {
         case .success(let fresh):
             snapshot = fresh
         case .failure(let message):
             snapshot = .error(message: message, refreshInterval: currentRefreshInterval())
         }
+        isRefreshing = false
+    }
+
+    func reconnect(_ provider: ProviderCard) {
+        guard provider.authRequired, !isOpeningReconnectTerminal else { return }
+        isOpeningReconnectTerminal = true
+        Task {
+            defer { isOpeningReconnectTerminal = false }
+            do {
+                try await service.reconnectInTerminal(provider: provider.name)
+            } catch {
+                reconnectError = error.localizedDescription
+            }
+        }
+    }
+
+    func fetchResetCreditDetails(for card: ProviderCard) async throws -> [ResetCreditDetail] {
+        try await service.fetchResetCreditDetails(provider: card.name, target: card.resetCreditTarget)
     }
 
     /// Arms the reset-credit confirmation for one card. The spend only
     /// happens if the user confirms the alert.
     func requestResetCredit(for card: ProviderCard) {
+        guard !isSpendingResetCredit, !isRefreshing, pendingResetCreditCard == nil,
+              resetCreditError == nil, (card.resetCredits ?? 0) > 0,
+              let target = card.resetCreditTarget, !target.isEmpty else { return }
         pendingResetCreditCard = card
     }
 
@@ -108,19 +130,20 @@ final class UsageViewModel: ObservableObject {
         pendingResetCreditCard = nil
     }
 
-    /// Spends one reset credit on the confirmed card, then refreshes so the
-    /// quota bars (and the badge count) reflect the cleared windows. A
-    /// failure lands in resetCreditError instead of wiping the snapshot.
+    /// Block further spends until the command and its post-attempt refresh
+    /// finish. Refresh even after an error: a timed-out spend may have landed.
     func confirmResetCredit() {
-        guard let card = pendingResetCreditCard else { return }
+        guard let card = pendingResetCreditCard, let target = card.resetCreditTarget,
+              !target.isEmpty, !isSpendingResetCredit else { return }
+        isSpendingResetCredit = true
         pendingResetCreditCard = nil
         Task {
             do {
-                _ = try await service.consumeResetCredit(provider: card.name)
+                _ = try await service.consumeResetCredit(provider: card.name, target: target)
             } catch {
                 resetCreditError = error.localizedDescription
-                return
             }
+            isSpendingResetCredit = false
             refresh()
         }
     }

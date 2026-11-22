@@ -411,6 +411,7 @@ func init() {
 	menubarCmd.AddCommand(menubarInstallHelperCmd)
 	menubarCmd.AddCommand(menubarStopCmd)
 	menubarCmd.AddCommand(menubarRestartCmd)
+	menubarCmd.AddCommand(menubarReconnectCmd)
 	menubarCmd.AddCommand(menubarDaemonCmd)
 	menubarDaemonCmd.AddCommand(menubarDaemonEnableCmd)
 	menubarDaemonCmd.AddCommand(menubarDaemonDisableCmd)

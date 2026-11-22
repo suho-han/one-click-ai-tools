@@ -393,6 +393,62 @@ final class UsageSnapshotTests: XCTestCase {
         XCTAssertNil(snapshot.providers[1].resetCredits)
     }
 
+    func testOnlyAuthenticationWarningsCanReconnect() throws {
+        let json = #"""
+        {
+          "summary": {},
+          "results": [
+            { "provider": "claude-code", "status": "error", "auth_required": true },
+            { "provider": "codex:work", "status": "ok", "used": "22", "auth_required": true },
+            { "provider": "codex:personal", "status": "warn", "message": "API rate limited" }
+          ]
+        }
+        """#
+        let response = try JSONDecoder().decode(UsageResponse.self, from: Data(json.utf8))
+        let snapshot = UsageSnapshot.from(response: response, refreshDate: Date(), refreshInterval: 60)
+        XCTAssertEqual(snapshot.providers.map(\.status), [.warn, .warn, .warn])
+        XCTAssertEqual(snapshot.providers.filter(\.authRequired).map(\.name), ["claude-code", "codex:work"])
+    }
+
+    func testResetCreditHoverListsEachActiveCreditWithExpiry() throws {
+        let json = #"""
+        {
+          "summary": { "total": 1 },
+          "results": [{
+            "provider": "claude-code",
+            "reset_credits": 4,
+            "reset_credit_details": [
+              { "scope": "All models · 5h", "count": 1, "expires_at": "2026-11-20T12:00:00Z" },
+              { "title": "New model launch: one Fable reset for Max", "scope": "Fable · Weekly", "count": 2, "expires_at": "2026-11-22T14:30:00Z" },
+              { "title": "One full limit reset (November 2026)", "scope": "All models · Weekly", "count": 1 }
+            ]
+          }]
+        }
+        """#
+        let response = try JSONDecoder().decode(UsageResponse.self, from: Data(json.utf8))
+        let now = try XCTUnwrap(ResetCountdown.parseResetTime("2026-11-22T12:00:00Z"))
+        let expiry = try XCTUnwrap(ResetCountdown.parseResetTime("2026-11-22T14:30:00Z"))
+            .formatted(date: .abbreviated, time: .shortened)
+        let card = try XCTUnwrap(UsageSnapshot.from(response: response, refreshDate: now, refreshInterval: 60).providers.first)
+        XCTAssertEqual(ResetCreditDetail.hoverText(for: card.resetCreditDetails, now: now), [
+            "#1 - Fable · Weekly\n    \(expiry) (2h 30m)",
+            "#2 - Fable · Weekly\n    \(expiry) (2h 30m)",
+            "#3 - All models · Weekly\n    No expiry reported",
+        ].joined(separator: "\n"))
+    }
+
+    func testCodexHoverUsesWindowInsteadOfCreditTitle() {
+        let now = Date()
+        let credits = ["Full reset (Monthly)", "Full reset (Weekly + 5 hr)", "Launch bonus"].map {
+            ResetCreditDetail(scope: ResetCreditDetail.codexScope(for: $0), expiresAt: nil, count: 1)
+        }
+        XCTAssertEqual(ResetCreditDetail.hoverText(for: credits, now: now), [
+            "#1 - All models · Monthly\n    No expiry reported",
+            "#2 - All models · Weekly + 5h\n    No expiry reported",
+            "#3 - Scope unavailable\n    No expiry reported",
+        ].joined(separator: "\n"))
+    }
+
     func testResetCreditConsumeResultDecodesCLIJSON() throws {
         // The shape `oct usage reset-credit --json --yes` emits after a
         // successful spend; available_count_after drives the badge refresh.
