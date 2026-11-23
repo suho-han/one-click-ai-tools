@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file. See [standa
 
 ### Bug Fixes
 
+* **usage:** open Antigravity sign-in directly during reconnect, without a manual `/logout`.
 * **menubar:** offer re-login only for confirmed OAuth failures and prevent a second Codex credit spend during the first spend and follow-up refresh.
 * **menubar:** refuse a Codex reset credit spend if the account or credentials no longer match the usage snapshot.
 * **menubar:** follow the CLI's stable or beta release channel, including newer prereleases of the same version.

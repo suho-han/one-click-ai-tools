@@ -71,6 +71,14 @@ func ReconnectAntigravity(ctx context.Context) error {
 	}
 	defer unlock()
 
+	// An initial prompt can run after sign-in. Only queue /logout when agy
+	// hasn't already reported that it needs a login. The detached probe can
+	// wait for an OAuth code even after printing the auth-required diagnostic.
+	out, probeErr := antigravityUsageCommandOutput(ctx, 3*time.Second, command.Path, "--print", "/usage")
+	if !isAntigravityAuthFailure(out, probeErr) {
+		command.Args = append(command.Args, "--prompt-interactive", "/logout")
+	}
+
 	command.Stdin, command.Stdout, command.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if err := command.Run(); err != nil {
 		return fmt.Errorf("run Antigravity sign-in: %w", err)

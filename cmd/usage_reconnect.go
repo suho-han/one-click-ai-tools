@@ -19,8 +19,7 @@ func init() {
 			if !term.IsTerminal(int(os.Stdin.Fd())) {
 				return fmt.Errorf("Antigravity reconnection requires an interactive terminal")
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), "At the agy prompt, enter /logout and follow the sign-in screen. If agy already asks you to sign in, sign in directly.")
-			fmt.Fprintln(cmd.OutOrStdout(), "After signing in, enter /exit, then refresh usage. If logout exits agy, run this command again to sign in.")
+			fmt.Fprintln(cmd.OutOrStdout(), "Opening Antigravity sign-in. Follow the login screen, then enter /exit to allow the next usage refresh.")
 			return usage.ReconnectAntigravity(cmd.Context())
 		},
 	})
