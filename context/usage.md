@@ -135,12 +135,19 @@ fetch, so short statusbar poll intervals do not trigger a provider fan-out. Rend
 `internal/usage/statusline.go`; `UsageSeverity` there is the shared
 classification also used by `oct monitor`.
 
-`oct statusline config <waybar|polybar|swiftbar|xbar> [--path oct]` prints a
+`oct statusline config <waybar|polybar|swiftbar|xbar|zsh> [--path oct]` prints a
 paste-ready snippet on stdout (notes go to stderr); `oct statusline install
-<swiftbar|xbar> [--dir DIR] [--force]` writes `oct.5m.sh` (0755) into the
+<swiftbar|xbar|zsh> [--dir DIR] [--force]` writes `oct.5m.sh` (0755; zsh: `oct.plugin.zsh`, 0644) into the
 platform plugin directory (SwiftBar: `~/Library/Application Support/SwiftBar/Plugins`,
 xbar: `~/.config/xbar/plugins`) and refuses to overwrite without `--force`;
 Windows is rejected. Generated output only calls `oct usage --format ...`.
+
+`zsh` default dir: `$ZSH_CUSTOM/plugins/oct`, else `~/.oh-my-zsh/custom/plugins/oct`
+if that custom dir exists, else an error asking for `--dir`. The snippet caches `oct completion zsh` at
+`$ZSH_CACHE_DIR/completions/_oct` (else `${XDG_CACHE_HOME:-~/.cache}/oct/completions/_oct`)
+and, with `OCT_PROMPT=1`, adds a precmd hook that sets an RPROMPT segment from
+`oct usage --format compact --from-snapshot`, throttled via `$SECONDS` to
+`OCT_PROMPT_INTERVAL` (default 5s). It never writes to the user's zshrc.
 
 ### Local history and exhaustion ETA
 

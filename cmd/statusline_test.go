@@ -147,3 +147,79 @@ func TestStatuslineTooManyArgs(t *testing.T) {
 		t.Fatal("expected failure")
 	}
 }
+
+func TestStatuslineZshTarget(t *testing.T) {
+	has := func(list []string, v string) bool {
+		for _, x := range list {
+			if x == v {
+				return true
+			}
+		}
+		return false
+	}
+	if !has(statuslineConfigTargets, "zsh") || !has(statuslineInstallTargets, "zsh") {
+		t.Fatalf("config=%v install=%v", statuslineConfigTargets, statuslineInstallTargets)
+	}
+	snip, err := statuslineSnippet("zsh", "/usr/local/bin/oct")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"oct completion zsh", "usage --format compact --from-snapshot", "OCT_PROMPT", "add-zsh-hook precmd", "/usr/local/bin/oct"} {
+		if !strings.Contains(snip, want) {
+			t.Fatalf("snippet missing %q", want)
+		}
+	}
+	out, errs, code := runStatusline(t, "statusline", "config", "zsh", "--path", "/usr/local/bin/oct")
+	if code != 0 || out != snip || !strings.Contains(errs, "# zsh snippet") {
+		t.Fatalf("code=%d err=%q", code, errs)
+	}
+}
+
+func TestStatuslineZshDefaultDir(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ZSH_CUSTOM", "")
+	if _, err := statuslineDefaultDir("zsh", "linux"); err == nil || !strings.Contains(err.Error(), "--dir") {
+		t.Fatalf("expected --dir error, got %v", err)
+	}
+	custom := filepath.Join(home, ".oh-my-zsh", "custom")
+	if err := os.MkdirAll(custom, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if d, err := statuslineDefaultDir("zsh", "linux"); err != nil || d != filepath.Join(custom, "plugins", "oct") {
+		t.Fatalf("d=%q err=%v", d, err)
+	}
+	zc := t.TempDir()
+	t.Setenv("ZSH_CUSTOM", zc)
+	if d, err := statuslineDefaultDir("zsh", "linux"); err != nil || d != filepath.Join(zc, "plugins", "oct") {
+		t.Fatalf("d=%q err=%v", d, err)
+	}
+}
+
+func TestStatuslineInstallZsh(t *testing.T) {
+	dir := t.TempDir()
+	dest := filepath.Join(dir, "oct.plugin.zsh")
+	out, errOut, code := runStatusline(t, "statusline", "install", "zsh", "--dir", dir, "--path", "/x/oct")
+	if code != 0 || !strings.Contains(out, dest) || !strings.Contains(out, "plugins=(...)") || !strings.Contains(out, "OCT_PROMPT=1") {
+		t.Fatalf("code=%d out=%q err=%q", code, out, errOut)
+	}
+	want, _ := statuslineSnippet("zsh", "/x/oct")
+	if b, _ := os.ReadFile(dest); string(b) != want {
+		t.Fatalf("content mismatch")
+	}
+	if fi, err := os.Stat(dest); err != nil || fi.Mode().Perm() != 0o644 {
+		t.Fatalf("stat=%v err=%v", fi, err)
+	}
+	if _, errOut, code = runStatusline(t, "statusline", "install", "zsh", "--dir", dir); code == 0 || !strings.Contains(errOut, "--force") {
+		t.Fatalf("expected refusal: code=%d err=%q", code, errOut)
+	}
+	if err := os.WriteFile(dest, []byte("custom"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, code = runStatusline(t, "statusline", "install", "zsh", "--dir", dir, "--force"); code != 0 {
+		t.Fatalf("force failed")
+	}
+	if b, _ := os.ReadFile(dest); string(b) == "custom" {
+		t.Fatalf("not overwritten")
+	}
+}

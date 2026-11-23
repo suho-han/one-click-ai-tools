@@ -95,6 +95,7 @@ Menubar **Settings → About → Project → Feedback** sends your text and the 
 | ⚙️ Setup | `oct config` | pick tools/providers and usage display settings (interactive; notifications are separate) |
 | 🔄 Update | `oct agent-update` | update every installed AI CLI (`--dry-run --explain` to preview) |
 | 📊 Watch | `oct usage` | one-shot quota snapshot (`--json`, `--compact`, `--format waybar/polybar/swiftbar`, `--notify`) |
+| 📊 Watch | `oct statusline` | paste-ready snippets for waybar/polybar/SwiftBar/xbar/zsh (`config`) and plugin install (`install`) |
 | 📊 Watch | `oct monitor` | always-on refreshing screen (`--interval`, `--once`, sort/filter) |
 | 📊 Watch | `oct menubar` | persistent macOS menu bar display |
 | 🔔 Alert | `oct alert` | bare command opens arrow/key-based interactive alert setup; supports `config`, provider thresholds, `test`, and `snooze` |
@@ -138,7 +139,23 @@ oct usage --format polybar       # one line for a polybar custom script (%{F#...
 oct usage --format swiftbar      # SwiftBar plugin protocol (title + dropdown menu)
 oct usage --format waybar --from-snapshot   # render the last oct monitor snapshot instead of fetching live
 oct statusline config            # no argument: opens a target picker (same for `install`)
+oct statusline config zsh        # zsh integration (cached completion + optional prompt segment)
+oct statusline install zsh       # install oct.plugin.zsh for Oh My Zsh (0644, --dir/--force)
+oct completion <bash|zsh|fish>   # print a shell completion script
 ```
+
+Oh My Zsh setup:
+
+```bash
+oct statusline install zsh                        # writes $ZSH_CUSTOM/plugins/oct/oct.plugin.zsh
+# ~/.zshrc: plugins+=(oct)
+# ~/.zshrc before oh-my-zsh loads: export OCT_PROMPT=1   # optional prompt segment
+# manual fallback: oct statusline config zsh > $ZSH_CUSTOM/plugins/oct/oct.plugin.zsh
+```
+
+When Oh My Zsh is not detected, `install zsh` refuses and asks for `--dir`
+(e.g. `--dir ~/.config/oct/zsh`); `oct statusline config zsh` always prints the
+snippet for manual installs.
 
 `--from-snapshot` reads `~/.oct/state/usage-latest.json` (written every
 `oct monitor` cycle), so a statusbar can re-run oct on a short poll interval
