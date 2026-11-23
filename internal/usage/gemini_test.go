@@ -208,6 +208,8 @@ func TestIsAntigravityAuthFailure(t *testing.T) {
 		want   bool
 	}{
 		{"silent auth refusal", "Print mode: not logged in and no controlling terminal; cannot complete interactive login", errors.New("exit status 1"), true},
+		{"sign-in prompt", "Authentication required. Please visit the URL to log in:", nil, true},
+		{"rate limit", "429 Too Many Requests", errors.New("exit status 1"), false},
 		{"keychain auth error", "", errors.New("exit status 1: You are not logged into Antigravity."), true},
 		{"browser fallback", "Failed to open browser: exit status 1", nil, true},
 		{"plain failure", "", errors.New("exit status 1: something else broke"), false},
@@ -228,8 +230,8 @@ func TestFetchAntigravityUsageAuthFailureBacksOff(t *testing.T) {
 		errors.New("exit status 1"))
 
 	first := FetchAntigravityUsage(t.Context())
-	if first.Status != "error" {
-		t.Fatalf("expected error status, got %q (%s)", first.Status, first.Message)
+	if first.Status != "warn" || !first.AuthRequired {
+		t.Fatalf("expected reconnect warning, got %+v", first)
 	}
 	if !strings.Contains(first.Message, "re-authenticate") {
 		t.Fatalf("expected actionable re-auth message, got %q", first.Message)
@@ -244,11 +246,35 @@ func TestFetchAntigravityUsageAuthFailureBacksOff(t *testing.T) {
 	if calls() != 1 {
 		t.Fatalf("expected agy to be skipped during backoff, got %d invocations", calls())
 	}
-	if second.Status != "warn" {
-		t.Fatalf("expected warn status on held refresh, got %q (%s)", second.Status, second.Message)
+	if second.Status != "warn" || !second.AuthRequired {
+		t.Fatalf("expected reconnect warning during backoff, got %+v", second)
 	}
 	if !strings.Contains(second.Message, "paused") {
 		t.Fatalf("expected paused message, got %q", second.Message)
+	}
+}
+
+func TestAntigravityUsageReportsAuthWhenAgyWaitsForSignIn(t *testing.T) {
+	withRedirectedAntigravityCache(t)
+	oldCommand := antigravityUsageCommandOutput
+	t.Cleanup(func() { antigravityUsageCommandOutput = oldCommand })
+	antigravityUsageCommandOutput = func(ctx context.Context, timeout time.Duration, _ string, _ ...string) (string, error) {
+		child, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		<-child.Done()
+		return "Authentication required. Please visit the URL to log in:", child.Err()
+	}
+
+	ctx, cancel := context.WithTimeout(t.Context(), 1200*time.Millisecond)
+	defer cancel()
+	finished := make(chan struct{})
+	result := fetchWithDeadline(ctx, "antigravity", func(ctx context.Context) UsageResult {
+		defer close(finished)
+		return FetchAntigravityUsage(ctx)
+	})
+	<-finished
+	if result.Status != "warn" || !result.AuthRequired {
+		t.Fatalf("expected a reconnect warning, not a usage timeout: %+v", result)
 	}
 }
 
@@ -263,8 +289,8 @@ func TestFetchAntigravityUsageAuthFailureServesCachedUsage(t *testing.T) {
 	markAntigravityAuthFailure(time.Now(), "silent auth failed")
 
 	result := FetchAntigravityUsage(t.Context())
-	if result.Status != "ok" {
-		t.Fatalf("expected cached ok status, got %q (%s)", result.Status, result.Message)
+	if result.Status != "warn" || !result.AuthRequired {
+		t.Fatalf("expected cached result to still require reconnect, got %+v", result)
 	}
 	if result.Source != "cache" {
 		t.Fatalf("expected cache source, got %q", result.Source)
@@ -292,8 +318,8 @@ func TestFetchAntigravityUsageMinIntervalServesCache(t *testing.T) {
 	if calls() != 1 {
 		t.Fatalf("expected min interval to suppress second agy run, got %d invocations", calls())
 	}
-	if second.Status != "ok" || second.Source != "cache" {
-		t.Fatalf("expected cached result, got status %q source %q", second.Status, second.Source)
+	if second.Status != "ok" || second.Source != "cache" || second.AuthRequired {
+		t.Fatalf("expected healthy cached result, got %+v", second)
 	}
 	if second.Buckets["model:Gemini"] != first.Buckets["model:Gemini"] {
 		t.Fatalf("expected same buckets, got %#v vs %#v", second.Buckets, first.Buckets)
@@ -309,10 +335,6 @@ func TestFetchAntigravityUsageRerunsAfterMinInterval(t *testing.T) {
 		FetchedAtMs: time.Now().Add(-10 * time.Minute).UnixMilli(),
 		Buckets:     map[string]string{"model:Gemini": "2.0"},
 	})
-
-	if _, held := antigravityFetchHold(time.Now()); held {
-		t.Fatalf("expected no hold after min interval elapsed")
-	}
 	result := FetchAntigravityUsage(t.Context())
 	if calls() != 1 {
 		t.Fatalf("expected a fresh agy run, got %d invocations", calls())

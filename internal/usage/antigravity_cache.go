@@ -97,14 +97,12 @@ func saveAntigravityLastGoodUsage(buckets, resets map[string]string, now time.Ti
 	})
 }
 
-// antigravityFetchHold reports whether a real `agy` run should be skipped
-// right now, and why. Auth backoff wins over the min-interval because it
-// says why the previous run failed, not just when the last one happened.
-func antigravityFetchHold(now time.Time) (string, bool) {
-	entry := readAntigravityUsageCache()
+// antigravityFetchHold returns the reason to skip a live fetch, if any,
+// and whether the hold is for an authentication failure.
+func antigravityFetchHold(entry antigravityUsageCacheEntry, now time.Time) (reason string, authRequired bool) {
 	if entry.BackoffUntilMs != 0 {
-		if remaining := time.Until(time.UnixMilli(entry.BackoffUntilMs)); remaining > 0 {
-			return fmt.Sprintf("Antigravity auth check paused after a failed login; retrying in %d min (run `agy` once in a terminal to re-authenticate)",
+		if remaining := time.UnixMilli(entry.BackoffUntilMs).Sub(now); remaining > 0 {
+			return fmt.Sprintf("Antigravity auth check paused; reconnect or retry in %d min",
 				int(remaining.Minutes())+1), true
 		}
 	}
@@ -112,7 +110,7 @@ func antigravityFetchHold(now time.Time) (string, bool) {
 		elapsed := now.Sub(time.UnixMilli(entry.FetchedAtMs))
 		if elapsed < antigravityMinFetchInterval {
 			return fmt.Sprintf("last refresh %s ago (min interval %s)",
-				elapsed.Round(time.Second), antigravityMinFetchInterval), true
+				elapsed.Round(time.Second), antigravityMinFetchInterval), false
 		}
 	}
 	return "", false
@@ -120,8 +118,7 @@ func antigravityFetchHold(now time.Time) (string, bool) {
 
 // serveAntigravityCachedUsage turns the last good buckets into a result while
 // the live fetch is on hold. Mirrors lastGoodClaudeUsage.
-func serveAntigravityCachedUsage(base UsageResult, now time.Time, holdReason string) (UsageResult, bool) {
-	entry := readAntigravityUsageCache()
+func serveAntigravityCachedUsage(base UsageResult, entry antigravityUsageCacheEntry, now time.Time, holdReason string) (UsageResult, bool) {
 	if len(entry.Buckets) == 0 {
 		return base, false
 	}
@@ -131,7 +128,9 @@ func serveAntigravityCachedUsage(base UsageResult, now time.Time, holdReason str
 	}
 
 	result := base
-	result.Status = "ok"
+	if !result.AuthRequired {
+		result.Status = "ok"
+	}
 	result.Source = "cache"
 	result.Unit = "percent"
 	result.Limit = "100"
@@ -173,6 +172,7 @@ var antigravityAuthFailureMarkers = []string{
 	"silent auth failed",
 	"cannot complete interactive login",
 	"no controlling terminal",
+	"authentication required",
 	"authentication failed",
 	"login required",
 	"failed to open browser",

@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file. See [standa
 
 * **menubar:** show the affected models and usage windows on Codex and Claude reset-credit hover, with expiry and time remaining on a separate line.
 * **menubar:** open Terminal for the affected Codex or Claude account when its authentication warning is clicked.
+* **menubar:** open Antigravity's interactive logout/sign-in flow from its **WARN** badge and recheck quota after reconnection without waiting for the auth backoff.
 * **menubar:** offer a restart after a successful oct update ([096be62](https://github.com/suho-han/one-click-ai-tools/commit/096be62))
 
 ### Bug Fixes

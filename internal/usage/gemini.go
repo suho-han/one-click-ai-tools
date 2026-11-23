@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/suho-han/one-click-ai-tools/internal/execenv"
 )
 
 func baseAntigravityUsageResult() UsageResult {
@@ -54,6 +56,32 @@ func FetchGeminiUsage(ctx context.Context) UsageResult {
 	return FetchAntigravityUsage(ctx)
 }
 
+// ReconnectAntigravity runs agy's own sign-in UI without racing a quota poll
+// for the same credentials. The next poll verifies whether sign-in succeeded.
+func ReconnectAntigravity(ctx context.Context) error {
+	command := execenv.CommandContext(ctx, "agy")
+	if command.Err != nil {
+		return fmt.Errorf("find Antigravity CLI (agy): %w", command.Err)
+	}
+	wait, cancel := context.WithTimeout(ctx, 20*time.Second)
+	unlock, err := lockAntigravityUsage(wait)
+	cancel()
+	if err != nil {
+		return fmt.Errorf("wait for Antigravity usage lock: %w", err)
+	}
+	defer unlock()
+
+	command.Stdin, command.Stdout, command.Stderr = os.Stdin, os.Stdout, os.Stderr
+	if err := command.Run(); err != nil {
+		return fmt.Errorf("run Antigravity sign-in: %w", err)
+	}
+	// Forget both backoff and cached quotas: the account may have changed.
+	if err := os.Remove(antigravityCachePath()); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("clear Antigravity usage cache: %w", err)
+	}
+	return nil
+}
+
 type antigravityCLIUsageRow struct {
 	Label     string
 	Window    string
@@ -64,7 +92,7 @@ type antigravityCLIUsageRow struct {
 func fetchAntigravityCLIUsage(ctx context.Context, base UsageResult) (UsageResult, bool) {
 	unlock, err := lockAntigravityUsage(ctx)
 	if err != nil {
-		if cached, ok := serveAntigravityCachedUsage(base, time.Now(), "refresh lock unavailable"); ok {
+		if cached, ok := serveAntigravityCachedUsage(base, readAntigravityUsageCache(), time.Now(), "refresh lock unavailable"); ok {
 			return cached, true
 		}
 		base.Message = "No data: Antigravity usage unavailable (refresh lock unavailable)"
@@ -74,26 +102,32 @@ func fetchAntigravityCLIUsage(ctx context.Context, base UsageResult) (UsageResul
 	// Recheck only after acquiring the shared lock: another process may have
 	// refreshed or entered auth backoff while this one waited.
 	now := time.Now()
+	entry := readAntigravityUsageCache()
 	// Rate-limit the live agy run (min interval / auth backoff) and fall
 	// back to the last good numbers; see antigravity_cache.go for why the
 	// per-minute menubar poll must not reach agy every time.
-	if holdReason, onHold := antigravityFetchHold(now); onHold {
-		if result, ok := serveAntigravityCachedUsage(base, now, holdReason); ok {
+	if holdReason, authRequired := antigravityFetchHold(entry, now); holdReason != "" {
+		base.AuthRequired = authRequired
+		if result, ok := serveAntigravityCachedUsage(base, entry, now, holdReason); ok {
 			return result, true
 		}
-		noData := base
-		noData.Message = "No data: " + holdReason
-		return noData, true
+		base.Message = "No data: " + holdReason
+		return base, true
 	}
 
-	out, err := antigravityUsageCommandOutput(ctx, 20*time.Second, "agy", "--print", "/usage")
+	// Leave time to classify and persist agy's output before the outer
+	// usage deadline. An unauthenticated agy can wait for an OAuth code.
+	timeout := 20 * time.Second
+	if deadline, ok := ctx.Deadline(); ok {
+		timeout = min(timeout, time.Until(deadline)-time.Second)
+	}
+	out, err := antigravityUsageCommandOutput(ctx, timeout, "agy", "--print", "/usage")
 	if isAntigravityAuthFailure(out, err) {
 		detail := antigravityAuthFailureDetail(out, err)
 		markAntigravityAuthFailure(now, detail)
-		failed := base
-		failed.Status = "error"
-		failed.Message = fmt.Sprintf("Antigravity auth failed (%s); run `agy` once in a terminal to re-authenticate. Retrying in %s.", detail, antigravityAuthBackoff)
-		return failed, true
+		base.AuthRequired = true
+		base.Message = fmt.Sprintf("Antigravity auth failed (%s); run `oct usage reconnect antigravity` to re-authenticate.", detail)
+		return base, true
 	}
 	if err != nil || strings.TrimSpace(out) == "" {
 		return base, false

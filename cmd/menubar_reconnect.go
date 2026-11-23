@@ -31,6 +31,13 @@ var menubarReconnectCmd = &cobra.Command{
 }
 
 func menubarReconnectCommand(provider string) (string, error) {
+	if provider == "antigravity" {
+		octPath, err := os.Executable()
+		if err != nil {
+			return "", fmt.Errorf("locate oct for Antigravity reconnection: %w", err)
+		}
+		return buildMenubarExecCommand(octPath, "usage", "reconnect", provider), nil
+	}
 	if provider == "claude" || provider == "claude-code" {
 		return buildMenubarExecCommand("claude", "auth", "login"), nil
 	}

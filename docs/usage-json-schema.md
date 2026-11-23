@@ -57,7 +57,7 @@ directly and treat message heuristics as internal.
 | `plan` | string | optional | Subscription plan name as reported by the provider (e.g. `pro`, `prolite`). |
 | `plan_source` | string | optional | Where the plan was detected from (diagnostic aid, free-form text). |
 | `status` | string | always | `ok`, `warn`, or `error`. `warn` = fetched with caveats (partial data, fallback path, credentials about to fail); `error` = no usable data. |
-| `auth_required` | boolean | optional | `true` when Codex or Claude needs a login to reconnect. Independent of `status` because local usage estimates may still be available. Not set for rate limits or transient network errors. |
+| `auth_required` | boolean | optional | `true` when Codex, Claude, or Antigravity needs interactive sign-in. May remain set while cached usage is available. Not set for rate limits or transient network errors. |
 | `used` | string | always | Usage value as a **decimal string** (not a number), e.g. `"42.5"`. Empty string or `"n/a"` when no data. String-on-purpose: it preserves provider formatting and distinguishes `0` from unknown. |
 | `unit` | string | always | `percent`, `requests`, `sessions`, `msgs`, or `USD`. New units may be added. |
 | `buckets` | map[string]string | optional | Per-window values, same string convention as `used`. Window keys seen today: `5h`, `7d`, `1m`; each provider emits its own subset. |
