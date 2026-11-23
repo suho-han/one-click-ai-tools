@@ -61,8 +61,11 @@ func TestRootCommand(t *testing.T) {
 	if contains(out, "agent-update    🔄") {
 		t.Errorf("expected help to omit command-name-before-emoji order, got: %s", out)
 	}
-	if contains(out, "completion") {
-		t.Errorf("completion command should be removed, got: %s", out)
+	if !contains(out, "completion <bash|zsh|fish>") && !contains(out, "completion") {
+		t.Errorf("expected help to list the oct completion command, got: %s", out)
+	}
+	if contains(out, "Generate the autocompletion script") {
+		t.Errorf("cobra default completion command should stay disabled, got: %s", out)
 	}
 	if !contains(out, "❓ help") {
 		t.Errorf("expected help to include help command emoji separated from the name, got: %s", out)
@@ -92,13 +95,13 @@ func TestReorderRootCommandsMaintenanceOrder(t *testing.T) {
 			maintenance = append(maintenance, c.Name())
 		}
 	}
-	want := []string{"update", "agent-update", "session-refresh", "doctor", "release-doctor"}
+	want := []string{"update", "agent-update", "session-refresh", "doctor", "release-doctor", "completion"}
 	if strings.Join(maintenance, ",") != strings.Join(want, ",") {
 		t.Fatalf("maintenance order = %v, want %v", maintenance, want)
 	}
 
 	for _, c := range rootCmd.Commands() {
-		if c.Name() == "quota" || c.Name() == "completion" {
+		if c.Name() == "quota" {
 			t.Fatalf("%s command should be removed from the root command", c.Name())
 		}
 	}

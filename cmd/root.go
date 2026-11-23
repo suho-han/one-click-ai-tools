@@ -189,7 +189,7 @@ Simply type oct help [path to command] for full details.`,
 }
 
 func reorderRootCommands() {
-	preferred := []string{"usage", "monitor", "menubar", "config", "alert", "schedule", "update", "agent-update", "session-refresh", "doctor", "release-doctor", "help"}
+	preferred := []string{"usage", "monitor", "menubar", "config", "alert", "schedule", "update", "agent-update", "session-refresh", "doctor", "release-doctor", "completion", "help"}
 	current := rootCmd.Commands()
 	if len(current) == 0 {
 		return
