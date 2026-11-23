@@ -37,12 +37,15 @@ const (
 )
 
 type antigravityUsageCacheEntry struct {
+	SchemaVersion  int               `json:"schemaVersion,omitempty"`
 	FetchedAtMs    int64             `json:"fetchedAtMs"`
 	BackoffUntilMs int64             `json:"backoffUntilMs,omitempty"`
 	BackoffReason  string            `json:"backoffReason,omitempty"`
 	Buckets        map[string]string `json:"buckets,omitempty"`
 	BucketResets   map[string]string `json:"bucket_resets,omitempty"`
 }
+
+const antigravityCacheSchemaVersion = 2
 
 // antigravityCachePath is a variable so tests can redirect the cache file.
 var antigravityCachePath = defaultAntigravityCachePath
@@ -91,9 +94,10 @@ func saveAntigravityLastGoodUsage(buckets, resets map[string]string, now time.Ti
 	// A success also clears any pending auth backoff: the token evidently
 	// works again (e.g. the user re-authenticated in a terminal).
 	writeAntigravityUsageCache(antigravityUsageCacheEntry{
-		FetchedAtMs:  now.UnixMilli(),
-		Buckets:      buckets,
-		BucketResets: resets,
+		SchemaVersion: antigravityCacheSchemaVersion,
+		FetchedAtMs:   now.UnixMilli(),
+		Buckets:       buckets,
+		BucketResets:  resets,
 	})
 }
 
@@ -106,7 +110,7 @@ func antigravityFetchHold(entry antigravityUsageCacheEntry, now time.Time) (reas
 				int(remaining.Minutes())+1), true
 		}
 	}
-	if entry.FetchedAtMs != 0 {
+	if entry.FetchedAtMs != 0 && entry.SchemaVersion == antigravityCacheSchemaVersion {
 		elapsed := now.Sub(time.UnixMilli(entry.FetchedAtMs))
 		if elapsed < antigravityMinFetchInterval {
 			return fmt.Sprintf("last refresh %s ago (min interval %s)",

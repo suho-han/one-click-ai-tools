@@ -159,14 +159,137 @@ func TestFetchAntigravityUsageUsesAgyPrintUsage(t *testing.T) {
 	if result.Used != "12.5" {
 		t.Fatalf("expected max used percent 12.5, got %q", result.Used)
 	}
-	if result.Buckets["model:Gemini"] != "0.0" {
-		t.Fatalf("expected Gemini used 0.0, got %q", result.Buckets["model:Gemini"])
+	if result.Buckets["model:Gemini 7d"] != "0.0" {
+		t.Fatalf("expected Gemini 7d used 0.0, got %q", result.Buckets["model:Gemini 7d"])
 	}
-	if result.Buckets["model:Claude/GPT"] != "12.5" {
-		t.Fatalf("expected Claude/GPT used 12.5, got %q", result.Buckets["model:Claude/GPT"])
+	if result.Buckets["model:Claude/GPT 7d"] != "12.5" {
+		t.Fatalf("expected Claude/GPT 7d used 12.5, got %q", result.Buckets["model:Claude/GPT 7d"])
 	}
-	if result.BucketResets["model:Claude/GPT"] != "2026-09-10T17:41:25Z" {
-		t.Fatalf("expected reset time, got %q", result.BucketResets["model:Claude/GPT"])
+	if result.BucketResets["model:Claude/GPT 7d"] != "2026-09-10T17:41:25Z" {
+		t.Fatalf("expected reset time, got %q", result.BucketResets["model:Claude/GPT 7d"])
+	}
+}
+
+func TestParseAntigravityCLIUsageMultiWindowAndSpecificModel(t *testing.T) {
+	output := strings.Join([]string{
+		"Quota:",
+		"Gemini Models          Weekly Limit Remaining       82%   2026-11-30 12:44 KST",
+		"Gemini Models          Five Hour Limit Remaining    44%   2026-11-23 17:44 KST",
+		"Claude and GPT models  Weekly Limit Remaining       68%   2026-11-30 14:53 KST",
+		"Claude and GPT models  Five Hour Limit Remaining    36%   2026-11-23 19:53 KST",
+		"Gemini 4 Argon         Gemini 4 Argon Weekly Limit  100%  2026-11-30 17:42 KST",
+	}, "\n")
+
+	rows := parseAntigravityCLIUsage(output)
+	want := []antigravityCLIUsageRow{
+		{Label: "Gemini Models", Window: "Weekly", Remaining: 82, ResetTime: "2026-11-30T03:44:00Z"},
+		{Label: "Gemini Models", Window: "Five Hour", Remaining: 44, ResetTime: "2026-11-23T08:44:00Z"},
+		{Label: "Claude and GPT models", Window: "Weekly", Remaining: 68, ResetTime: "2026-11-30T05:53:00Z"},
+		{Label: "Claude and GPT models", Window: "Five Hour", Remaining: 36, ResetTime: "2026-11-23T10:53:00Z"},
+		{Label: "Gemini 4 Argon", Window: "Weekly", Remaining: 100, ResetTime: "2026-11-30T08:42:00Z"},
+	}
+	if len(rows) != len(want) {
+		t.Fatalf("parsed %d rows, want %d: %#v", len(rows), len(want), rows)
+	}
+	for i := range want {
+		if rows[i] != want[i] {
+			t.Fatalf("row[%d] = %#v, want %#v", i, rows[i], want[i])
+		}
+	}
+
+	// Row without a reset time.
+	noReset, ok := parseAntigravityCLIUsageLine("Gemini 4 Argon         Gemini 4 Argon Weekly Limit  100%")
+	if !ok || noReset.Label != "Gemini 4 Argon" || noReset.Window != "Weekly" || noReset.Remaining != 100 || noReset.ResetTime != "" {
+		t.Fatalf("no-reset row = %#v, ok=%v", noReset, ok)
+	}
+
+	// Single-space fallbacks.
+	single5h, ok := parseAntigravityCLIUsageLine("Gemini Models Five Hour Limit Remaining 44% 2026-11-23 17:44 KST")
+	if !ok || single5h.Label != "Gemini Models" || single5h.Window != "Five Hour" || single5h.Remaining != 44 || single5h.ResetTime != "2026-11-23T08:44:00Z" {
+		t.Fatalf("single-space 5h row = %#v, ok=%v", single5h, ok)
+	}
+	singleArgon, ok := parseAntigravityCLIUsageLine("Gemini 4 Argon Gemini 4 Argon Weekly Limit 100% 2026-11-30 17:42 KST")
+	if !ok || singleArgon.Label != "Gemini 4 Argon" || singleArgon.Window != "Weekly" || singleArgon.Remaining != 100 || singleArgon.ResetTime != "2026-11-30T08:42:00Z" {
+		t.Fatalf("single-space argon row = %#v, ok=%v", singleArgon, ok)
+	}
+}
+
+func TestFetchAntigravityUsageAllQuotas(t *testing.T) {
+	output := strings.Join([]string{
+		"Quota:",
+		"Gemini Models          Weekly Limit Remaining       82%   2026-11-30 12:44 KST",
+		"Gemini Models          Five Hour Limit Remaining    44%   2026-11-23 17:44 KST",
+		"Claude and GPT models  Weekly Limit Remaining       68%   2026-11-30 14:53 KST",
+		"Claude and GPT models  Five Hour Limit Remaining    36%   2026-11-23 19:53 KST",
+		"Gemini 4 Argon         Gemini 4 Argon Weekly Limit  100%  2026-11-30 17:42 KST",
+	}, "\n") + "\n"
+	withMockAntigravityUsageCommand(t, output, nil)
+
+	result := FetchAntigravityUsage(t.Context())
+	if result.Status != "ok" {
+		t.Fatalf("status = %q, want ok", result.Status)
+	}
+	if result.Used != "64.0" {
+		t.Fatalf("used = %q, want 64.0", result.Used)
+	}
+	wantBuckets := map[string]string{
+		"model:Gemini 7d":         "18.0",
+		"model:Gemini 5h":         "56.0",
+		"model:Claude/GPT 7d":     "32.0",
+		"model:Claude/GPT 5h":     "64.0",
+		"model:Gemini 4 Argon 7d": "0.0",
+	}
+	if len(result.Buckets) != len(wantBuckets) {
+		t.Fatalf("buckets len = %d, want %d: %#v", len(result.Buckets), len(wantBuckets), result.Buckets)
+	}
+	for k, wantVal := range wantBuckets {
+		if got := result.Buckets[k]; got != wantVal {
+			t.Fatalf("Buckets[%q] = %q, want %q", k, got, wantVal)
+		}
+	}
+	wantResets := map[string]string{
+		"model:Gemini 7d":         "2026-11-30T03:44:00Z",
+		"model:Gemini 5h":         "2026-11-23T08:44:00Z",
+		"model:Claude/GPT 7d":     "2026-11-30T05:53:00Z",
+		"model:Claude/GPT 5h":     "2026-11-23T10:53:00Z",
+		"model:Gemini 4 Argon 7d": "2026-11-30T08:42:00Z",
+	}
+	if len(result.BucketResets) != len(wantResets) {
+		t.Fatalf("bucket_resets len = %d, want %d: %#v", len(result.BucketResets), len(wantResets), result.BucketResets)
+	}
+	for k, wantVal := range wantResets {
+		if got := result.BucketResets[k]; got != wantVal {
+			t.Fatalf("BucketResets[%q] = %q, want %q", k, got, wantVal)
+		}
+	}
+}
+
+func TestNormalizeAntigravityResetTime(t *testing.T) {
+	shanghai, err := time.LoadLocation("Asia/Shanghai")
+	if err != nil {
+		t.Fatalf("load Asia/Shanghai: %v", err)
+	}
+	cases := []struct {
+		name string
+		raw  string
+		loc  *time.Location
+		want string
+	}{
+		{"rfc3339 passthrough", "2026-09-10T17:41:25Z", time.UTC, "2026-09-10T17:41:25Z"},
+		{"kst in utc loc", "2026-11-30 12:44 KST", time.UTC, "2026-11-30T03:44:00Z"},
+		{"gmt+9 offset", "2026-11-30 12:44 GMT+9", time.UTC, "2026-11-30T03:44:00Z"},
+		{"numeric offset", "2026-11-30 12:44 +0900", time.UTC, "2026-11-30T03:44:00Z"},
+		{"utc zone", "2026-11-30 12:44 UTC", time.UTC, "2026-11-30T12:44:00Z"},
+		{"ambiguous cst matches local shanghai", "2026-11-30 12:44 CST", shanghai, "2026-11-30T04:44:00Z"},
+		{"ambiguous cst untouched in utc loc", "2026-11-30 12:44 CST", time.UTC, "2026-11-30 12:44 CST"},
+		{"non-timestamp passthrough", "tomorrow", time.UTC, "tomorrow"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := normalizeAntigravityResetTime(tc.raw, tc.loc); got != tc.want {
+				t.Fatalf("normalizeAntigravityResetTime(%q, %v) = %q, want %q", tc.raw, tc.loc, got, tc.want)
+			}
+		})
 	}
 }
 
@@ -321,7 +444,10 @@ func TestFetchAntigravityUsageMinIntervalServesCache(t *testing.T) {
 	if second.Status != "ok" || second.Source != "cache" || second.AuthRequired {
 		t.Fatalf("expected healthy cached result, got %+v", second)
 	}
-	if second.Buckets["model:Gemini"] != first.Buckets["model:Gemini"] {
+	if first.Buckets["model:Gemini 7d"] != "1.0" {
+		t.Fatalf("expected live bucket 1.0, got %#v", first.Buckets)
+	}
+	if second.Buckets["model:Gemini 7d"] != first.Buckets["model:Gemini 7d"] {
 		t.Fatalf("expected same buckets, got %#v vs %#v", second.Buckets, first.Buckets)
 	}
 }
@@ -342,8 +468,28 @@ func TestFetchAntigravityUsageRerunsAfterMinInterval(t *testing.T) {
 	if result.Status != "ok" || result.Source != "agy-cli" {
 		t.Fatalf("expected live result after hold expired, got status %q source %q", result.Status, result.Source)
 	}
-	if result.Buckets["model:Gemini"] != "1.0" {
-		t.Fatalf("expected fresh bucket from 99%% remaining, got %q", result.Buckets["model:Gemini"])
+	if result.Buckets["model:Gemini 7d"] != "1.0" {
+		t.Fatalf("expected fresh bucket from 99%% remaining, got %q", result.Buckets["model:Gemini 7d"])
+	}
+}
+
+func TestFetchAntigravityUsageUpgradesUnversionedCacheEvenWithinMinInterval(t *testing.T) {
+	calls := withMockAntigravityUsageCommand(t,
+		"Gemini Models\tWeekly Limit Remaining\t82%\t2026-11-30 12:44 KST\n"+
+			"Gemini Models\tFive Hour Limit Remaining\t44%\t2026-11-23 17:44 KST\n", nil)
+
+	// An unversioned cache entry (written before multi-window parsing) must
+	// not suppress a fresh agy run during the 5-minute min interval.
+	writeAntigravityUsageCache(antigravityUsageCacheEntry{
+		FetchedAtMs: time.Now().Add(-30 * time.Second).UnixMilli(),
+		Buckets:     map[string]string{"model:Gemini": "56.0"},
+	})
+	result := FetchAntigravityUsage(t.Context())
+	if calls() != 1 {
+		t.Fatalf("expected unversioned cache to trigger a fresh agy run, got %d invocations", calls())
+	}
+	if result.Source != "agy-cli" || result.Buckets["model:Gemini 7d"] != "18.0" || result.Buckets["model:Gemini 5h"] != "56.0" {
+		t.Fatalf("expected upgraded multi-window buckets, got source=%q buckets=%#v", result.Source, result.Buckets)
 	}
 }
 

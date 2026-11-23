@@ -580,7 +580,13 @@ func renderProviderCard(w io.Writer, r UsageResult, cardWidth int, eta string) {
 	fmt.Fprintln(w, cardTitleLine(providerLabel, r.Provider, statusLabel, r.Status, innerWidth))
 	fmt.Fprintf(w, "├%s┤\n", strings.Repeat("─", innerWidth))
 	fmt.Fprintln(w, cardKeyValueLine("Plan", tablePlanLabel(r.Plan), innerWidth, ""))
-	fmt.Fprintln(w, cardKeyValueLine("Quota", usageSummaryDisplay(r), innerWidth, ""))
+	for i, line := range usageSummaryLines(r) {
+		key := ""
+		if i == 0 {
+			key = "Quota"
+		}
+		fmt.Fprintln(w, cardKeyValueLine(key, line, innerWidth, ""))
+	}
 	if eta != "" {
 		fmt.Fprintln(w, cardKeyValueLine("ETA", eta, innerWidth, ""))
 	}
@@ -661,6 +667,21 @@ func tablePlanLabel(plan string) string {
 		return "—"
 	}
 	return plan
+}
+
+// usageSummaryLines splits the quota summary across card lines: providers
+// with per-model buckets (Antigravity) get one line per bucket so none are
+// truncated; everything else stays a single line.
+func usageSummaryLines(r UsageResult) []string {
+	for _, bucket := range []string{"5h", "7d", "1m"} {
+		if _, ok := visibleBucketValue(r, bucket); ok {
+			return []string{usageSummaryDisplay(r)}
+		}
+	}
+	if modelParts := modelBucketDisplays(r); len(modelParts) > 0 {
+		return modelParts
+	}
+	return []string{usageSummaryDisplay(r)}
 }
 
 func usageSummaryDisplay(r UsageResult) string {

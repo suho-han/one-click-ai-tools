@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"github.com/spf13/viper"
@@ -228,6 +230,64 @@ func TestRenderTableShowsRemainingForPercentBuckets(t *testing.T) {
 	out := buf.String()
 	if !strings.Contains(out, "5h 88.0% left") || !strings.Contains(out, "7d 59.0% left") {
 		t.Fatalf("expected remaining percent buckets in table, got:\n%s", out)
+	}
+}
+
+func TestRenderTableShowsAllAntigravityModelBuckets(t *testing.T) {
+	t.Setenv("OCT_NO_ICONS", "1")
+	t.Setenv("COLUMNS", "100")
+
+	future5h := time.Now().Add(2*time.Hour + 15*time.Minute).UTC().Format(time.RFC3339)
+	future7d := time.Now().Add(6*24*time.Hour + 20*time.Hour).UTC().Format(time.RFC3339)
+
+	var buf bytes.Buffer
+	RenderTable(&buf, []UsageResult{{
+		Provider: "antigravity",
+		Status:   "ok",
+		Used:     "64.0",
+		Limit:    "100",
+		Unit:     "percent",
+		Source:   "agy-cli",
+		Message:  "Usage parsed from agy --print /usage",
+		Buckets: map[string]string{
+			"model:Claude/GPT 5h":     "64.0",
+			"model:Claude/GPT 7d":     "32.0",
+			"model:Gemini 4 Argon 7d": "0.0",
+			"model:Gemini 5h":         "56.0",
+			"model:Gemini 7d":         "18.0",
+		},
+		BucketResets: map[string]string{
+			"model:Claude/GPT 5h":     future5h,
+			"model:Claude/GPT 7d":     future7d,
+			"model:Gemini 4 Argon 7d": future7d,
+			"model:Gemini 5h":         future5h,
+			"model:Gemini 7d":         future7d,
+		},
+	}})
+
+	ansiRe := regexp.MustCompile(`\x1b\[[0-9;]*m`)
+	out := ansiRe.ReplaceAllString(buf.String(), "")
+	for _, want := range []string{
+		"Claude/GPT 5h 36.0% left (resets in ",
+		"Claude/GPT 7d 68.0% left (resets in ",
+		"Gemini 4 Argon 7d 100.0% left (resets in ",
+		"Gemini 5h 44.0% left (resets in ",
+		"Gemini 7d 82.0% left (resets in ",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("expected %q in rendered table, got:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "...") {
+		t.Fatalf("expected no truncation in Antigravity card, got:\n%s", out)
+	}
+
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	wantWidth := utf8.RuneCountInString(lines[0])
+	for i, line := range lines {
+		if got := utf8.RuneCountInString(line); got != wantWidth {
+			t.Fatalf("line %d rune width = %d, want %d: %q", i, got, wantWidth, line)
+		}
 	}
 }
 
